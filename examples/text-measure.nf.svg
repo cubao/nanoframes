@@ -31,6 +31,14 @@
         fill="#7ee7ff" data-start="0.0" data-duration="3.0"
         data-curve-d="M 90 300 C 200 190, 420 190, 560 300">DRIVE SAFE</text>
 
+  <!-- 4. auto-shrink font-size to fit a fixed width (single line) -->
+  <text id="fit" x="80" y="338" font-family="Arial Mono, Menlo, monospace" font-size="30"
+        fill="#ffd27d" data-start="0.0" data-duration="3.0"
+        data-fit="480" data-fit-min="12"
+        data-bg="#3a2f0b" data-bg-pad-x="10" data-bg-pad-y="6" data-bg-rx="9">
+    CAUTION: STATE CHANGING — ETA 00:04:12
+  </text>
+
   <script type="application/nanoframes+json"><![CDATA[
     { "animations": [ ] }
   ]]></script>

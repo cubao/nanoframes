@@ -100,6 +100,7 @@ chips / wrapped lines / curved text always line up with the rendered glyphs.
 | `data-bg-rx` | chip corner radius | `10` |
 | `data-bg-pad-x` / `data-bg-pad-y` | ink-to-chip padding | `12` / `8` |
 | `data-wrap="WIDTH"` | wrap text into stacked `<text>` lines fitting `WIDTH` px | — |
+| `data-fit="WIDTH"` | auto-shrink font-size (floor `data-fit-min`) so the text fits | `data-fit-min=9` |
 | `data-curve-d="PATH"` | place each char along a sampled SVG path `d` | — |
 | `data-curve-circle="cx,cy,r[,startDeg]"` | place each char along a circle | — |
 

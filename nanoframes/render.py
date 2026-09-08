@@ -35,7 +35,9 @@ def _ensure_font(engine) -> None:
 
     Called every engine: ThorVG tears down its global font cache when an engine
     is terminated, so a fresh engine needs the fonts registered again. Loading is
-    cheap because ThorVG caches font data by path.
+    cheap because ThorVG caches font data by path. (See ``nanoframes.fonts`` for
+    CJK font discovery; we deliberately do NOT auto-register arbitrary discovered
+    faces here because some fonts crash this ThorVG build at teardown.)
     """
     import os
 

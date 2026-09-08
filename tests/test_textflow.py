@@ -68,6 +68,17 @@ def test_curve_emits_rotated_per_char():
     assert all(e.text in "ARC" for e in chars)
 
 
+def test_fit_shrinks_font_size_to_width():
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" data-width="400" data-height="80"><rect width="400" height="80" fill="#000"/><text id="t" x="10" y="60" font-family="Arial" font-size="48" fill="#fff" data-fit="120" data-fit-min="8">MUCH TOO WIDE</text></svg>'''
+    tree = ET.fromstring(bake.bake_svg(parse_string(svg), 0.5, measurer=Measurer()))
+    t = [e for e in _texts(tree) if e.get("id") == "t"][0]
+    size = float(t.get("font-size"))
+    assert size < 48
+    # fitted single line must actually fit: measure its ink width
+    m = Measurer().ink(t.text or "", "Arial", "normal", size)
+    assert (m.right_dx - m.left_dx + 1) <= 120
+
+
 def test_measure_cli(capsys, tmp_path):
     from nanoframes.cli import main
     import shutil

@@ -31,11 +31,19 @@ def apply_text_autoflow(root: ET.Element, measurer: Measurer | None) -> None:
         wrap = node.get("data-wrap")
         curve_d = node.get("data-curve-d")
         curve_circle = node.get("data-curve-circle")
-        if bg is None and wrap is None and curve_d is None and curve_circle is None:
+        fit = node.get("data-fit")
+        if bg is None and wrap is None and curve_d is None and curve_circle is None and fit is None:
             continue
         style = _style(node)
         content = node.text or ""
         parent = _find_parent(root, node)
+
+        # auto-shrink font-size until the text fits on one line (no wrap/curve)
+        if fit is not None and wrap is None and curve_d is None and curve_circle is None:
+            fitted = _fit_font_size(content, style, float(fit), measurer)
+            if fitted and fitted != style["size"]:
+                node.set("font-size", f"{fitted:g}")
+                style = _style(node)
 
         if curve_d or curve_circle:
             _expand_curve(parent, node, content, style, measurer,
@@ -46,12 +54,13 @@ def apply_text_autoflow(root: ET.Element, measurer: Measurer | None) -> None:
             _expand_wrap(parent, node, content, style, measurer, bg, float(wrap))
             continue
 
-        # single-line background chip
-        m = measurer.ink(content, style["family"], style["weight"], style["size"],
-                         style["letter_spacing"])
-        idx = list(parent).index(node)
-        parent.insert(idx, _chip_rect(m, style["x"], style["y"], bg, _bg_opt(node),
-                                      _style_fill(node)))
+        # single-line background chip (+ optional fit already applied)
+        if bg is not None:
+            m = measurer.ink(content, style["family"], style["weight"], style["size"],
+                             style["letter_spacing"])
+            idx = list(parent).index(node)
+            parent.insert(idx, _chip_rect(m, style["x"], style["y"], bg, _bg_opt(node),
+                                          _style_fill(node)))
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +245,7 @@ def _style(node: ET.Element) -> dict:
         "family": family,
         "weight": weight,
         "font": font,
+        "fit_min": _f(node.get("data-fit-min"), 9.0),
         "letter_spacing": _f(node.get("letter-spacing"), 0.0),
     }
 
@@ -261,6 +271,36 @@ def _f(value: str | None, default: float) -> float:
         return float(value) if value not in (None, "") else default
     except (TypeError, ValueError):
         return default
+
+
+def _fit_font_size(content: str, style: dict, max_w: float, measurer) -> float | None:
+    """Largest font size <= current that fits ``content`` on one line in max_w px.
+
+    Binary search over font size using the renderer-exact Measurer. Falls back
+    to a floor (default 9px) with no fit guarantee if the text can't shrink
+    enough."""
+    lo = _f(style.get("fit_min"), 9.0)
+    hi = style["size"]
+    if hi <= lo:
+        return hi
+    # quick: does the declared size already fit?
+    if _width_ok(content, style, hi, max_w, measurer):
+        return hi
+    best = lo
+    while lo <= hi:
+        mid = (lo + hi) / 2.0
+        if _width_ok(content, style, mid, max_w, measurer):
+            best = mid
+            lo = mid + 0.25
+        else:
+            hi = mid - 0.25
+    return round(best, 2)
+
+
+def _width_ok(content: str, style: dict, size: float, max_w: float, measurer) -> bool:
+    m = measurer.ink(content, style["family"], style["weight"], size,
+                     style.get("letter_spacing", 0.0))
+    return (m.right_dx - m.left_dx + 1) <= max_w
 
 
 def _find_parent(root: ET.Element, node: ET.Element):
