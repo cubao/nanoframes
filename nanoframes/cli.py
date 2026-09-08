@@ -21,6 +21,7 @@ from nanoframes.lint import has_errors, lint_path
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import render_frame
 from nanoframes.video import render_video
+from nanoframes import walkthrough
 
 TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
      data-width="960" data-height="540" data-fps="30" data-duration="6.0"
@@ -108,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(handler=cmd_video)
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
+
+    sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
+    sp.add_argument("-o", "--out", default="build/walkthrough", help="output dir")
+    sp.add_argument("--no-audio", action="store_true", help="skip audio synthesis/mux")
+    sp.set_defaults(handler=cmd_walkthrough)
 
     return p
 
@@ -206,6 +212,10 @@ def cmd_video(args: argparse.Namespace) -> int:
                  keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio)
     print(f"wrote {args.out}")
     return 0
+
+
+def cmd_walkthrough(args: argparse.Namespace) -> int:
+    return walkthrough.main(["-o", args.out] + (["--no-audio"] if args.no_audio else []))
 
 
 def _frame_dest(doc, out, t: float) -> str:

@@ -13,5 +13,6 @@ venv/
 
 # render outputs
 out/
+build/
 *.mp4
 .nanoframes-cache/

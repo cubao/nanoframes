@@ -78,6 +78,17 @@ ThorVG rasterizes the **SVG Tiny 1.2** subset — see
 `<g>`, `clipPath`/`mask`, and transforms are supported. Layout/CSS keep their
 SVG meaning but only within that subset.
 
+### Known ThorVG behaviors
+
+- **Keep transformed elements on-canvas.** An element whose transformed extent
+  leaves the canvas (especially rotated, partially off-screen) is clipped
+  coarsely: ThorVG paints **black** over the off-screen extent. Animate within
+  the frame (fade/scale/grow in place, translate inside bounds) rather than
+  sliding in from outside the canvas.
+- **Text needs a loaded font.** ThorVG only rasterizes `<text>` after a font is
+  registered (`Text.font_load`, done automatically per engine). Renders are
+  therefore limited to fonts present on the host unless you supply one.
+
 ## CLI examples
 
 ```bash

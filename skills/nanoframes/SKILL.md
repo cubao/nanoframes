@@ -63,6 +63,10 @@ Supported animated props:
 - Could any clip exceed the composition duration? Keep `data-start + data-duration`
   within the total — otherwise `check` warns.
 - `transform` order is baked as translate -> rotate -> scale.
+- **Keep transformed elements on-canvas.** An element whose animated extent
+  leaves the frame (esp. a rotated, partially-offscreen element) paints a black
+  band over the off-screen extent in ThorVG. Fade/grow in place or translate
+  inside bounds; don't slide things in from outside the canvas.
 - Relative `<image href>` paths resolve against the composition's directory.
   Text renders with a system font loaded automatically.
 - ThorVG rasterizes the **SVG Tiny 1.2** subset — avoid CSS layout, filters,
