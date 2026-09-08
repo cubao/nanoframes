@@ -12,8 +12,10 @@ milliseconds and iterate fast: `check` → `preview` → `render`.
 
 ## Status
 
-Early scaffold. The composition contract and renderer are being built incrementally — see
-`docs/architecture.md` and `docs/composition.md`.
+**v1 complete.** Full offline pipeline works end-to-end: `init` → `check` →
+`render`/`preview` → `video`. SVG compositions + declarative keyframe timeline are
+rendered deterministically by ThorVG; MP4 export via ffmpeg; visual snapshots guard
+regressions.
 
 ## Layout
 
