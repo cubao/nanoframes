@@ -114,6 +114,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.set_defaults(handler=cmd_measure)
 
+    sp = sub.add_parser("fonts", help="manage CJK/added fonts (list / add / verify / install)")
+    fsub = sp.add_subparsers(dest="fonts_command", required=True)
+    fp = fsub.add_parser("list", help="discover available CJK-capable fonts and family names")
+    fp.set_defaults(fhandler=cmd_fonts_list)
+    fp = fsub.add_parser("add", help="copy a font into the nanoframes user font dir")
+    fp.add_argument("path", help="path to a .ttf/.otf font file")
+    fp.set_defaults(fhandler=cmd_fonts_add)
+    fp = fsub.add_parser("verify", help="check a font loads+rasterizes without crashing ThorVG (subprocess)")
+    fp.add_argument("path", help="path to a .ttf/.otf font file")
+    fp.set_defaults(fhandler=cmd_fonts_verify)
+    fp = fsub.add_parser("install", help="fetch a CJK monospace font (default: Sarasa Mono SC)")
+    fp.set_defaults(fhandler=cmd_fonts_install)
+
     sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
     sp.add_argument("-o", "--out", default="build/walkthrough", help="output dir")
     sp.add_argument("--no-audio", action="store_true", help="skip audio synthesis/mux")
@@ -171,6 +184,128 @@ def cmd_measure(args: argparse.Namespace) -> int:
     for i, t, size, w in rows:
         print(f"{i:<12}{t[:26]:<28}{size:>5}  {w}")
     return 0
+
+
+def _user_font_dir() -> str:
+    d = os.path.expanduser("~/.local/share/nanoframes/fonts")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def cmd_fonts_list(args: argparse.Namespace) -> int:
+    from nanoframes.fonts import discover_fonts
+
+    fonts = [f for f in discover_fonts() if f.cjk]
+    print(f"CJK-capable fonts discovered: {len(fonts)}")
+    for f in sorted(fonts, key=lambda x: (not x.mono, x.family)):
+        mark = "mono " if f.mono else "     "
+        print(f"  {mark}{f.family:<22}{f.style:<10}{os.path.basename(f.path)}")
+    print("\nfont-family uses the font's exact family name above.")
+    print("Not all loads are ThorVG-safe; run `nanoframes fonts verify <path>` on any you rely on.")
+    return 0
+
+
+def cmd_fonts_add(args: argparse.Namespace) -> int:
+    import shutil
+    from nanoframes.fonts import family_name
+
+    src = args.path
+    if not os.path.exists(src):
+        print(f"no such file: {src}", file=sys.stderr)
+        return 2
+    family, style = family_name(src)
+    dst = os.path.join(_user_font_dir(), os.path.basename(src))
+    shutil.copyfile(src, dst)
+    print(f"added {src} -> {dst}")
+    print(f"family={family!r} style={style!r}")
+    print("verify it is ThorVG-safe with: nanoframes fonts verify " + dst)
+    return 0
+
+
+def cmd_fonts_verify(args: argparse.Namespace) -> int:
+    import subprocess as sp
+    import sys
+
+    script = r'''
+import sys, os, tempfile
+import thorvg_python as tv
+import numpy as np
+path, fam = sys.argv[1], sys.argv[2]
+try:
+    from nanoframes.render import DEFAULT_FONT_CANDIDATES as base
+except Exception:
+    base = ()
+e = tv.Engine(threads=1)
+h = tv.Text(e)
+for p in tuple(base) + (path,):
+    if os.path.exists(p):
+        try:
+            h.font_load(p)
+        except Exception:
+            pass
+svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="70">'
+       '<rect width="160" height="70" fill="#fff"/>'
+       '<text x="4" y="50" font-family="' + fam + '" font-size="30" fill="#000">A中</text></svg>')
+fd, tpath = tempfile.mkstemp(suffix=".svg")
+os.write(fd, svg.encode()); os.close(fd)
+c = tv.SwCanvas(e); c.set_target(160, 70)
+pic = tv.Picture(e); rc = pic.load(tpath)
+pic.set_size(160, 70); c.add(pic); c.update(); c.draw(False); c.sync()
+g = np.array(c.get_pillow()).astype(np.int32)[:, :, 0]
+print("solid", int((g > 180).sum()))
+try:
+    c.destroy()
+    e.term()
+except Exception:
+    pass
+'''
+    from nanoframes.fonts import family_name
+    family = family_name(args.path)[0]
+    proc = sp.run([sys.executable, "-c", script, args.path, family],
+                  capture_output=True, text=True)
+    print(proc.stdout.strip())
+    if proc.returncode == 139:
+        print(f"UNSAFE: {args.path} crashes ThorVG at exit (code 139). Do not use.")
+        return 1
+    if proc.returncode != 0 or not proc.stdout.strip():
+        print(f"verify failed (code {proc.returncode}): {proc.stderr.strip()}")
+        return 1
+    print(f"safe: {args.path} loaded and rasterized in an isolated subprocess.")
+    return 0
+
+
+def cmd_fonts_install(args: argparse.Namespace) -> int:
+    """Best-effort fetch of a CJK monospace font (Sarasa Mono SC) into the user dir."""
+    import hashlib
+    import shutil
+    import urllib.request
+
+    urls = [
+        # Sarasa Mono SC regular ttf mirrors; the exact URL/size varies by release.
+        "https://cdn.jsdelivr.net/gh/be5invis/Sarasa-Gothic@v1.0.2/release/sarasa-monera-sc-regular.ttf",
+        "https://registry.npmmirror.com/sarasa-mono-sc/-/sarasa-mono-sc-1.0.0.tgz",
+    ]
+    dst_dir = _user_font_dir()
+    out = os.path.join(dst_dir, "sarasa-mono-sc.ttf")
+    last = None
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "nanoframes"})
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                data = resp.read()
+            if len(data) < 1000:
+                continue
+            with open(out, "wb") as fh:
+                fh.write(data)
+            print(f"downloaded {len(data)} bytes -> {out}")
+            print("verify: nanoframes fonts verify " + out)
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            continue
+    print(f"could not download a font from {len(urls)} source(s); last error: {last}", file=sys.stderr)
+    print("drop any .ttf/.otf into " + dst_dir + " and use `nanoframes fonts list` to see its family.")
+    return 1
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -262,6 +397,8 @@ def _frame_dest(doc, out, t: float) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if hasattr(args, "fhandler") and args.fhandler is not None:
+        return args.fhandler(args)
     try:
         return args.handler(args)
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:
