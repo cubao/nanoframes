@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     data-width="480" data-height="240" data-fps="30" data-duration="4.0"
+     data-composition-id="title-card">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5ef17c"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect id="bg" width="480" height="240" fill="#202736"/>
+  <g id="panel" data-start="0.0" data-duration="4.0">
+    <rect id="card" x="40" y="40" width="400" height="120" rx="16" fill="#10161f"/>
+    <rect id="accent-bar" x="40" y="40" width="400" height="120" rx="16" fill="url(#accent)"
+          data-start="0.5" data-duration="3.0"/>
+  </g>
+  <text id="title" x="72" y="96" font-family="Arial, sans-serif" font-weight="700"
+        font-size="44" fill="#f4f7ff" data-start="0.5" data-duration="3.0">nanoframes</text>
+  <text id="sub" x="72" y="132" font-family="Arial, sans-serif" font-size="20"
+        fill="#9aa4b2" data-start="1.0" data-duration="2.5">SVG renders MP4. No browser.</text>
+  <script type="application/nanoframes+json"><![CDATA[
+  {
+    "animations": [
+      {
+        "target": "#accent-bar",
+        "keyframes": [
+          {"t": 0.5, "opacity": 0.0, "transform": {"translate": [0, 0], "scale": [0.02, 1.0]}},
+          {"t": 1.1, "opacity": 1.0, "transform": {"translate": [0, 0], "scale": [1.0, 1.0]}, "ease": "ease-in-out"}
+        ]
+      },
+      {
+        "target": "#title",
+        "keyframes": [
+          {"t": 0.5, "opacity": 0.0, "transform": {"translate": [0, 18]}},
+          {"t": 0.95, "opacity": 1.0, "transform": {"translate": [0, 0]}, "ease": "ease-out"}
+        ]
+      }
+    ]
+  }
+  ]]></script>
+</svg>
