@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "nanoframes"
@@ -20,9 +20,8 @@ dev = ["pytest", "ruff"]
 [project.scripts]
 nanoframes = "nanoframes.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["nanoframes*"]
+[tool.hatch.build.targets.wheel]
+packages = ["nanoframes"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
