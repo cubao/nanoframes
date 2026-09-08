@@ -57,9 +57,12 @@ Consistency invariant: measurement uses the same font list, loader, and raster a
 
 ## Findings / caveats to keep in mind
 
-- **Font coverage decides width.** A CJK string measured under a font lacking the glyphs still "measures" (via fallback), so a chip sized for it matches the *fallback* glyphs — not a real Chinese face. Resolution is by the font's **internal family name**, and `.ttc` loaded by many ThorVG builds is dodgy. For Chinese text, register a real CJK `.ttf` and use its exact `font-family` (e.g. a noto/思源 Sans CJK ttf). We harden this by: registration reuses the render's candidate list, so measurement and render always agree.
-- **`set_size` points-vs-px trap.** If you use the raw `Text` metric API directly, remember px = size × `96/72`. We avoid it for exact work.
-- **Upgrade path.** A newer `thorvg-python` (see `../thorvg-python`) exposes `get_glyph_metrics` (per-glyph advance / left-side bearing / bbox) and `line_count` (wrapping). Buying that upgrade lets along-curve and wrap use one fast metric call instead of per-character renders, and unlocks true ThorVG-native text layout (`layout`/`wrap_mode`/`align`).
+- **Font coverage decides width.** A CJK string measured under a font lacking the glyphs still "measures" (via fallback), so a chip sized for it matches the *fallback* glyphs — not a real Chinese face. Use a face that actually has the glyphs.
+- **ThorVG's loader font-family resolution is unreliable in this build.** A loaded font is not always used (`Arial Unicode MS` loads but never matches, so Chinese falls back to a dim built-in face). Empirically only some faces render solidly, and some *crash the process at teardown* when loaded (`AppleGothic` → segfault exit 139). `.ttc` collections can't be loaded at all.
+- **We therefore do NOT auto-register discovered fonts in the renderer.** Instead: `nanoframes fonts list` shows CJK faces + exact family names; `nanoframes fonts add <path>` copies a font into `~/.local/share/nanoframes/fonts`; `nanoframes fonts verify <path>` rasterizes it in an isolated subprocess to check it doesn't crash ThorVG; `nanoframes fonts install` best-effort fetches a CJK monospace (默认 Sarasa Mono SC, 等宽). Use `font-family="<exact family from list>"`.
+- **等宽 recommendation.** A true CJK monospace (Sarasa Mono SC) makes every Han char exactly `font-size` px wide, so measured chips are perfectly predictable. Until a ThorVG version reliably resolves custom fonts, `fonts verify` is the gate.
+- **`set_size` points-vs-px trap.** If you use the raw `Text` metric API directly, px = size × `96/72`. We avoid it for exact work.
+- **Upgrade path.** The newer `thorvg-python` (see `../thorvg-python`) reworks text/font support and exposes `get_glyph_metrics` + `line_count`; upgrading is the enabling change for a truly bundled/等宽 CJK font.
 
 ## Contract (extended)
 
