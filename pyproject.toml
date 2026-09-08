@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nanoframes"
+version = "0.1.0"
+description = "SVG-first, browserless, deterministic frame rendering built on ThorVG. Offline hyperframes-style animated compositions for fast AI-agent iteration."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "thorvg-python",
+    "pillow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+nanoframes = "nanoframes.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nanoframes*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
