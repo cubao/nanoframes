@@ -91,6 +91,18 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4) -> "obje
             pass
 
 
+_MEASURER = None
+
+
+def _measurer():
+    """A process-wide renderer-exact Measurer (lazily created, reused across frames)."""
+    global _MEASURER
+    if _MEASURER is None:
+        from nanoframes.measure import Measurer
+        _MEASURER = Measurer()
+    return _MEASURER
+
+
 def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4,
                  cache: "FrameCache | None" = None) -> "object":
     """Render one frame of a composition at time ``t``.
@@ -106,7 +118,7 @@ def render_frame(doc: Document, t: float, out_path: str | None = None, threads: 
                 os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
                 hit.save(out_path)
             return hit
-    svg = bake.bake_svg(doc, t)
+    svg = bake.bake_svg(doc, t, measurer=_measurer())
     img = render_svg(svg, doc.composition.width, doc.composition.height, threads=threads)
     if cache is not None:
         cache.put(doc.identity, t, img)

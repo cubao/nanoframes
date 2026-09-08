@@ -110,6 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
 
+    sp = sub.add_parser("measure", help="report renderer-exact glyph widths for text elements")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.set_defaults(handler=cmd_measure)
+
     sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
     sp.add_argument("-o", "--out", default="build/walkthrough", help="output dir")
     sp.add_argument("--no-audio", action="store_true", help="skip audio synthesis/mux")
@@ -139,6 +143,33 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"created {path}")
     print("  nanoframes check {path}".format(path=path))
     print(f"  nanoframes render {path} --t 1.0")
+    return 0
+
+
+def cmd_measure(args: argparse.Namespace) -> int:
+    from nanoframes.measure import Measurer
+    from nanoframes.parse import parse_file as _parse_file, _local
+
+    doc = _parse_file(args.composition)
+    measurer = Measurer()
+    rows = []
+    for node in doc.root.iter():
+        if _local(node.tag) != "text":
+            continue
+        t = (node.text or "").strip()
+        if not t:
+            continue
+        family = node.get("font-family") or "Arial"
+        weight = node.get("font-weight") or "normal"
+        size = float(node.get("font-size") or 16)
+        m = measurer.ink(t, family, weight, size)
+        rows.append((node.get("id") or "?", t, size, round(m.w, 1)))
+    if not rows:
+        print("no <text> elements")
+        return 0
+    print(f"{"id":<12}{"text":<28}{"size":>5}  width(px)")
+    for i, t, size, w in rows:
+        print(f"{i:<12}{t[:26]:<28}{size:>5}  {w}")
     return 0
 
 

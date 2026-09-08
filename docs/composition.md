@@ -89,11 +89,30 @@ SVG meaning but only within that subset.
   registered (`Text.font_load`, done automatically per engine). Renders are
   therefore limited to fonts present on the host unless you supply one.
 
+## Text auto-layout (`data-*` on `<text>`)
+
+Measured by the same ThorVG SVG loader that rasterizes the frame, so background
+chips / wrapped lines / curved text always line up with the rendered glyphs.
+
+| attr | meaning | default |
+|---|---|---|
+| `data-bg="COLOR"` | auto-sized rounded background chip behind the text | — |
+| `data-bg-rx` | chip corner radius | `10` |
+| `data-bg-pad-x` / `data-bg-pad-y` | ink-to-chip padding | `12` / `8` |
+| `data-wrap="WIDTH"` | wrap text into stacked `<text>` lines fitting `WIDTH` px | — |
+| `data-curve-d="PATH"` | place each char along a sampled SVG path `d` | — |
+| `data-curve-circle="cx,cy,r[,startDeg]"` | place each char along a circle | — |
+
+When auto-layout is used without a `Measurer` (e.g. a bare `bake_svg` call) it
+is a no-op, so plain compositions bake exactly as before. See
+`docs/text-capabilities.md` for the full audit and caveats.
+
 ## CLI examples
 
 ```bash
 nanoframes init my-video            # scaffold a .nf.svg
 nanoframes check my-video.nf.svg    # lint (exit 1 on errors)
+nanoframes measure my-video.nf.svg  # report renderer-exact text widths
 nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
 nanoframes preview my-video.nf.svg --t 2.0         # render + open
 nanoframes render my-video.nf.svg -o frames        # full batch

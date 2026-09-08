@@ -64,7 +64,7 @@ def _transform_string(tf: object) -> str | None:
     return " ".join(parts) if parts else None
 
 
-def bake_svg(doc: Document, t: float) -> str:
+def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None) -> str:
     comp = doc.composition
     root = copy.deepcopy(doc.root)
 
@@ -119,6 +119,11 @@ def bake_svg(doc: Document, t: float) -> str:
     # the baked SVG from a temp file) can resolve assets against the source dir.
     if doc.base_dir:
         _dereference_images(root, doc.base_dir)
+
+    # Renderer-exact text auto-layout (backgrounds / wrap / along-curve).
+    if measurer is not None:
+        from nanoframes.textflow import apply_text_autoflow
+        apply_text_autoflow(root, measurer)
 
     return ET.tostring(root, encoding="unicode")
 

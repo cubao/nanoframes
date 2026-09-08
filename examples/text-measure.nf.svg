@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     data-width="640" data-height="360" data-fps="30" data-duration="3.0"
+     data-composition-id="text-measure">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a1128"/>
+      <stop offset="1" stop-color="#16244a"/>
+    </linearGradient>
+  </defs>
+
+  <rect id="backdrop" width="640" height="360" fill="url(#bg)"/>
+
+  <!-- 1. measured label chip: rounded bg auto-sized to the CJK glyph ink -->
+  <text id="chip-a" x="80" y="80" font-family="Arial Unicode" font-size="30"
+        fill="#e6ecff" data-start="0.0" data-duration="3.0"
+        data-bg="#3b5998" data-bg-pad-x="12" data-bg-pad-y="7" data-bg-rx="12">行人入侵</text>
+
+  <text id="chip-b" x="460" y="80" font-family="Arial" font-size="24"
+        fill="#cfe0ff" data-start="0.0" data-duration="3.0"
+        data-bg="#2563eb" data-bg-pad-x="10" data-bg-pad-y="6" data-bg-rx="9">Brake</text>
+
+  <!-- 2. auto-wrapped paragraph (no manual <tspan> / <text> lines) -->
+  <text id="wrap" x="80" y="170" font-family="Arial" font-size="22" fill="#a9bfe8"
+        data-start="0.0" data-duration="3.0"
+        data-wrap="300" data-bg="#0e1b33" data-bg-pad-x="10" data-bg-pad-y="8" data-bg-rx="10">
+    Vehicle turns right, pedestrian on the crosswalk has priority and continues straight ahead.
+  </text>
+
+  <!-- 3. text along a sampled curve (no <textPath>: ThorVG has none) -->
+  <text id="curve" x="0" y="0" font-family="Arial" font-size="26" font-weight="700"
+        fill="#7ee7ff" data-start="0.0" data-duration="3.0"
+        data-curve-d="M 90 300 C 200 190, 420 190, 560 300">DRIVE SAFE</text>
+
+  <script type="application/nanoframes+json"><![CDATA[
+    { "animations": [ ] }
+  ]]></script>
+</svg>
