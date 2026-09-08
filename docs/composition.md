@@ -87,4 +87,5 @@ nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
 nanoframes preview my-video.nf.svg --t 2.0         # render + open
 nanoframes render my-video.nf.svg -o frames        # full batch
 nanoframes video my-video.nf.svg -o out.mp4        # MP4 via ffmpeg
+nanoframes video my-video.nf.svg -o out.mp4 --audio track.mp3   # + audio mux
 ```

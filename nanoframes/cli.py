@@ -104,6 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--scale", default=None, help="ffmpeg scale filter, e.g. 720:720")
     sp.add_argument("--threads", type=int, default=4)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
+    sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
     sp.set_defaults(handler=cmd_video)
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
@@ -202,7 +203,7 @@ def cmd_video(args: argparse.Namespace) -> int:
               "(run `nanoframes check`)", file=sys.stderr)
         return 1
     render_video(doc, args.out, fps=args.fps, scale=args.scale, threads=args.threads,
-                 keep_frames=args.keep_frames, cache=_make_cache(args))
+                 keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio)
     print(f"wrote {args.out}")
     return 0
 

@@ -23,6 +23,7 @@ def render_video(
     threads: int = 4,
     keep_frames: str | None = None,
     cache=None,
+    audio: str | None = None,
 ) -> str:
     """Render all frames of ``doc`` into ``out_path`` (an MP4).
 
@@ -55,12 +56,14 @@ def render_video(
             "-framerate", str(fps),
             "-i", os.path.join(frame_dir, f"{prefix}.%05d.png"),
         ]
+        if audio:
+            cmd += ["-i", audio]
         if scale:
             cmd += ["-vf", f"scale={scale}"]
-        cmd += [
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
-            out_path,
-        ]
+        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
+        if audio:
+            cmd += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+        cmd += [out_path]
         subprocess.run(cmd, check=True, capture_output=True)
         return out_path
     finally:

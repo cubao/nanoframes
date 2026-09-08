@@ -98,6 +98,7 @@ nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png
 nanoframes render <comp>.nf.svg -o out/        # full batch of frames
 nanoframes video  <comp>.nf.svg -o out.mp4     # ffmpeg MP4
+nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
 ```
 
 Full contract: `docs/composition.md`. Engine/toolchain: `docs/architecture.md`.

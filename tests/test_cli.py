@@ -94,3 +94,22 @@ def test_video_exports_mp4(tmp_path):
                            "-of", "default=noprint_wrappers=1", out],
                           capture_output=True, text=True).stdout
     assert "duration=" in info
+
+
+def test_video_muxes_audio(tmp_path):
+    import shutil
+    import subprocess as sp
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not available")
+    wav = str(tmp_path / "tone.wav")
+    sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=1",
+            "-c:a", "pcm_s16le", wav], check=True, capture_output=True)
+    out = str(tmp_path / "av.mp4")
+    code, _ = run(["video", TITLE, "-o", out, "--audio", wav])
+    assert code == 0
+    info = sp.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
+                    "-show_entries", "stream=codec_name",
+                    "-of", "default=noprint_wrappers=1", out],
+                   capture_output=True, text=True).stdout
+    assert "aac" in info
