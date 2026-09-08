@@ -18,10 +18,11 @@ Early scaffold. The composition contract and renderer are being built incrementa
 ## Layout
 
 ```
-nanoframes/       package (model, parser, timeline, bake, render, cli)
 docs/             architecture + composition contract
 examples/         `.nf.svg` compositions
-tests/            unit + render tests
+skills/nanoframes/ SKILL.md — the agent production loop
+nanoframes/       package (model, parser, timeline, bake, render, lint, cli, video)
+tests/            unit + render + snapshot + CLI tests
 ```
 
 ## Docs
