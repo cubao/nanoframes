@@ -115,7 +115,26 @@ def bake_svg(doc: Document, t: float) -> str:
         if parent is not None:
             parent.remove(node)
 
+    # Dereference relative <image> hrefs to absolute paths so ThorVG (which loads
+    # the baked SVG from a temp file) can resolve assets against the source dir.
+    if doc.base_dir:
+        _dereference_images(root, doc.base_dir)
+
     return ET.tostring(root, encoding="unicode")
+
+
+def _dereference_images(root: ET.Element, base_dir: str) -> None:
+    import os
+
+    for node in root.iter():
+        if _local(node.tag) != "image":
+            continue
+        for attr in ("href", "{http://www.w3.org/1999/xlink}href", "src"):
+            ref = node.get(attr)
+            if not ref or ref.startswith(("http:", "https:", "data:", "/")):
+                continue
+            joined = os.path.normpath(os.path.join(base_dir, ref))
+            node.set(attr, joined)
 
 
 def _find_parent(root: ET.Element, child: ET.Element) -> ET.Element | None:

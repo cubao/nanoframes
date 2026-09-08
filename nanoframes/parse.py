@@ -7,6 +7,7 @@ root to emit per-frame SVG without re-parsing.
 from __future__ import annotations
 
 import json
+import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
@@ -32,6 +33,7 @@ class Document:
 
     composition: Composition
     root: ET.Element = field(repr=False)
+    base_dir: str | None = field(default=None, repr=False)  # dir of source, for relative assets
 
 
 def _to_float(value: str, name: str) -> float:
@@ -142,7 +144,9 @@ def parse_file(path: str) -> Document:
         tree = ET.parse(path)
     except ET.ParseError as exc:
         raise ParseError(f"could not parse XML in {path!r}: {exc}") from exc
-    return _parse_tree(tree.getroot())
+    doc = _parse_tree(tree.getroot())
+    doc.base_dir = os.path.dirname(os.path.abspath(path))
+    return doc
 
 
 def parse_string(text: str) -> Document:

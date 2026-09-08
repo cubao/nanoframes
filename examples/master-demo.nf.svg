@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     data-width="960" data-height="540" data-fps="30" data-duration="6.0"
+     data-composition-id="master-demo">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1128"/>
+      <stop offset="1" stop-color="#203a6b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5ef17c"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+
+  <rect id="bg" width="960" height="540" fill="url(#sky)"/>
+
+  <!-- floating image: translate + scale pulse -->
+  <image id="orb" class="float" href="assets/dot.png"
+         x="700" y="120" width="120" height="120"
+         data-start="0.2" data-duration="5.2"/>
+  <image id="orb2" class="float" href="assets/dot.png"
+         x="100" y="320" width="72" height="72" transform="scale(0.6)"
+         data-start="0.6" data-duration="4.8"/>
+
+  <!-- rotating gradient panel (translate + rotate) -->
+  <rect id="panel" x="0" y="0" width="200" height="120" rx="22" fill="url(#accent)"
+        opacity="0.9" data-start="0.0" data-duration="6.0"/>
+
+  <!-- title: fade + slide -->
+  <text id="title" x="60" y="120" font-family="Arial, sans-serif" font-weight="700"
+        font-size="72" fill="#f4f7ff" data-start="0.0" data-duration="6.0">
+    nanoframes
+  </text>
+
+  <!-- subtitle with fade, gradient underline that grows -->
+  <rect id="rule" x="62" y="150" width="6" height="90" rx="3" fill="url(#accent)"
+        data-start="0.6" data-duration="5.0"/>
+  <text id="sub" x="90" y="205" font-family="Arial, sans-serif" font-size="30"
+        fill="#b6c2d8" data-start="0.9" data-duration="4.8">
+    SVG renders MP4. No browser. Fast for agents.
+  </text>
+
+  <script type="application/nanoframes+json"><![CDATA[
+  {
+    "animations": [
+      {
+        "target": "#panel",
+        "keyframes": [
+          {"t": 0.0,  "opacity": 0.0, "transform": {"translate": [-260, 260], "rotate": 0}},
+          {"t": 1.0,  "opacity": 0.9, "transform": {"translate": [60, 380], "rotate": -14}, "ease": "ease-in-out"},
+          {"t": 4.0,  "opacity": 0.9, "transform": {"translate": [700, 320], "rotate": 12}, "ease": "ease-in-out"},
+          {"t": 5.5,  "opacity": 0.4, "transform": {"translate": [760, 420], "rotate": 0}}
+        ]
+      },
+      {
+        "target": "#title",
+        "keyframes": [
+          {"t": 0.0, "opacity": 0.0, "transform": {"translate": [0, 30]}},
+          {"t": 0.7, "opacity": 1.0, "transform": {"translate": [0, 0]}, "ease": "ease-out"}
+        ]
+      },
+      {
+        "target": ".float",
+        "keyframes": [
+          {"t": 0.2, "opacity": 0.0, "transform": {"translate": [0, 40], "scale": [0.5, 0.5]}},
+          {"t": 1.2, "opacity": 1.0, "transform": {"translate": [0, 0], "scale": [1.0, 1.0]}, "ease": "ease-out"},
+          {"t": 4.5, "opacity": 1.0, "transform": {"translate": [0, -30], "scale": [1.1, 1.1]}, "ease": "ease-in-out"}
+        ]
+      },
+      {
+        "target": "#rule",
+        "keyframes": [
+          {"t": 0.6, "opacity": 0.0, "transform": {"scale": [1.0, 0.05]}},
+          {"t": 1.2, "opacity": 1.0, "transform": {"scale": [1.0, 1.0]}, "ease": "ease-in-out"}
+        ]
+      },
+      {
+        "target": "#sub",
+        "keyframes": [
+          {"t": 0.9, "opacity": 0.0},
+          {"t": 1.4, "opacity": 1.0}
+        ]
+      }
+    ]
+  }
+  ]]></script>
+</svg>
