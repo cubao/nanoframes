@@ -22,6 +22,7 @@ def render_video(
     scale: str | None = None,
     threads: int = 4,
     keep_frames: str | None = None,
+    cache=None,
 ) -> str:
     """Render all frames of ``doc`` into ``out_path`` (an MP4).
 
@@ -47,7 +48,7 @@ def render_video(
         for i in range(comp.frame_count):
             t = i * step
             render_frame(doc, t, out_path=os.path.join(frame_dir, f"{prefix}.{i:05d}.png"),
-                         threads=threads)
+                         threads=threads, cache=cache)
 
         cmd = [
             "ffmpeg", "-y", "-loglevel", "error",

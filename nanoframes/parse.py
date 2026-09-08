@@ -7,6 +7,7 @@ root to emit per-frame SVG without re-parsing.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -34,6 +35,14 @@ class Document:
     composition: Composition
     root: ET.Element = field(repr=False)
     base_dir: str | None = field(default=None, repr=False)  # dir of source, for relative assets
+    source_key: str = field(default="", repr=False)
+
+    @property
+    def identity(self) -> str:
+        """A stable identifier unique to this composition's source content."""
+        if self.source_key:
+            return self.source_key
+        return _hash_text(ET.tostring(self.root, encoding="unicode"))
 
 
 def _to_float(value: str, name: str) -> float:
@@ -139,13 +148,19 @@ def _parse_root(root: ET.Element) -> tuple[int, int, int, float, str | None]:
     return width, height, fps, duration, root.get("data-composition-id")
 
 
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def parse_file(path: str) -> Document:
+    raw = open(path, "rb").read().decode("utf-8")
     try:
-        tree = ET.parse(path)
+        tree = ET.fromstring(raw)
     except ET.ParseError as exc:
         raise ParseError(f"could not parse XML in {path!r}: {exc}") from exc
-    doc = _parse_tree(tree.getroot())
+    doc = _parse_tree(tree)
     doc.base_dir = os.path.dirname(os.path.abspath(path))
+    doc.source_key = _hash_text(raw)
     return doc
 
 
@@ -154,7 +169,9 @@ def parse_string(text: str) -> Document:
         root = ET.fromstring(text)
     except ET.ParseError as exc:
         raise ParseError(f"could not parse XML: {exc}") from exc
-    return _parse_tree(root)
+    doc = _parse_tree(root)
+    doc.source_key = _hash_text(text)
+    return doc
 
 
 def _parse_tree(root: ET.Element) -> Document:

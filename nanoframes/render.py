@@ -11,6 +11,7 @@ import os
 import tempfile
 
 from nanoframes import bake
+from nanoframes.cache import FrameCache
 from nanoframes.parse import Document
 
 
@@ -90,13 +91,25 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4) -> "obje
             pass
 
 
-def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4) -> "object":
+def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4,
+                 cache: "FrameCache | None" = None) -> "object":
     """Render one frame of a composition at time ``t``.
 
-    Returns a Pillow Image; if ``out_path`` is given the PNG is also saved.
+    Returns a Pillow Image; if ``out_path`` is given the PNG is also saved. When
+    ``cache`` is provided, an armed frame is served from the cache (skipping
+    ThorVG) and misses are written back.
     """
+    if cache is not None:
+        hit = cache.get(doc.identity, t, doc.composition.width, doc.composition.height)
+        if hit is not None:
+            if out_path:
+                os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+                hit.save(out_path)
+            return hit
     svg = bake.bake_svg(doc, t)
     img = render_svg(svg, doc.composition.width, doc.composition.height, threads=threads)
+    if cache is not None:
+        cache.put(doc.identity, t, img)
     if out_path:
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         img.save(out_path)

@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 from nanoframes import __version__
+from nanoframes.cache import FrameCache
 from nanoframes.lint import has_errors, lint_path
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import render_frame
@@ -56,6 +57,13 @@ TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
 """
 
 
+DEFAULT_CACHE = ".nanoframes-cache"
+
+
+def _make_cache(args) -> FrameCache | None:
+    return None if getattr(args, "no_cache", False) else FrameCache(DEFAULT_CACHE)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="nanoframes",
@@ -80,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
     sp.add_argument("--start", type=float, default=None, help="batch start time (default 0)")
     sp.set_defaults(handler=cmd_render)
+    sp.add_argument("--no-cache", action="store_true",
+                    help="disable the fast re-render cache (.nanoframes-cache)")
 
     sp = sub.add_parser("preview", help="render one frame and open it")
     sp.add_argument("composition", help="path to a .nf.svg composition")
@@ -95,6 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--threads", type=int, default=4)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.set_defaults(handler=cmd_video)
+    sp.add_argument("--no-cache", action="store_true",
+                    help="disable the fast re-render cache (.nanoframes-cache)")
 
     return p
 
@@ -144,10 +156,11 @@ def cmd_render(args: argparse.Namespace) -> int:
         return 1
 
     out_dir = args.out
+    cache = _make_cache(args)
     if args.t is not None:
         # single frame -> write PNG to args.out (treat as file or dir/<name>_t.png)
         dst = _frame_dest(doc, args.out, args.t)
-        render_frame(doc, args.t, out_path=dst, threads=args.threads)
+        render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache)
         print(f"rendered {dst}")
         return 0
 
@@ -161,7 +174,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     for i in range(count):
         t = start + i * step
         dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
-        render_frame(doc, t, out_path=dst, threads=args.threads)
+        render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache)
         lines.append(dst)
     print(f"rendered {len(lines)} frames to {out_dir}/ ({prefix}.*.png)")
     return 0
@@ -170,7 +183,7 @@ def cmd_render(args: argparse.Namespace) -> int:
 def cmd_preview(args: argparse.Namespace) -> int:
     doc = _load(args.composition)
     dst = "/tmp/nanoframes_preview.png"
-    render_frame(doc, args.t, out_path=dst, threads=args.threads)
+    render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=_make_cache(args))
     if sys.platform == "darwin":
         subprocess.run(["open", dst], check=True)
     elif sys.platform == "linux":
@@ -188,8 +201,8 @@ def cmd_video(args: argparse.Namespace) -> int:
         print("nanoframes: refusing to render a composition with lint errors "
               "(run `nanoframes check`)", file=sys.stderr)
         return 1
-    render_video(doc, args.out, fps=args.fps, scale=args.scale,
-                 threads=args.threads, keep_frames=args.keep_frames)
+    render_video(doc, args.out, fps=args.fps, scale=args.scale, threads=args.threads,
+                 keep_frames=args.keep_frames, cache=_make_cache(args))
     print(f"wrote {args.out}")
     return 0
 

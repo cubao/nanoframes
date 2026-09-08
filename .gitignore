@@ -14,3 +14,4 @@ venv/
 # render outputs
 out/
 *.mp4
+.nanoframes-cache/
