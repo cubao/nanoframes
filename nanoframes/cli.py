@@ -19,6 +19,7 @@ from nanoframes import __version__
 from nanoframes.lint import has_errors, lint_path
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import render_frame
+from nanoframes.video import render_video
 
 TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
      data-width="960" data-height="540" data-fps="30" data-duration="6.0"
@@ -85,6 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, required=True, help="time in seconds to preview")
     sp.add_argument("--threads", type=int, default=4)
     sp.set_defaults(handler=cmd_preview)
+
+    sp = sub.add_parser("video", help="render the whole clip to an MP4 via ffmpeg")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("-o", "--out", default="out.mp4", help="output MP4 path")
+    sp.add_argument("--fps", type=int, default=None, help="override composition fps")
+    sp.add_argument("--scale", default=None, help="ffmpeg scale filter, e.g. 720:720")
+    sp.add_argument("--threads", type=int, default=4)
+    sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
+    sp.set_defaults(handler=cmd_video)
 
     return p
 
@@ -169,6 +179,18 @@ def cmd_preview(args: argparse.Namespace) -> int:
         print(dst)
         return 0
     print(f"preview opened for t={args.t}s -> {dst}")
+    return 0
+
+
+def cmd_video(args: argparse.Namespace) -> int:
+    doc = _load(args.composition)
+    if has_errors(lint_path(args.composition)):
+        print("nanoframes: refusing to render a composition with lint errors "
+              "(run `nanoframes check`)", file=sys.stderr)
+        return 1
+    render_video(doc, args.out, fps=args.fps, scale=args.scale,
+                 threads=args.threads, keep_frames=args.keep_frames)
+    print(f"wrote {args.out}")
     return 0
 
 

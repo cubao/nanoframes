@@ -1,6 +1,7 @@
 """CLI end-to-end smoke tests."""
 
 import os
+import shutil
 
 import pytest
 
@@ -75,3 +76,21 @@ def test_render_refuses_lint_errors(tmp_path):
     code, out = run(["render", str(bad), "--t", "0.5"])
     assert code == 1
     assert "lint errors" in out
+
+
+def test_video_exports_mp4(tmp_path):
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not available")
+    out = str(tmp_path / "clip.mp4")
+    code, _ = run(["video", TITLE, "-o", out])
+    assert code == 0
+    assert os.path.exists(out)
+    assert os.path.getsize(out) > 1024
+    # probe: 4s at 30fps => ~120 frames
+    info = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                           "-show_entries", "stream=nb_frames,duration",
+                           "-of", "default=noprint_wrappers=1", out],
+                          capture_output=True, text=True).stdout
+    assert "duration=" in info
