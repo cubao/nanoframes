@@ -88,3 +88,27 @@ def test_measure_cli(capsys, tmp_path):
     assert "width(px)" in out
     assert "chip-a" in out
     assert code == 0
+
+
+def test_bundled_maple_mono_cn_font_present_and_monospace():
+    """The bundled monospace CJK font exists, is monospace, and is known-safe."""
+    import os
+    from nanoframes.render import DEFAULT_FONT_CANDIDATES
+
+    bundled = [p for p in DEFAULT_FONT_CANDIDATES if "SarasaMonoSC" in p]
+    assert bundled, "bundled Sarasa Mono SC not in default candidates"
+    path = bundled[0]
+    assert os.path.exists(path), f"bundled font missing: {path}"
+
+    from nanoframes.fonts import family_name
+    family, style = family_name(path)
+    assert family == "Sarasa Mono SC"
+
+    from fontTools.ttLib import TTFont
+    f = TTFont(path)
+    assert f["post"].isFixedPitch, "Sarasa Mono SC must be monospace"
+    assert 0x4E2D in f.getBestCmap(), "Sarasa Mono SC must have CJK (中 U+4E2D)"
+    # ligature-driving features must be stripped
+    if "GSUB" in f:
+        tags = {r.FeatureTag for r in f["GSUB"].table.FeatureList.FeatureRecord}
+        assert not ({"liga", "clig", "rlig", "dlig", "calt"} & tags), f"ligature features remain: {tags}"

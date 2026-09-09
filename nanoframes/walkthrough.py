@@ -63,12 +63,12 @@ STORY = """<svg xmlns="http://www.w3.org/2000/svg"
   <!-- clips: enter at data-start, live for data-duration (chip fades via .chip) -->
   <rect id="slat" class="chip" x="60" y="48" width="6" height="26" rx="3" fill="#5ef17c"
         data-start="0.5" data-duration="5.0"/>
-  <text id="kicker" class="chip" x="80" y="72" font-family="Arial" font-size="22"
+  <text id="kicker" class="chip" x="80" y="72" font-family="Sarasa Mono SC" font-size="22"
         letter-spacing="2" fill="#5ef17c" data-start="0.5" data-duration="5.0">NANOFRAMES</text>
 
-  <text id="title" x="60" y="150" font-family="Arial" font-weight="700" font-size="72"
+  <text id="title" x="60" y="150" font-family="Sarasa Mono SC" font-weight="700" font-size="72"
         fill="#f4f7ff" data-start="0.7" data-duration="4.8">SVG renders video.</text>
-  <text id="sub" x="60" y="205" font-family="Arial" font-size="28" fill="#9fb0cc"
+  <text id="sub" x="60" y="205" font-family="Sarasa Mono SC" font-size="28" fill="#9fb0cc"
         data-start="1.3" data-duration="4.0">Deterministic. Offline. Built for agents.</text>
 
   <script type="application/nanoframes+json"><![CDATA[
@@ -220,10 +220,19 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     # (e) probe the result with ffprobe if available
     probe = _probe(video_path)
 
+    # (f) text auto-layout showcase: Sarasa Mono SC CJK chip, wrap, curve, fit
+    examples_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "examples")
+    text_svg = open(os.path.join(examples_dir, "text-measure.nf.svg"), encoding="utf-8").read()
+    text_doc = parse_string(text_svg)
+    text_frame = os.path.join(frame_dir, "text-features.png")
+    render_frame(text_doc, 1.0, out_path=text_frame, cache=cache)
+
     readme = _render_readme(
         out_dir=out_dir, frames=frames, determinism=(ha, hb),
         cold_ms=cold_ms, warm_ms=warm_ms, video_path=video_path, probe=probe,
         audio=with_audio and audio_path is not None,
+        text_svg=text_svg, text_frame=text_frame,
     )
     with open(os.path.join(out_dir, "README.md"), "w", encoding="utf-8") as fh:
         fh.write(readme)
@@ -288,7 +297,8 @@ def _write_manifest(out_dir: str, safety: dict, video_ok: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, probe, audio) -> str:
+def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, probe, audio,
+                   text_svg=None, text_frame=None) -> str:
     ha, hb = determinism
     script = _script_of(parse_string(STORY))
     rel = lambda p: os.path.relpath(p, out_dir).replace(os.sep, "/")
@@ -382,6 +392,27 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append("```\n")
     md.append(f"See them over time in `{rel(frames[2.0])}` / `{rel(frames[5.0])}` above.\n")
     md.append("---\n")
+
+    if text_svg and text_frame:
+        md.append("## 4½ · Text, measured precisely — Chinese included\n")
+        md.append("A bundled **monospace CJK** font (`Sarasa Mono SC`, ligature feature stripped) ships in the")
+        md.append("wheel, so Chinese labels are **solid** and their widths are exact. nanoframes measures text by")
+        md.append("rasterizing it through the *same* ThorVG loader that draws the frame — so auto-sized")
+        md.append("backgrounds always line up with the glyphs. Use `font-family=\"Sarasa Mono SC\"`; because the")
+        md.append("face is monospaced, every Han character is exactly `font-size` px wide.\n")
+        md.append("Four text auto-layouts in one composition:")
+        md.append("- `data-bg` — a rounded background chip measured to the glyph ink.")
+        md.append("- `data-wrap` — long text broken into stacked lines that fit a width.")
+        md.append("- `data-curve-d` / `data-curve-circle` — each character laid along a sampled curve (ThorVG has no `<textPath>`).")
+        md.append("- `data-fit` — font-size auto-shrinks so the text fits a fixed width.\n")
+        md.append("Here is that composition and a rendered frame (t = 1.0s):\n")
+        md.append("```svg")
+        md.append(text_svg.rstrip())
+        md.append("```\n")
+        md.append(f"![text-features t=1.0]({rel(text_frame)})\n")
+        md.append("Query exact widths first if you ever hand-position: `nanoframes measure <comp>`.")
+        md.append("Manage fonts with `nanoframes fonts list | add <path>` (the bundled face already registered).\n")
+        md.append("---\n")
 
     md.append("## 5 · Determinism & the re-render cache\n")
     md.append(f"The same frame rendered twice is **byte-identical** — a property the snapshot test suite relies on.")

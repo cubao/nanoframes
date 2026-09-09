@@ -20,7 +20,7 @@ import os
 
 # Directories searched (system + project-vendored + user cache) for CJK fonts.
 _SEARCH_DIRS = [
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts"),  # repo fonts/
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts"),  # bundled package fonts/
     os.path.expanduser("~/.local/share/nanoframes/fonts"),
     "/System/Library/Fonts",
     "/System/Library/Fonts/Supplemental",

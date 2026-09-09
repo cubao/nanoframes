@@ -108,6 +108,14 @@ When auto-layout is used without a `Measurer` (e.g. a bare `bake_svg` call) it
 is a no-op, so plain compositions bake exactly as before. See
 `docs/text-capabilities.md` for the full audit and caveats.
 
+## Fonts
+
+A bundled **monospace CJK** face ships with nanoframes
+(`fonts/SarasaMonoSC-Regular-noliga.ttf`, Sarasa Mono SC, ligature feature
+stripped). Use `font-family="Sarasa Mono SC"` for deterministic-width Chinese
+labels (each Han char = `font-size` px wide). Query it with
+`nanoframes fonts list`; add other faces with `nanoframes fonts add <path>`.
+
 ## CLI examples
 
 ```bash

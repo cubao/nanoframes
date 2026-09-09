@@ -23,6 +23,13 @@ class RenderError(RuntimeError):
 # font file. ThorVG only rasterizes <text> after a font has been loaded (cached
 # globally by path), so we register a few common faces on engine setup.
 DEFAULT_FONT_CANDIDATES = (
+    # Bundled monospace CJK face (Sarasa Mono SC, ligature feature stripped) —
+    # FIRST so it is ThorVG's default fallback: any font-family that does not
+    # resolve (including CJK text) renders via Sarasa Mono SC -> Chinese is always solid.
+    # Single-name families ("Arial") still resolve to their own face. Load-safe
+    # and exits cleanly here (AppleGothic crashes this ThorVG build).
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "fonts", "SarasaMonoSC-Regular-noliga.ttf"),
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     r"/System/Library/Fonts/Arial Unicode.ttf",

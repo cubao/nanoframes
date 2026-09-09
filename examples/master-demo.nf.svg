@@ -27,7 +27,7 @@
         opacity="0.9" data-start="0.0" data-duration="6.0"/>
 
   <!-- title: fade + slide -->
-  <text id="title" x="60" y="120" font-family="Arial, sans-serif" font-weight="700"
+  <text id="title" x="60" y="120" font-family="Sarasa Mono SC" font-weight="700"
         font-size="72" fill="#f4f7ff" data-start="0.0" data-duration="6.0">
     nanoframes
   </text>
@@ -35,7 +35,7 @@
   <!-- subtitle with fade, gradient underline that grows -->
   <rect id="rule" x="62" y="150" width="6" height="90" rx="3" fill="url(#accent)"
         data-start="0.6" data-duration="5.0"/>
-  <text id="sub" x="90" y="205" font-family="Arial, sans-serif" font-size="30"
+  <text id="sub" x="90" y="205" font-family="Sarasa Mono SC" font-size="30"
         fill="#b6c2d8" data-start="0.9" data-duration="4.8">
     SVG renders MP4. No browser. Fast for agents.
   </text>

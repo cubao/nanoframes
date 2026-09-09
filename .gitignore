@@ -16,3 +16,7 @@ out/
 build/
 *.mp4
 .nanoframes-cache/
+
+# macOS
+.DS_Store
+**/.DS_Store

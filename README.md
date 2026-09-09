@@ -15,7 +15,8 @@ milliseconds and iterate fast: `check` → `preview` → `render`.
 **v1 complete.** Full offline pipeline works end-to-end: `init` → `check` →
 `render`/`preview` → `video`. SVG compositions + declarative keyframe timeline are
 rendered deterministically by ThorVG; MP4 export via ffmpeg; visual snapshots guard
-regressions.
+regressions. Text auto-layout (measured chips, wrap, curve, fit) + a bundled
+**monospace CJK** font (`Sarasa Mono SC`, ligatures stripped) for solid Chinese.
 
 ## Layout
 

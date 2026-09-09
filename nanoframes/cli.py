@@ -27,12 +27,12 @@ TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
      data-width="960" data-height="540" data-fps="30" data-duration="6.0"
      data-composition-id="{name}">
   <rect id="bg" width="960" height="540" fill="#0a0c0b"/>
-  <text id="title" x="60" y="120" font-family="Arial, sans-serif" font-weight="700"
+  <text id="title" x="60" y="120" font-family="Sarasa Mono SC" font-weight="700"
         font-size="64" fill="#f4f7ff" data-start="0.0" data-duration="6.0"
         data-fade="0.4">Your title</text>
   <rect id="accent" x="60" y="150" width="6" height="120" fill="#5ef17c"
         data-start="0.4" data-duration="5.0" />
-  <text id="sub" x="60" y="330" font-family="Arial, sans-serif" font-size="26"
+  <text id="sub" x="60" y="330" font-family="Sarasa Mono SC" font-size="26"
         fill="#9aa4b2" data-start="0.8" data-duration="5.0">SVG renders MP4. No browser.</text>
   <script type="application/nanoframes+json"><![CDATA[
   {{
