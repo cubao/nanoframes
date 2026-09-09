@@ -10,10 +10,14 @@ from __future__ import annotations
 
 import copy
 import xml.etree.ElementTree as ET
+from typing import TYPE_CHECKING
 
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document, _local, _to_float
-from nanoframes.timeline import TargetedProps, effective_opacity, evaluate
+from nanoframes.timeline import effective_opacity, evaluate
+
+if TYPE_CHECKING:
+    from nanoframes.measure import Measurer
 
 # Serialize the SVG namespace unprefixed (`xmlns="..."`), which ThorVG's XML
 # parser requires to resolve tag names correctly.
@@ -64,7 +68,8 @@ def _transform_string(tf: object) -> str | None:
     return " ".join(parts) if parts else None
 
 
-def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None) -> str:
+def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
+             text_handler=None) -> str:
     comp = doc.composition
     root = copy.deepcopy(doc.root)
 
@@ -119,6 +124,14 @@ def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None) -> str
     # the baked SVG from a temp file) can resolve assets against the source dir.
     if doc.base_dir:
         _dereference_images(root, doc.base_dir)
+
+    # External text rendering: each <text data-raster> is offered to the
+    # callback; PNG bytes replace the node by an <image>, None keeps the
+    # normal ThorVG font path (runs before autoflow, so handled texts never
+    # get chip/wrap/curve treatment).
+    if text_handler is not None:
+        from nanoframes.rastertext import apply_text_raster
+        apply_text_raster(root, text_handler)
 
     # Renderer-exact text auto-layout (backgrounds / wrap / along-curve).
     if measurer is not None:

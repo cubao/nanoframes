@@ -113,13 +113,20 @@ def _measurer():
 
 
 def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4,
-                 cache: "FrameCache | None" = None) -> "object":
+                 cache: "FrameCache | None" = None,
+                 text_handler=None) -> "object":
     """Render one frame of a composition at time ``t``.
 
     Returns a Pillow Image; if ``out_path`` is given the PNG is also saved. When
     ``cache`` is provided, an armed frame is served from the cache (skipping
     ThorVG) and misses are written back.
+
+    ``text_handler`` (see ``nanoframes.rastertext``) rasterizes ``<text
+    data-raster>`` nodes; the cache is bypassed whenever one is supplied,
+    because its (source, t) key knows nothing about the handler.
     """
+    if text_handler is not None:
+        cache = None
     if cache is not None:
         hit = cache.get(doc.identity, t, doc.composition.width, doc.composition.height)
         if hit is not None:
@@ -127,7 +134,7 @@ def render_frame(doc: Document, t: float, out_path: str | None = None, threads: 
                 os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
                 hit.save(out_path)
             return hit
-    svg = bake.bake_svg(doc, t, measurer=_measurer())
+    svg = bake.bake_svg(doc, t, measurer=_measurer(), text_handler=text_handler)
     img = render_svg(svg, doc.composition.width, doc.composition.height, threads=threads)
     if cache is not None:
         cache.put(doc.identity, t, img)
