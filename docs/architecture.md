@@ -88,13 +88,13 @@ deterministic, inspectable motion.
 | Hyperframes scope              | nanoframes |
 |--------------------------------|------------|
 | HTML/CSS + browser capture     | SVG + ThorVG software raster |
-| GSAP / Lottie / Three.js / anime | declarative keyframe timeline (v1) |
+| GSAP / Lottie / Three.js / anime | declarative keyframe timeline (v1) — *except* Lottie **import-render**: ThorVG's native Lottie loader turns a lottie.json scene into a deterministic MP4 (`nanoframes lottie`, 0.1.1). Lottie is an accepted *input format*, not an authoring surface |
 | inline `<video>` playback      | static `<image>` only (v1); no video-in-scene |
 | full audio mixing (buses, ducking) | optional FFmpeg audio mux passthrough (deferred P2) |
 | hosted / Lambda / GCP rendering | local offline render only |
 | Figma import, Remotion port     | out of scope |
 | 20 authoring workflows          | a few core example templates |
-| frame.md / design.md system     | composition doc + lint (v1) |
+| frame.md / design.md system     | composition doc + lint (v1); craft references in the skill |
 | binary TreePack compressed pack | deferred optional binary cache (P2) |
 
 **Kept:** deterministic seekable frames, clip timing, `check`/`preview`/`render` agent loop,
@@ -114,8 +114,15 @@ MP4 export, and an agent-facing skill.
   renderer-exact text story (chips/wrap/curve/fit), bundled mono CJK font,
   `text_handler` escape hatch, example compositions + visual snapshot suite,
   agent skill (`skills/nanoframes/SKILL.md`).
+- **0.1.1 (2026-09)** `nanoframes lottie`: Lottie JSON import-render via
+  ThorVG's native loader (scene `w`/`h`/`fr`/`ip`/`op`, scene-relative
+  assets, deterministic full-pass render) + `docs/lottie.md` + walkthrough
+  section; craft reference library in the skill
+  (`skills/nanoframes/references/`, adapted from text-to-lottie).
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
-  (it is a library-API feature by design); in-scene video.
+  (it is a library-API feature by design); in-scene video; Lottie markers
+  surfaced in the CLI; remaining recipe ports (product-promo,
+  ui-microinteractions, diagram/technical, visual-effects).
 
 `docs/` and `skills/` ship inside the pip wheel as `nanoframes/docs` and
 `nanoframes/skills`; `nanoframes` (no args) prints their installed locations.

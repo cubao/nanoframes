@@ -15,6 +15,37 @@ from nanoframes.parse import Document
 from nanoframes.render import render_frame
 
 
+def mux_frames_to_mp4(
+    frame_dir: str,
+    prefix: str,
+    fps: int,
+    out_path: str,
+    scale: str | None = None,
+    audio: str | None = None,
+) -> str:
+    """Mux a PNG sequence ``<frame_dir>/<prefix>.NNNNN.png`` into an MP4.
+
+    Fixed ffmpeg option set (H.264, yuv420p, crf 18) so output is reproducible;
+    ``scale`` maps to ``-vf scale=`` (e.g. ``720:720``), ``audio`` is muxed as
+    AAC with ``-shortest``.
+    """
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-framerate", str(fps),
+        "-i", os.path.join(frame_dir, f"{prefix}.%05d.png"),
+    ]
+    if audio:
+        cmd += ["-i", audio]
+    if scale:
+        cmd += ["-vf", f"scale={scale}"]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
+    if audio:
+        cmd += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+    cmd += [out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
 def render_video(
     doc: Document,
     out_path: str,
@@ -50,22 +81,7 @@ def render_video(
             t = i * step
             render_frame(doc, t, out_path=os.path.join(frame_dir, f"{prefix}.{i:05d}.png"),
                          threads=threads, cache=cache)
-
-        cmd = [
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-framerate", str(fps),
-            "-i", os.path.join(frame_dir, f"{prefix}.%05d.png"),
-        ]
-        if audio:
-            cmd += ["-i", audio]
-        if scale:
-            cmd += ["-vf", f"scale={scale}"]
-        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
-        if audio:
-            cmd += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
-        cmd += [out_path]
-        subprocess.run(cmd, check=True, capture_output=True)
-        return out_path
+        return mux_frames_to_mp4(frame_dir, prefix, fps, out_path, scale=scale, audio=audio)
     finally:
         if cleanup:
             shutil.rmtree(frame_dir, ignore_errors=True)

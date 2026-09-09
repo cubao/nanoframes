@@ -157,6 +157,7 @@ nanoframes video  <comp>.nf.svg -o out.mp4     # ffmpeg MP4
 nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
 nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
 nanoframes fonts list|add|verify|install          # CJK font toolbox
+nanoframes lottie <scene.json> -o out.mp4         # ThorVG Lottie loader -> MP4
 nanoframes walkthrough                  # regenerate the one-take tour (build/)
 ```
 
@@ -169,3 +170,16 @@ nanoframes walkthrough                  # regenerate the one-take tour (build/)
 All of `docs/` and `skills/` ship inside the installed package too
 (`site-packages/nanoframes/docs`, `site-packages/nanoframes/skills`), so an
 installed agent gets the same references.
+
+## Lottie scenes (import-render, not authoring)
+
+Lottie/Bodymovin JSON is an accepted **input** format, never an authoring
+surface: `nanoframes lottie <scene.json> -o out.mp4` renders a lottie.json
+scene (e.g. a text-to-lottie deliverable) with ThorVG's native Lottie loader
+and muxes a deterministic MP4 — no browser, no Skottie. Canvas, fps and
+length come from the scene itself; sibling images/fonts resolve next to the
+file; the loader's coverage is ThorVG's Lottie implementation. Contract:
+[docs/lottie.md](../../../docs/lottie.md) (this skill's
+`references/README.md` translation conventions do **not** apply — a Lottie
+scene carries its own keyframes). When the task is authoring new motion,
+write `.nf.svg` instead and let the craft references route you.

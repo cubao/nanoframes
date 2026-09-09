@@ -20,6 +20,11 @@ def test_walkthrough_generates_artifacts(tmp_path):
     # text showcases: auto-layout (CJK) + external raster text (text_handler)
     assert os.path.exists(os.path.join(out, "frames", "text-features.png"))
     assert os.path.exists(os.path.join(out, "frames", "raster-text.png"))
+    # lottie import showcase: scene + rendered frames + mp4
+    assert os.path.exists(os.path.join(out, "lottie", "bounce.json"))
+    assert os.path.exists(os.path.join(out, "frames", "lottie.00000.png"))
+    assert os.path.exists(os.path.join(out, "frames", "lottie.00015.png"))
+    assert os.path.exists(os.path.join(out, "video", "lottie.mp4"))
     # manifest carries a deterministic sha
     import json
 
@@ -42,3 +47,8 @@ def test_walkthrough_readme_is_well_formed(tmp_path):
     assert "## 4¾ · Text outside the font system" in text
     assert "data-raster" in text and "_fancy_text_handler" in text
     assert "](frames/raster-text.png)" in text
+    # lottie import showcase section
+    assert "## 6½ · Lottie, another door in" in text
+    assert "nanoframes lottie" in text
+    assert "](frames/lottie.00000.png)" in text
+    assert "video/lottie.mp4" in text

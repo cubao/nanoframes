@@ -23,6 +23,7 @@ import hashlib
 import inspect
 import io
 import os
+import shutil
 import subprocess
 import time
 import wave
@@ -195,7 +196,8 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     video_dir = os.path.join(out_dir, "video")
     audio_dir = os.path.join(out_dir, "audio")
     asset_dir = os.path.join(out_dir, "assets")
-    for d in (comp_dir, frame_dir, video_dir, audio_dir, asset_dir):
+    lottie_dir = os.path.join(out_dir, "lottie")
+    for d in (comp_dir, frame_dir, video_dir, audio_dir, asset_dir, lottie_dir):
         os.makedirs(d, exist_ok=True)
 
     from nanoframes.render import render_frame
@@ -280,12 +282,23 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     render_frame(raster_doc, 1.0, out_path=raster_frame, cache=cache,
                  text_handler=_fancy_text_handler)
 
+    # (h) Lottie import showcase: ThorVG's native loader renders a lottie.json
+    # scene (the text-to-lottie deliverable format) offline, deterministically.
+    from nanoframes.lottie import render_lottie_frames, render_lottie_video
+
+    lottie_scene = os.path.join(lottie_dir, "bounce.json")
+    shutil.copyfile(os.path.join(examples_dir, "lottie", "bounce.json"), lottie_scene)
+    render_lottie_frames(lottie_scene, frame_dir, prefix="lottie")
+    lottie_video = os.path.join(video_dir, "lottie.mp4")
+    render_lottie_video(lottie_scene, lottie_video)
+
     readme = _render_readme(
         out_dir=out_dir, frames=frames, determinism=(ha, hb),
         cold_ms=cold_ms, warm_ms=warm_ms, video_path=video_path, probe=probe,
         audio=with_audio and audio_path is not None,
         text_svg=text_svg, text_frame=text_frame,
         raster_svg=raster_svg, raster_frame=raster_frame,
+        lottie_scene=lottie_scene, lottie_video=lottie_video,
     )
     with open(os.path.join(out_dir, "README.md"), "w", encoding="utf-8") as fh:
         fh.write(readme)
@@ -293,7 +306,8 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     # keep a machine-readable manifest for agents
     _write_manifest(out_dir, safety=dict(story_sha256=_sha(comp_path),
                                          det_sha256=ha, cold_ms=cold_ms, warm_ms=warm_ms),
-                    video_ok=bool(probe.get("streams")))
+                    video_ok=bool(probe.get("streams")),
+                    lottie_ok=os.path.getsize(lottie_video) > 0)
     return os.path.join(out_dir, "README.md")
 
 
@@ -325,7 +339,7 @@ def _probe(video_path: str) -> dict:
         return {}
 
 
-def _write_manifest(out_dir: str, safety: dict, video_ok: bool) -> None:
+def _write_manifest(out_dir: str, safety: dict, video_ok: bool, lottie_ok: bool = False) -> None:
     import json
 
     manifest = {
@@ -340,6 +354,8 @@ def _write_manifest(out_dir: str, safety: dict, video_ok: bool) -> None:
             "cached_ms": round(safety["warm_ms"], 1),
         },
         "video": {"path": "video/story.mp4", "video_ok": video_ok},
+        "lottie": {"scene": "lottie/bounce.json", "video": "video/lottie.mp4",
+                   "video_ok": lottie_ok},
     }
     with open(os.path.join(out_dir, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
@@ -352,7 +368,8 @@ def _write_manifest(out_dir: str, safety: dict, video_ok: bool) -> None:
 
 def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, probe, audio,
                    text_svg=None, text_frame=None,
-                   raster_svg=None, raster_frame=None) -> str:
+                   raster_svg=None, raster_frame=None,
+                   lottie_scene=None, lottie_video=None) -> str:
     ha, hb = determinism
     script = _script_of(parse_string(STORY))
     def rel(p: str) -> str:
@@ -385,6 +402,8 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append("  video/              story.mp4      960x540, 180 frames, 6.0s")
     md.append("  audio/              story.wav      6s chord progression (deterministic synth)")
     md.append("  assets/             dot.png        raster imported into the scene")
+    md.append("  lottie/             bounce.json    a Lottie scene rendered by ThorVG's loader")
+    md.append("                      + video/lottie.mp4    512x512, 30 frames, 1.0s")
     md.append("  .cache/             fast re-render cache (content-keyed)")
     md.append("```\n")
     md.append("Regenerate all of it anytime with:\n")
@@ -529,6 +548,35 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append(f"- Duration: `{dur}` s, `180` frames at 30fps, `960x540`\n")
     md.append("---\n")
 
+    if lottie_scene and lottie_video:
+        md.append("## 6½ · Lottie, another door in (lottie.json → MP4)\n")
+        md.append("ThorVG speaks Lottie as well as SVG. `nanoframes lottie` renders a Lottie/Bodymovin")
+        md.append("JSON scene with the **same deterministic engine** — no browser, no Skottie — then")
+        md.append("muxes it with ffmpeg. That makes the text-to-lottie deliverable format (`lottie.json`")
+        md.append("scenes authored for the Skottie player) renderable to a video offline. Canvas size,")
+        md.append("fps (`fr`) and length (`ip`/`op`) come from the scene itself; images and fonts")
+        md.append("resolve next to the file.\n")
+        md.append("The walkthrough scene is a 1-second green ball bouncing across a 512x512 canvas:")
+        md.append("```json")
+        md.append(open(lottie_scene, encoding="utf-8").read().rstrip())
+        md.append("```\n")
+        md.append("First and middle frames (frame 0 and frame 15):\n")
+        md.append(f"![lottie f0]({rel(os.path.join(out_dir,'frames/lottie.00000.png'))})")
+        md.append(f"![lottie f15]({rel(os.path.join(out_dir,'frames/lottie.00015.png'))})")
+        md.append("")
+        md.append("```bash")
+        md.append("nanoframes lottie lottie/bounce.json -o video/lottie.mp4 --keep-frames frames/")
+        md.append("```\n")
+        md.append("<video controls preload=\"metadata\" width=\"320\">")
+        md.append("  <source src=\"" + rel(lottie_video) + "\" type=\"video/mp4\">")
+        md.append("  Your markdown viewer can't embed video — open `" + rel(lottie_video) + "` directly.")
+        md.append("</video>\n")
+        md.append("The loader's coverage is ThorVG's Lottie implementation — shapes, strokes,")
+        md.append("gradients, images, masks/mattes, trim paths, repeaters, layer effects, text and")
+        md.append("most expressions; the rendered frame is the contract when in doubt.")
+        md.append("Contract & limits: `docs/lottie.md`.\n")
+        md.append("---\n")
+
     md.append("## 7 · Live for agents\n")
     md.append("The whole loop is `check → preview → render → video`, plus a content-keyed cache. It is designed")
     md.append("so an AI agent can iterate a frame in milliseconds and never depend on a browser:")
@@ -541,6 +589,7 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append("| `nanoframes render <comp> --t <sec>` | render a single frame to PNG |")
     md.append("| `nanoframes render <comp> -o dir` | render the full clip |")
     md.append("| `nanoframes video <comp> -o out.mp4 [--audio file]` | export MP4 (+ audio) |")
+    md.append("| `nanoframes lottie <scene.json> -o out.mp4` | render a Lottie JSON scene offline |")
     md.append("")
     md.append("There is an agent-facing `SKILL.md` that teaches exactly this production loop; point any skill-aware")
     md.append("agent at `skills/nanoframes/SKILL.md`. Full contract: `docs/composition.md`; design & scope:")

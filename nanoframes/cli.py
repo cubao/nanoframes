@@ -9,6 +9,7 @@ Commands
   video       <comp>            render the whole clip to an MP4 via ffmpeg
   measure     <comp>            report renderer-exact glyph widths for text elements
   fonts       list/add/verify/install   CJK font toolbox
+  lottie      <file.json>       render a Lottie JSON scene offline to MP4
   walkthrough [-o DIR]          generate the one-take walkthrough
 """
 
@@ -129,6 +130,15 @@ def build_parser() -> argparse.ArgumentParser:
     fp.set_defaults(fhandler=cmd_fonts_verify)
     fp = fsub.add_parser("install", help="fetch a CJK monospace font (default: Sarasa Mono SC)")
     fp.set_defaults(fhandler=cmd_fonts_install)
+
+    sp = sub.add_parser("lottie", help="render a Lottie JSON scene to MP4 (ThorVG loader, offline)")
+    sp.add_argument("file", help="path to a Lottie/Bodymovin .json scene")
+    sp.add_argument("-o", "--out", default="out.mp4", help="output MP4 path")
+    sp.add_argument("--scale", default=None, help="ffmpeg scale filter, e.g. 720:720")
+    sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
+    sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
+    sp.add_argument("--threads", type=int, default=4)
+    sp.set_defaults(handler=cmd_lottie)
 
     sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
     sp.add_argument("-o", "--out", default="build/walkthrough", help="output dir")
@@ -350,6 +360,20 @@ def cmd_video(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lottie(args: argparse.Namespace) -> int:
+    """Render a Lottie JSON scene offline (ThorVG's native loader) to MP4."""
+    from nanoframes.lottie import LottieError, render_lottie_video
+
+    try:
+        render_lottie_video(args.file, args.out, scale=args.scale, threads=args.threads,
+                            keep_frames=args.keep_frames, audio=args.audio)
+    except (LottieError, subprocess.CalledProcessError) as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        return 2
+    print(f"wrote {args.out}")
+    return 0
+
+
 def cmd_walkthrough(args: argparse.Namespace) -> int:
     return walkthrough.main(["-o", args.out] + (["--no-audio"] if args.no_audio else []))
 
@@ -395,6 +419,7 @@ def guide_text() -> str:
             f"  composition contract ... {os.path.join(docs, 'composition.md')}",
             f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
             f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
+            f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
             f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
             "",
         ]
