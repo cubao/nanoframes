@@ -7,16 +7,37 @@ back to a dim built-in face). The reliable approach is to auto-discover a real
 CJK ``.ttf``/``.otf`` on the host (or in a vendored directory), load it, and let
 authors use its exact family name in ``font-family``.
 
-This module finds such fonts and reports their family names. It is what lets
-Chinese labels render *solidly* and with *correct width* (the width the glyphs
-actually have), and it prefers a **monospace** face when one is present so each
-CJK character is exactly ``font-size`` px wide — making measured chips
-perfectly predictable.
+This module finds such fonts and reports their family names — and it owns the
+renderer's *default candidates*: the load-safe faces registered on every
+ThorVG engine so ``<text>`` resolves even when a composition declares no font
+file. It is what lets Chinese labels render *solidly* and with *correct width*
+(the width the glyphs actually have), and it prefers a **monospace** face when
+one is present so each CJK character is exactly ``font-size`` px wide — making
+measured chips perfectly predictable.
 """
 
 from __future__ import annotations
 
 import os
+
+# Candidate default fonts so text renders even when a composition declares no
+# font file. ThorVG only rasterizes <text> after a font has been loaded (cached
+# globally by path), so the rasterizer registers these on every engine.
+DEFAULT_FONT_CANDIDATES = (
+    # Bundled monospace CJK face (Sarasa Mono SC, ligature feature stripped) —
+    # FIRST so it is ThorVG's default fallback: any font-family that does not
+    # resolve (including CJK text) renders via Sarasa Mono SC -> Chinese is
+    # always solid. Single-name families ("Arial") still resolve to their own
+    # face. Load-safe and exits cleanly here (AppleGothic crashes this ThorVG
+    # build).
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "fonts", "SarasaMonoSC-Regular-noliga.ttf"),
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    r"/System/Library/Fonts/Arial Unicode.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+)
 
 # Directories searched (system + project-vendored + user cache) for CJK fonts.
 _SEARCH_DIRS = [
@@ -33,16 +54,16 @@ _SEARCH_DIRS = [
 
 # A font considered "probably has CJK" if its family name mentions any of these.
 _CJK_HINTS = (
-    "cjk", "hei", "hei", "song", "sung", "kai", "pingfang", "yahei", "gothic",
+    "cjk", "hei", "song", "sung", "kai", "pingfang", "yahei", "gothic",
     "noto sans sc", "noto serif sc", "noto sans mono cjk", "wqy", "wenquanyi",
-    "sarasa", "tofu", "ming", "gothic", "zen hei", "hua kang", "han", "cn",
+    "sarasa", "tofu", "ming", "zen hei", "hua kang", "han", "cn",
     "simsun", "simhei", "msyahei", "dengxian", "microsof",
 )
 _MONO_HINTS = ("mono", "monospace", "sarasa", "tofu", "等宽", "console", "fixedsys")
 
-# Fonts that are Apple's CJK faces but ship as .ttc (which ThorVG can't load) —
-# explicitly skipped so we don't advertise a family that won't render.
-_TTC_UNSUPPORTED = True  # ThorVG in this build fails to load .ttc collections
+# Fonts that are Apple's CJK faces but ship as .ttc (which ThorVG can't load)
+# are skipped in discovery below, so we never advertise a family that won't
+# render or let font_load touch it.
 
 
 class FontInfo:
@@ -150,8 +171,6 @@ def _looks_mono(family: str) -> bool:
 
 def discover_fonts(search_dirs: list[str] | None = None) -> list[FontInfo]:
     """Find loadable ``.ttf``/``.otf`` fonts (never ``.ttc``) across dirs."""
-    import random  # noqa: F401
-
     seen: set[str] = set()
     out: list[FontInfo] = []
     dirs = search_dirs if search_dirs is not None else _SEARCH_DIRS
@@ -277,14 +296,3 @@ def best_cjk_font(search_dirs: list[str] | None = None) -> FontInfo | None:
         return (0 if f.mono else 1, 0 if f.path.lower().endswith(".otf") else 1,
                 f.family.lower())
     return min(fonts, key=rank) if fonts else None
-
-
-def register_extra_fonts(search_dirs: list[str] | None = None) -> list[str]:
-    """(Unused by the renderer.) Return the best discovered CJK font path.
-
-    Kept for compatibility/diagnostics. The renderer deliberately does not call
-    this because loading arbitrary discovered fonts can crash this ThorVG build;
-    see ``nanoframes.fonts`` module docstring and ``fonts verify``.
-    """
-    best = best_cjk_font(search_dirs)
-    return [best.path] if best else []

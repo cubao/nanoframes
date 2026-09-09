@@ -18,15 +18,14 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from nanoframes.model import qname
 from nanoframes.measure import InkMetrics, Measurer
-from nanoframes.parse import _local
+from nanoframes.xmlutil import find_parent, float_attr, local_name, qname
 
 
 def apply_text_autoflow(root: ET.Element, measurer: Measurer | None) -> None:
     if measurer is None:
         return
-    for node in [n for n in root.iter() if _local(n.tag) == "text"]:
+    for node in [n for n in root.iter() if local_name(n.tag) == "text"]:
         bg = node.get("data-bg")
         wrap = node.get("data-wrap")
         curve_d = node.get("data-curve-d")
@@ -36,7 +35,9 @@ def apply_text_autoflow(root: ET.Element, measurer: Measurer | None) -> None:
             continue
         style = _style(node)
         content = node.text or ""
-        parent = _find_parent(root, node)
+        parent = find_parent(root, node)
+        if parent is None:
+            raise RuntimeError("orphan text node during autoflow")
 
         # auto-shrink font-size until the text fits on one line (no wrap/curve)
         if fit is not None and wrap is None and curve_d is None and curve_circle is None:
@@ -187,11 +188,13 @@ def _tokens(text: str) -> list[str]:
     for ch in text:
         if u.east_asian_width(ch) in ("W", "F"):
             if buf:
-                out.append("".join(buf)); buf = []
+                out.append("".join(buf))
+                buf = []
             out.append(ch)
         elif ch.isspace():
             if buf:
-                out.append("".join(buf)); buf = []
+                out.append("".join(buf))
+                buf = []
         else:
             buf.append(ch)
     if buf:
@@ -205,9 +208,9 @@ def _tokens(text: str) -> list[str]:
 
 def _bg_opt(node: ET.Element) -> dict:
     return {
-        "rx": _f(node.get("data-bg-rx"), 10.0),
-        "pad_x": _f(node.get("data-bg-pad-x"), 12.0),
-        "pad_y": _f(node.get("data-bg-pad-y"), 8.0),
+        "rx": float_attr(node, "data-bg-rx", 10.0),
+        "pad_x": float_attr(node, "data-bg-pad-x", 12.0),
+        "pad_y": float_attr(node, "data-bg-pad-y", 8.0),
     }
 
 
@@ -230,7 +233,7 @@ def _chip_rect(m: InkMetrics, anchor_x: float, baseline_y: float, color: str,
 def _style(node: ET.Element) -> dict:
     family = node.get("font-family") or "Arial"
     weight = node.get("font-weight") or "normal"
-    size = _f(node.get("font-size"), 16.0)
+    size = float_attr(node, "font-size", 16.0)
     font = {}
     for attr in ("font-family", "font-weight", "font-style"):
         v = node.get(attr)
@@ -239,14 +242,14 @@ def _style(node: ET.Element) -> dict:
     if "font-family" not in font:
         font["font-family"] = family
     return {
-        "x": _f(node.get("x"), 0.0),
-        "y": _f(node.get("y"), 0.0),
+        "x": float_attr(node, "x", 0.0),
+        "y": float_attr(node, "y", 0.0),
         "size": size,
         "family": family,
         "weight": weight,
         "font": font,
-        "fit_min": _f(node.get("data-fit-min"), 9.0),
-        "letter_spacing": _f(node.get("letter-spacing"), 0.0),
+        "fit_min": float_attr(node, "data-fit-min", 9.0),
+        "letter_spacing": float_attr(node, "letter-spacing", 0.0),
     }
 
 
@@ -266,20 +269,13 @@ def _carry(g: ET.Element, node: ET.Element) -> None:
             g.set(attr, v)
 
 
-def _f(value: str | None, default: float) -> float:
-    try:
-        return float(value) if value not in (None, "") else default
-    except (TypeError, ValueError):
-        return default
-
-
 def _fit_font_size(content: str, style: dict, max_w: float, measurer) -> float | None:
     """Largest font size <= current that fits ``content`` on one line in max_w px.
 
     Binary search over font size using the renderer-exact Measurer. Falls back
     to a floor (default 9px) with no fit guarantee if the text can't shrink
     enough."""
-    lo = _f(style.get("fit_min"), 9.0)
+    lo = style["fit_min"]
     hi = style["size"]
     if hi <= lo:
         return hi
@@ -301,10 +297,3 @@ def _width_ok(content: str, style: dict, size: float, max_w: float, measurer) ->
     m = measurer.ink(content, style["family"], style["weight"], size,
                      style.get("letter_spacing", 0.0))
     return (m.right_dx - m.left_dx + 1) <= max_w
-
-
-def _find_parent(root: ET.Element, node: ET.Element):
-    for p in root.iter():
-        if node in list(p):
-            return p
-    raise RuntimeError("orphan text node during autoflow")

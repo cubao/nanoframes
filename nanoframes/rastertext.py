@@ -37,8 +37,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Callable
 
-from nanoframes.model import qname
-from nanoframes.parse import _local
+from nanoframes.xmlutil import find_parent, float_attr, local_name, qname
 
 # (vertical fraction, horizontal fraction) of the bbox that sits at (x, y).
 _ANCHORS = {
@@ -83,7 +82,7 @@ TextHandler = Callable[[TextRequest], "bytes | None"]
 
 def apply_text_raster(root: ET.Element, text_handler: TextHandler) -> None:
     """Replace every ``<text data-raster>`` the handler rasterizes with an image."""
-    for node in [n for n in root.iter() if _local(n.tag) == "text"]:
+    for node in [n for n in root.iter() if local_name(n.tag) == "text"]:
         kind = node.get("data-raster")
         if kind is None or node.get("display") == "none":
             continue
@@ -109,36 +108,26 @@ def _request(node: ET.Element, kind: str) -> TextRequest:
     return TextRequest(
         text=node.text or "",
         kind=kind,
-        x=_num(node, "x", 0.0),
-        y=_num(node, "y", 0.0),
+        x=float_attr(node, "x", 0.0),
+        y=float_attr(node, "y", 0.0),
         anchor=anchor,
         width=_opt_num(node, "data-width"),
         height=_opt_num(node, "data-height"),
-        yaw=_num(node, "data-yaw", 0.0),
-        font_size=_num(node, "font-size", 16.0),
+        yaw=float_attr(node, "data-yaw", 0.0),
+        font_size=float_attr(node, "font-size", 16.0),
         family=node.get("font-family") or "Arial",
         weight=node.get("font-weight") or "normal",
         fill=node.get("fill"),
-        letter_spacing=_num(node, "letter-spacing", 0.0),
+        letter_spacing=float_attr(node, "letter-spacing", 0.0),
         attrs=dict(node.attrib),
     )
 
 
-def _num(node: ET.Element, name: str, default: float) -> float:
-    raw = node.get(name)
-    if raw is None:
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        raise ValueError(f"invalid numeric attribute {name!r}: {raw!r}") from None
-
-
 def _opt_num(node: ET.Element, name: str) -> float | None:
     raw = node.get(name)
-    if raw is None:
+    if raw is None or raw == "":
         return None
-    value = _num(node, name, 0.0)
+    value = float_attr(node, name, 0.0)
     if value <= 0:
         raise ValueError(f"{name} must be positive, got {raw!r}")
     return value
@@ -165,7 +154,9 @@ def _replace_with_image(root: ET.Element, node: ET.Element, req: TextRequest,
 
     ix, iy, iw, ih = _layout(req, pw, ph)
 
-    parent = _find_parent(root, node)
+    parent = find_parent(root, node)
+    if parent is None:
+        raise RuntimeError("orphan text node during raster pass")
     g = ET.Element(qname("g"))
     for attr in ("id", "class", "opacity", "transform"):
         value = node.get(attr)
@@ -214,10 +205,3 @@ def _layout(req: TextRequest, pw: int, ph: int) -> tuple[float, float, float, fl
     bx = req.x - box_w * hf
     by = req.y - box_h * vf
     return bx + (box_w - iw) * hf, by + (box_h - ih) * vf, iw, ih
-
-
-def _find_parent(root: ET.Element, child: ET.Element) -> ET.Element:
-    for node in root.iter():
-        if child in list(node):
-            return node
-    raise RuntimeError("orphan text node during raster pass")

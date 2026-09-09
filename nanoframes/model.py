@@ -14,13 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 SCRIPT_TYPE = "application/nanoframes+json"
-
-
-def qname(local: str) -> str:
-    """Qualified ElementTree tag for an SVG element name."""
-    return f"{{{SVG_NAMESPACE}}}{local}"
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +55,6 @@ class Element:
     element_id: str | None
     tag: str
     classes: list[str] = field(default_factory=list)
-    track: int = 0
     clip_start: float = 0.0
     clip_duration: float | None = None  # None -> inherit composition duration
     fade_in: float = 0.0

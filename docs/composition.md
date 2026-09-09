@@ -22,7 +22,6 @@ yields the same frame.
 | `data-start` | `0` | absolute start time, seconds |
 | `data-duration` | = composition duration | how long the clip is visible |
 | `data-fade` | `0` | fade-in seconds at clip start (fade-out mirrors at clip end) |
-| `data-track-index` | `0` | track/ordering hint for clip overlap lint |
 
 Outside its `[start, start+duration]` window an element is `display:none` (not
 rasterized). Fade and clip fold into the effective opacity.

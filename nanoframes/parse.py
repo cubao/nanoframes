@@ -11,17 +11,9 @@ import hashlib
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any
 
-from nanoframes.model import (
-    SVG_NAMESPACE,
-    SCRIPT_TYPE,
-    Animation,
-    Composition,
-    Element,
-    Keyframe,
-    qname,
-)
+from nanoframes.model import SCRIPT_TYPE, Animation, Composition, Element, Keyframe
+from nanoframes.xmlutil import local_name
 
 
 class ParseError(ValueError):
@@ -59,43 +51,32 @@ def _to_int(value: str, name: str) -> int:
         raise ParseError(f"invalid integer attribute {name!r}: {value!r}")
 
 
-def _attr(el: ET.Element, name: str, default: str | None = None) -> str | None:
-    return el.get(name, default)
+def _collect_elements(root: ET.Element) -> list[Element]:
+    """Walk the tree and gather pieces that carry rendering-relevant metadata.
 
-
-def _local(tag: str) -> str:
-    """Strip the XML namespace from a tag, e.g. '{...}rect' -> 'rect'."""
-    return tag.rsplit("}", 1)[-1]
-
-
-def _collect_elements(root: ET.Element, comp_duration: float) -> list[Element]:
-    """Walk the tree and gather pieces that carry rendering-relevant metadata."""
+    Every element is tracked so declaration order & selectors are stable for
+    lint, but timing is only attached from the ``data-*`` attributes present.
+    """
     result: list[Element] = []
     for el in root.iter():
-        tag = _local(el.tag)
+        tag = local_name(el.tag)
         if tag == "svg":
             continue
-        has_style_info = any(
-            key.startswith("data-") for key in el.attrib
-        )
-        # Still track every element so declaration order & selectors are stable for lint,
-        # but only attach timing when data-start/-duration present.
         clip_duration: float | None = None
         d = el.get("data-duration")
         if d is not None:
             clip_duration = _to_float(d, "data-duration")
 
-        fade_in = _to_float(el.get("data-fade", "0.0"), "data-fade")
+        fade = _to_float(el.get("data-fade", "0.0"), "data-fade")
         result.append(
             Element(
                 element_id=el.get("id"),
                 tag=tag,
                 classes=el.get("class", "").split(),
-                track=_to_int(el.get("data-track-index", "0"), "data-track-index"),
                 clip_start=_to_float(el.get("data-start", "0.0"), "data-start"),
                 clip_duration=clip_duration,
-                fade_in=fade_in,
-                fade_out=0.0,
+                fade_in=fade,
+                fade_out=fade,  # data-fade mirrors at the clip end
             )
         )
     return result
@@ -104,7 +85,7 @@ def _collect_elements(root: ET.Element, comp_duration: float) -> list[Element]:
 def _parse_animations(root: ET.Element) -> list[Animation]:
     animations: list[Animation] = []
     for el in root.iter():
-        if _local(el.tag) != "script":
+        if local_name(el.tag) != "script":
             continue
         if (el.get("type") or "") != SCRIPT_TYPE:
             continue
@@ -135,7 +116,7 @@ def _parse_animations(root: ET.Element) -> list[Animation]:
 
 
 def _parse_root(root: ET.Element) -> tuple[int, int, int, float, str | None]:
-    if _local(root.tag) != "svg":
+    if local_name(root.tag) != "svg":
         raise ParseError("composition root must be an <svg> element")
     width = _to_int(root.get("data-width", root.get("width", "0")), "width")
     height = _to_int(root.get("data-height", root.get("height", "0")), "height")
@@ -182,7 +163,7 @@ def _parse_tree(root: ET.Element) -> Document:
         fps=fps,
         duration=duration,
         composition_id=cid,
-        elements=_collect_elements(root, duration),
+        elements=_collect_elements(root),
         animations=_parse_animations(root),
     )
     # Resolve clip_duration=None -> composition duration at the model level.

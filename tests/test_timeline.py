@@ -91,3 +91,20 @@ def test_effective_opacity_clip_and_fade():
 
     vis, op = effective_opacity(el, 3.5)
     assert vis is False
+
+
+def test_effective_opacity_fade_out_mirrors_at_clip_end():
+    el = Element(element_id="x", tag="text", clip_start=1.0, clip_duration=2.0,
+                 fade_in=0.5, fade_out=0.5)
+    # clip runs [1.0, 3.0]; fade-out dims the last 0.5s.
+    vis, op = effective_opacity(el, 2.5)
+    assert vis is True
+    assert op == 1.0
+
+    vis, op = effective_opacity(el, 2.75)
+    assert vis is True
+    assert op == 0.5
+
+    vis, op = effective_opacity(el, 2.9)
+    assert vis is True
+    assert abs(op - 0.2) < 1e-9

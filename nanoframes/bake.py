@@ -13,15 +13,16 @@ import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
 from nanoframes.model import Composition, Element
-from nanoframes.parse import Document, _local, _to_float
+from nanoframes.parse import Document
 from nanoframes.timeline import effective_opacity, evaluate
+from nanoframes.xmlutil import SVG_NAMESPACE, find_parent, float_attr, local_name
 
 if TYPE_CHECKING:
     from nanoframes.measure import Measurer
 
 # Serialize the SVG namespace unprefixed (`xmlns="..."`), which ThorVG's XML
 # parser requires to resolve tag names correctly.
-ET.register_namespace("", "http://www.w3.org/2000/svg")
+ET.register_namespace("", SVG_NAMESPACE)
 
 _FILL_STROKE_TAGS = {
     "path", "rect", "circle", "ellipse", "polygon", "polyline",
@@ -31,21 +32,16 @@ _FILL_STROKE_TAGS = {
 
 def _node_element(node: ET.Element, comp: Composition) -> Element:
     """Rebuild a lightweight Element from tree attrs (bake keeps nodes separate)."""
-    d = node.get("data-duration")
-    dur = _to_float(d, "data-duration") if d is not None else comp.duration
+    fade = float_attr(node, "data-fade", 0.0)
     return Element(
         element_id=node.get("id"),
-        tag=_local(node.tag),
+        tag=local_name(node.tag),
         classes=node.get("class", "").split(),
-        track=_to_int(node.get("data-track-index", "0")),
-        clip_start=_to_float(node.get("data-start", "0.0"), "data-start"),
-        clip_duration=dur,
-        fade_in=_to_float(node.get("data-fade", "0.0"), "data-fade"),
+        clip_start=float_attr(node, "data-start", 0.0),
+        clip_duration=float_attr(node, "data-duration", comp.duration),
+        fade_in=fade,
+        fade_out=fade,  # data-fade mirrors at the clip end
     )
-
-
-def _to_int(value: str) -> int:
-    return int(float(value))
 
 
 def _transform_string(tf: object) -> str | None:
@@ -94,7 +90,7 @@ def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
     # Apply computed values back onto the tree (skip timeline <script> nodes).
     for node in list(root.iter("*")):
         props = final_props[node]
-        tag = _local(node.tag)
+        tag = local_name(node.tag)
         if tag == "script":
             continue
         if not props["visible"]:
@@ -113,10 +109,10 @@ def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
                 node.set("stroke", str(props["stroke"]))
 
     # Strip all timeline scripts so ThorVG only rasters pure geometry.
-    for node in [n for n in root.iter() if _local(n.tag) == "script"]:
+    for node in [n for n in root.iter() if local_name(n.tag) == "script"]:
         if node is root:
             continue
-        parent = _find_parent(root, node)
+        parent = find_parent(root, node)
         if parent is not None:
             parent.remove(node)
 
@@ -145,7 +141,7 @@ def _dereference_images(root: ET.Element, base_dir: str) -> None:
     import os
 
     for node in root.iter():
-        if _local(node.tag) != "image":
+        if local_name(node.tag) != "image":
             continue
         for attr in ("href", "{http://www.w3.org/1999/xlink}href", "src"):
             ref = node.get(attr)
@@ -153,10 +149,3 @@ def _dereference_images(root: ET.Element, base_dir: str) -> None:
                 continue
             joined = os.path.normpath(os.path.join(base_dir, ref))
             node.set(attr, joined)
-
-
-def _find_parent(root: ET.Element, child: ET.Element) -> ET.Element | None:
-    for node in root.iter():
-        if child in list(node):
-            return node
-    return None

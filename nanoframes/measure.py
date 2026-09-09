@@ -17,11 +17,10 @@ cost of an auto-sized composition is one measurement per distinct string.
 
 from __future__ import annotations
 
-import os
-import tempfile
 from dataclasses import dataclass
 
-from nanoframes.render import DEFAULT_FONT_CANDIDATES
+from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
+from nanoframes.render import render_svg
 
 _MARK_BASELINE = 256  # baseline y we place glyphs on inside the measurement SVG
 _MARK_W = 1024
@@ -58,7 +57,7 @@ class Measurer:
     """
 
     def __init__(self, extra_font_paths: list[str] | None = None, cache: bool = True):
-        self._fonts = list(DEFAULT_FONT_CANDIDATES) + list(extra_font_paths or [])
+        self._fonts: list[str] = list(DEFAULT_FONT_CANDIDATES) + list(extra_font_paths or [])
         self._cache: dict[tuple, InkMetrics] = {} if cache else None
 
     # -- public ---------------------------------------------------------------
@@ -77,8 +76,7 @@ class Measurer:
     # -- machinery ------------------------------------------------------------
     def _measure(self, text: str, family: str, weight: str, size_px: float,
                  letter_spacing: float) -> InkMetrics:
-        import thorvg_python as tvg  # heavy, lazy
-        import numpy as np
+        import numpy as np  # heavy, lazy
 
         if letter_spacing:
             ls = f' letter-spacing="{letter_spacing:g}px"'
@@ -93,37 +91,8 @@ class Measurer:
             f"{text}</text></svg>"
         )
 
-        engine = tvg.Engine(threads=1)
-        try:
-            holder = tvg.Text(engine)
-            for path in self._fonts:
-                if os.path.exists(path):
-                    try:
-                        holder.font_load(path)
-                    except Exception:
-                        continue
-
-            fd, path = tempfile.mkstemp(prefix="nanoframes_measure_", suffix=".svg")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(svg)
-                canvas = tvg.SwCanvas(engine)
-                canvas.set_target(_MARK_W, _MARK_H)
-                pic = tvg.Picture(engine)
-                pic.load(path)
-                pic.set_size(_MARK_W, _MARK_H)
-                canvas.add(pic)
-                canvas.update()
-                canvas.draw(False)
-                canvas.sync()
-                arr = np.array(canvas.get_pillow())
-            finally:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
-        finally:
-            engine.term()
+        img = render_svg(svg, _MARK_W, _MARK_H, threads=1, font_paths=self._fonts)
+        arr = np.array(img)
 
         gray = arr[:, :, 0] if arr.ndim == 3 and arr.shape[2] >= 3 else arr
         ys, xs = np.where(gray < 128)

@@ -2,7 +2,14 @@
 
 The ThorVG `Picture` loader needs the SVG as a file (it resolves relative
 resource URLs against the file path), so bake output is written to a temp
-`.svg` file before rendering.
+``.svg`` file before rendering.
+
+``render_svg`` is the one place that owns the ThorVG engine lifecycle —
+engine creation, default font registration, temp-file write, canvas draw and
+clean teardown (canvas destroy before engine term; some fonts crash this build
+at teardown, which is why ``nanoframes fonts verify`` runs load checks in an
+isolated subprocess). Text measurement (``nanoframes.measure``) rasterizes the
+same way with the same fonts, so metrics and final frames cannot drift.
 """
 
 from __future__ import annotations
@@ -12,52 +19,12 @@ import tempfile
 
 from nanoframes import bake
 from nanoframes.cache import FrameCache
+from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
 from nanoframes.parse import Document
 
 
 class RenderError(RuntimeError):
     """Raised when ThorVG fails to load or rasterize a frame."""
-
-
-# Candidate default fonts so text renders even when a composition declares no
-# font file. ThorVG only rasterizes <text> after a font has been loaded (cached
-# globally by path), so we register a few common faces on engine setup.
-DEFAULT_FONT_CANDIDATES = (
-    # Bundled monospace CJK face (Sarasa Mono SC, ligature feature stripped) —
-    # FIRST so it is ThorVG's default fallback: any font-family that does not
-    # resolve (including CJK text) renders via Sarasa Mono SC -> Chinese is always solid.
-    # Single-name families ("Arial") still resolve to their own face. Load-safe
-    # and exits cleanly here (AppleGothic crashes this ThorVG build).
-    os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                 "fonts", "SarasaMonoSC-Regular-noliga.ttf"),
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    r"/System/Library/Fonts/Arial Unicode.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-)
-
-def _ensure_font(engine) -> None:
-    """Register default fonts so SVG <text> resolves to a real face.
-
-    Called every engine: ThorVG tears down its global font cache when an engine
-    is terminated, so a fresh engine needs the fonts registered again. Loading is
-    cheap because ThorVG caches font data by path. (See ``nanoframes.fonts`` for
-    CJK font discovery; we deliberately do NOT auto-register arbitrary discovered
-    faces here because some fonts crash this ThorVG build at teardown.)
-    """
-    import os
-
-    import thorvg_python as tvg  # noqa: PLC0415
-
-    dummy = tvg.Text(engine)  # font_load lives on Text; global cache keyed by path
-    for path in DEFAULT_FONT_CANDIDATES:
-        if not os.path.exists(path):
-            continue
-        try:
-            dummy.font_load(path)
-        except Exception:
-            continue
 
 
 def _write_temp(svg_str: str) -> str:
@@ -71,15 +38,32 @@ def _write_temp(svg_str: str) -> str:
     return path
 
 
-def render_svg(svg_str: str, width: int, height: int, threads: int = 4) -> "object":
-    """Return a Pillow Image for a standalone SVG string."""
+def render_svg(svg_str: str, width: int, height: int, threads: int = 4,
+               font_paths: tuple[str, ...] | list[str] | None = None) -> "object":
+    """Return a Pillow Image for a standalone SVG string.
+
+    ``font_paths`` defaults to ``nanoframes.fonts.DEFAULT_FONT_CANDIDATES``;
+    measurement and font verification pass their own (superset) lists. Fonts
+    are registered on every engine: ThorVG tears down its global font cache
+    when an engine is terminated, so a fresh engine needs them again (loading
+    is cheap because ThorVG caches font data by path).
+    """
     import thorvg_python as tvg  # heavy import, keep it lazy
 
+    if font_paths is None:
+        font_paths = DEFAULT_FONT_CANDIDATES
     path = _write_temp(svg_str)
     engine = tvg.Engine(threads=threads)
-    _ensure_font(engine)
     canvas = tvg.SwCanvas(engine)
     try:
+        holder = tvg.Text(engine)  # font_load lives on Text; cache keyed by path
+        for fpath in font_paths:
+            if not os.path.exists(fpath):
+                continue
+            try:
+                holder.font_load(fpath)
+            except Exception:
+                continue
         canvas.set_target(width, height)
         pic = tvg.Picture(engine)
         result = pic.load(path)

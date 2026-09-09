@@ -4,10 +4,8 @@ These exercise the renderer-exact ``Measurer`` path through ``bake_svg`` (the
 same code the render pipeline uses), asserting the geometry bake injects.
 """
 
-import re
 import xml.etree.ElementTree as ET
 
-import pytest
 
 from nanoframes import bake
 from nanoframes.measure import Measurer
@@ -81,7 +79,6 @@ def test_fit_shrinks_font_size_to_width():
 
 def test_measure_cli(capsys, tmp_path):
     from nanoframes.cli import main
-    import shutil
     src = "examples/text-measure.nf.svg"
     code = main(["measure", src])
     out = capsys.readouterr().out

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nanoframes.model import Animation, Composition
+from nanoframes.model import Composition
 from nanoframes.parse import Document, ParseError, parse_file, parse_string
 
 
@@ -40,18 +40,13 @@ def _check_animations(comp: Composition, findings: list[Finding]) -> None:
             findings.append(
                 Finding("error", f"animation target {anim.target!r} matches no elements")
             )
-        kfs = sorted(anim.keyframes, key=lambda k: k.t)
-        for i, kf in enumerate(kfs):
+        for kf in anim.keyframes:
             if kf.t < 0 or kf.t > comp.duration + 1e-9:
                 findings.append(
                     Finding(
                         "warning",
                         f"{anim.target}: keyframe t={kf.t} outside duration {comp.duration}",
                     )
-                )
-            if i and kfs[i - 1].t > kf.t:
-                findings.append(
-                    Finding("error", f"{anim.target}: keyframes not sorted (t={kf.t})")
                 )
 
 

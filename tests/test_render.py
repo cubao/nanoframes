@@ -61,7 +61,6 @@ def test_render_deterministic_and_sized(t, tmp_path):
 
 def test_text_rasterizes_with_auto_font():
     """At t=2.0 the white title text must actually rasterize (font loaded)."""
-    from PIL import Image
 
     doc = parse_file(TITLE)
     img = render_frame(doc, t=2.0)
@@ -72,3 +71,24 @@ def test_text_rasterizes_with_auto_font():
         for y in range(76, 100, 2)
     )
     assert has_text, "expected white title text pixels in the title band"
+
+
+def test_bake_fade_out_mirrors_at_clip_end():
+    """data-fade dims the tail of the clip in the baked per-frame SVG."""
+    from nanoframes.parse import parse_string
+
+    text = (
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="100" '
+        'data-duration="4.0">'
+        '<rect id="r" width="100" height="100" fill="#fff" data-start="0.5" '
+        'data-duration="2.0" data-fade="0.4"/>'
+        "</svg>"
+    )
+    doc = parse_string(text)
+    # clip [0.5, 2.5] with a 0.4s fade on both ends
+    full = bake.bake_svg(doc, t=1.5)
+    assert "display=\"none\"" not in full
+    assert 'opacity="1.0000"' not in full  # fully visible -> no opacity clamp
+
+    tail = bake.bake_svg(doc, t=2.4)  # inside the fade-out window (2.1..2.5)
+    assert 'opacity="0.2500"' in tail  # (2.5 - 2.4) / 0.4

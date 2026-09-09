@@ -12,6 +12,7 @@ license = { text = "Apache-2.0" }
 dependencies = [
     "thorvg-python",
     "pillow",
+    "numpy",  # renderer-exact text measurement (ink bbox from raster pixels)
 ]
 
 [project.optional-dependencies]

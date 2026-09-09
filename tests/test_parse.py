@@ -44,6 +44,7 @@ def test_parse_canvas_and_elements():
     assert title.clip_start == 0.5
     assert title.clip_duration == 3.0
     assert title.fade_in == 0.4
+    assert title.fade_out == 0.4  # data-fade mirrors at the clip end
     # element without data-duration inherits composition duration
     bg = by_id["bg"]
     assert bg.clip_duration == 4.0

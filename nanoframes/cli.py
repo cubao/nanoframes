@@ -2,10 +2,14 @@
 
 Commands
 --------
-  init    <name>            scaffold a new `.nf.svg` composition
-  check   <comp>            lint the composition contract (exit 1 on errors)
-  render  <comp>            render: single frame `--t SEC`, or full batch
-  preview <comp>            render one frame and open it (needs `--t`)
+  init        <name>            scaffold a new `.nf.svg` composition
+  check       <comp>            lint the composition contract (exit 1 on errors)
+  render      <comp>            render: single frame `--t SEC`, or full batch
+  preview     <comp>            render one frame and open it (needs `--t`)
+  video       <comp>            render the whole clip to an MP4 via ffmpeg
+  measure     <comp>            report renderer-exact glyph widths for text elements
+  fonts       list/add/verify/install   CJK font toolbox
+  walkthrough [-o DIR]          generate the one-take walkthrough
 """
 
 from __future__ import annotations
@@ -87,7 +91,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, default=None, help="render only this time (seconds)")
     sp.add_argument("-o", "--out", default="out", help="output directory or file path")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
-    sp.add_argument("--start", type=float, default=None, help="batch start time (default 0)")
     sp.set_defaults(handler=cmd_render)
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
@@ -161,13 +164,13 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_measure(args: argparse.Namespace) -> int:
     from nanoframes.measure import Measurer
-    from nanoframes.parse import parse_file as _parse_file, _local
+    from nanoframes.xmlutil import local_name
 
-    doc = _parse_file(args.composition)
+    doc = parse_file(args.composition)
     measurer = Measurer()
     rows = []
     for node in doc.root.iter():
-        if _local(node.tag) != "text":
+        if local_name(node.tag) != "text":
             continue
         t = (node.text or "").strip()
         if not t:
@@ -223,46 +226,19 @@ def cmd_fonts_add(args: argparse.Namespace) -> int:
 
 
 def cmd_fonts_verify(args: argparse.Namespace) -> int:
-    import subprocess as sp
-    import sys
+    """Check a font loads+rasterizes without crashing ThorVG (isolated subprocess).
 
-    script = r'''
-import sys, os, tempfile
-import thorvg_python as tv
-import numpy as np
-path, fam = sys.argv[1], sys.argv[2]
-try:
-    from nanoframes.render import DEFAULT_FONT_CANDIDATES as base
-except Exception:
-    base = ()
-e = tv.Engine(threads=1)
-h = tv.Text(e)
-for p in tuple(base) + (path,):
-    if os.path.exists(p):
-        try:
-            h.font_load(p)
-        except Exception:
-            pass
-svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="70">'
-       '<rect width="160" height="70" fill="#fff"/>'
-       '<text x="4" y="50" font-family="' + fam + '" font-size="30" fill="#000">A中</text></svg>')
-fd, tpath = tempfile.mkstemp(suffix=".svg")
-os.write(fd, svg.encode()); os.close(fd)
-c = tv.SwCanvas(e); c.set_target(160, 70)
-pic = tv.Picture(e); rc = pic.load(tpath)
-pic.set_size(160, 70); c.add(pic); c.update(); c.draw(False); c.sync()
-g = np.array(c.get_pillow()).astype(np.int32)[:, :, 0]
-print("solid", int((g > 180).sum()))
-try:
-    c.destroy()
-    e.term()
-except Exception:
-    pass
-'''
+    Some fonts segfault this ThorVG build at engine teardown; the check runs in
+    a separate process (``nanoframes.scripts.verify_font``) so a crash surfaces
+    as exit code 139 here instead of taking the CLI down.
+    """
     from nanoframes.fonts import family_name
+
     family = family_name(args.path)[0]
-    proc = sp.run([sys.executable, "-c", script, args.path, family],
-                  capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "nanoframes.scripts.verify_font", args.path, family],
+        capture_output=True, text=True,
+    )
     print(proc.stdout.strip())
     if proc.returncode == 139:
         print(f"UNSAFE: {args.path} crashes ThorVG at exit (code 139). Do not use.")
@@ -276,8 +252,6 @@ except Exception:
 
 def cmd_fonts_install(args: argparse.Namespace) -> int:
     """Best-effort fetch of a CJK monospace font (Sarasa Mono SC) into the user dir."""
-    import hashlib
-    import shutil
     import urllib.request
 
     urls = [
@@ -337,19 +311,15 @@ def cmd_render(args: argparse.Namespace) -> int:
         print(f"rendered {dst}")
         return 0
 
-    # full batch: frames 0..n-1 at 1/fps
-    start = args.start or 0.0
+    # full batch: frame i at t = i/fps, i in 0..frame_count-1
     os.makedirs(out_dir, exist_ok=True)
     prefix = comp.composition_id or os.path.splitext(os.path.basename(args.composition))[0]
     step = 1.0 / comp.fps
-    count = comp.frame_count
-    lines = []
-    for i in range(count):
-        t = start + i * step
+    for i in range(comp.frame_count):
+        t = i * step
         dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
         render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache)
-        lines.append(dst)
-    print(f"rendered {len(lines)} frames to {out_dir}/ ({prefix}.*.png)")
+    print(f"rendered {comp.frame_count} frames to {out_dir}/ ({prefix}.*.png)")
     return 0
 
 

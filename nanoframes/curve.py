@@ -14,6 +14,9 @@ Supported authoring form::
 
 ``data-curve`` is a standard SVG path ``d``. Angle is the in-path tangent at
 the glyph's advance position, so each glyph is rotated to follow the curve.
+Flattened commands: ``M``/``L``/``C``/``Q``/``S``/``T``/``H``/``V``/``Z``
+(absolute and relative); elliptical arcs (``A``) raise ``NotImplementedError``
+rather than silently dropping the segment.
 """
 
 from __future__ import annotations
@@ -22,7 +25,6 @@ import math
 import re
 
 _TOK = re.compile(r"[MLCSTAmlcsta]|[-+]?(?:\d*\.\d+|\d+\.?)\d*(?:[eE][-+]?\d+)?")
-_NUM = re.compile(r"[-+]?(?:\d*\.\d+|\d+\.?)\d*(?:[eE][-+]?\d+)?")
 
 
 class PathSampler:
@@ -70,40 +72,42 @@ class PathSampler:
         return out
 
 
-def _numbers(rest: str):
-    return [float(m) for m in _NUM.findall(rest)]
-
-
 def _flatten(d: str, samples: int) -> tuple[list[tuple[float, float]], list[float]]:
     """Return (polyline, cumulative-arc-lengths)."""
     pts: list[tuple[float, float]] = []
     dist = [0.0]
-    cmdcache: list[float] = []
     args: list[float] = []
     cx = cy = 0.0
     sx = sy = 0.0
-    path_start = None
 
     toks = _TOK.findall(d)
     i = 0
     cur_cmd: str | None = None
     while i < len(toks):
         if toks[i] in "MLCSTAmlcsta":
-            cmd = toks[i]; i += 1
+            cmd = toks[i]
+            i += 1
             args = []
             while i < len(toks) and not toks[i][0].isalpha():
-                args.append(float(toks[i])); i += 1
-            # handle repeated coordinate sets later via buffered loop
+                args.append(float(toks[i]))
+                i += 1
         else:
+            # bare numbers continue the previous command
             cmd = cur_cmd
-            # bare numbers continue previous command
             if cmd is None:
                 break
             args = [float(toks[i])]
             i += 1
             while i < len(toks) and not toks[i][0].isalpha():
-                args.append(float(toks[i])); i += 1
+                args.append(float(toks[i]))
+                i += 1
         cur_cmd = cmd
+
+        if cmd in ("A", "a"):
+            raise NotImplementedError(
+                "elliptical arc segments are not supported (PathSampler flattens "
+                "M/L/C/Q/S/T/H/V/Z only)"
+            )
 
         n = len(args)
         if cmd in ("M", "m"):
@@ -112,14 +116,15 @@ def _flatten(d: str, samples: int) -> tuple[list[tuple[float, float]], list[floa
             while k < n:
                 if first:
                     if cmd == "m":
-                        cx += args[k]; cy += args[k + 1]
+                        cx += args[k]
+                        cy += args[k + 1]
                     else:
                         cx, cy = args[k], args[k + 1]
                     sx, sy = cx, cy
                     if not pts:
                         pts.append((cx, cy))
                     first = False
-                    cur_cmd = "L" if cmd == "m" else "L"
+                    cur_cmd = "L"
                 else:
                     _line(pts, dist, cx, cy, cx + args[k] if cmd == "m" else args[k],
                           cy + args[k + 1] if cmd == "m" else args[k + 1])

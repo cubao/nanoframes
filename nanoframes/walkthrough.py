@@ -28,7 +28,7 @@ import time
 import wave
 
 from nanoframes.lint import has_errors, lint_path
-from nanoframes.parse import Document, ParseError, parse_string
+from nanoframes.parse import Document, parse_string
 from nanoframes.rastertext import TextRequest
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ def _fancy_text_handler(req: TextRequest) -> bytes | None:
     """
     if req.kind != "fancy":
         return None
-    from nanoframes.render import DEFAULT_FONT_CANDIDATES
+    from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
     from PIL import Image, ImageDraw, ImageFont
 
     text = "你好世界" if req.text.strip() == "hello world" else req.text
@@ -198,7 +198,7 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     for d in (comp_dir, frame_dir, video_dir, audio_dir, asset_dir):
         os.makedirs(d, exist_ok=True)
 
-    from nanoframes.render import render_frame, render_svg  # noqa: F401
+    from nanoframes.render import render_frame
     from nanoframes.cache import FrameCache
     from nanoframes.video import render_video
 
@@ -355,7 +355,8 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
                    raster_svg=None, raster_frame=None) -> str:
     ha, hb = determinism
     script = _script_of(parse_string(STORY))
-    rel = lambda p: os.path.relpath(p, out_dir).replace(os.sep, "/")
+    def rel(p: str) -> str:
+        return os.path.relpath(p, out_dir).replace(os.sep, "/")
 
     streams = ", ".join(
         f"{s.get('codec_type')}/{s.get('codec_name')}" for s in probe.get("streams", [])
@@ -493,8 +494,8 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
         md.append("---\n")
 
     md.append("## 5 · Determinism & the re-render cache\n")
-    md.append(f"The same frame rendered twice is **byte-identical** — a property the snapshot test suite relies on.")
-    md.append(f"Here is the proof at t = 2.0s:\n")
+    md.append("The same frame rendered twice is **byte-identical** — a property the snapshot test suite relies on.")
+    md.append("Here is the proof at t = 2.0s:\n")
     md.append("```bash")
     md.append("nanoframes render story.nf.svg --t 2.0 -o deterministic_a.png")
     md.append("nanoframes render story.nf.svg --t 2.0 -o deterministic_b.png")
@@ -504,8 +505,8 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append(f"![deterministic_a]({rel(os.path.join(out_dir,'frames/deterministic_a.png'))})")
     md.append(f"![deterministic_b]({rel(os.path.join(out_dir,'frames/deterministic_b.png'))})")
     md.append("")
-    md.append(f"Because output is a pure function of (composition, time), nanoframes keeps a **content-keyed cache**:")
-    md.append(f"rendering the same frame again skips ThorVG entirely. Measured in-process here:")
+    md.append("Because output is a pure function of (composition, time), nanoframes keeps a **content-keyed cache**:")
+    md.append("rendering the same frame again skips ThorVG entirely. Measured in-process here:")
     md.append(f"cold ~{cold_ms:.0f} ms/frame → cached ~{warm_ms:.0f} ms/frame to read back.\n")
     md.append("```bash")
     md.append("nanoframes render story.nf.svg -o frames          # cold: rasterizes everything")
