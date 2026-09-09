@@ -20,14 +20,16 @@ Run with the CLI:  ``nanoframes walkthrough [--out build/walkthrough]``
 from __future__ import annotations
 
 import hashlib
+import inspect
+import io
 import os
-import shutil
 import subprocess
 import time
 import wave
 
 from nanoframes.lint import has_errors, lint_path
 from nanoframes.parse import Document, ParseError, parse_string
+from nanoframes.rastertext import TextRequest
 
 # ---------------------------------------------------------------------------
 # 1. The one composition that carries the whole story (a 6s, 960x540 film).
@@ -142,6 +144,47 @@ def synthesize_wav(path: str, duration: float = 6.0, rate: int = 22050) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 2½. Demo text_handler for the external-raster-text showcase.
+# ---------------------------------------------------------------------------
+
+
+def _fancy_text_handler(req: TextRequest) -> bytes | None:
+    """Demo handler: maps 'hello world' -> 你好世界, painted stroked + shadowed.
+
+    Deterministic and portable: renders with the bundled Sarasa Mono SC via
+    Pillow, so it needs no system font and matches the wheel on every host.
+    It is a pure function of the request, as the raster-text contract requires.
+    """
+    if req.kind != "fancy":
+        return None
+    from nanoframes.render import DEFAULT_FONT_CANDIDATES
+    from PIL import Image, ImageDraw, ImageFont
+
+    text = "你好世界" if req.text.strip() == "hello world" else req.text
+    size = max(8, round(req.font_size))
+    font = ImageFont.truetype(DEFAULT_FONT_CANDIDATES[0], size)
+    color = _hex_rgb(req.fill or "#ffffff")
+    pad = 6
+    probe = Image.new("RGBA", (8, 8))
+    width = int(ImageDraw.Draw(probe).textlength(text, font=font)) + 2 * pad
+    img = Image.new("RGBA", (width, size * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    stroke = max(1, size // 14)
+    y0 = pad + size // 3
+    draw.text((pad + 3, y0 + 3), text, font=font, fill=(0, 0, 0, 160))
+    draw.text((pad, y0), text, font=font, fill=color,
+              stroke_width=stroke, stroke_fill=(16, 26, 48, 255))
+    buf = io.BytesIO()
+    img.crop(img.getbbox()).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _hex_rgb(value: str) -> tuple[int, int, int]:
+    value = value.lstrip("#")
+    return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+
+
+# ---------------------------------------------------------------------------
 # 3. The build.
 # ---------------------------------------------------------------------------
 
@@ -228,11 +271,21 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     text_frame = os.path.join(frame_dir, "text-features.png")
     render_frame(text_doc, 1.0, out_path=text_frame, cache=cache)
 
+    # (g) external text showcase: a text_handler draws every <text data-raster>
+    # node (hello world -> 你好世界, stroked); ThorVG fonts never see it.
+    raster_svg = open(os.path.join(examples_dir, "raster-title.nf.svg"),
+                      encoding="utf-8").read()
+    raster_doc = parse_string(raster_svg)
+    raster_frame = os.path.join(frame_dir, "raster-text.png")
+    render_frame(raster_doc, 1.0, out_path=raster_frame, cache=cache,
+                 text_handler=_fancy_text_handler)
+
     readme = _render_readme(
         out_dir=out_dir, frames=frames, determinism=(ha, hb),
         cold_ms=cold_ms, warm_ms=warm_ms, video_path=video_path, probe=probe,
         audio=with_audio and audio_path is not None,
         text_svg=text_svg, text_frame=text_frame,
+        raster_svg=raster_svg, raster_frame=raster_frame,
     )
     with open(os.path.join(out_dir, "README.md"), "w", encoding="utf-8") as fh:
         fh.write(readme)
@@ -298,7 +351,8 @@ def _write_manifest(out_dir: str, safety: dict, video_ok: bool) -> None:
 
 
 def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, probe, audio,
-                   text_svg=None, text_frame=None) -> str:
+                   text_svg=None, text_frame=None,
+                   raster_svg=None, raster_frame=None) -> str:
     ha, hb = determinism
     script = _script_of(parse_string(STORY))
     rel = lambda p: os.path.relpath(p, out_dir).replace(os.sep, "/")
@@ -412,6 +466,30 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
         md.append(f"![text-features t=1.0]({rel(text_frame)})\n")
         md.append("Query exact widths first if you ever hand-position: `nanoframes measure <comp>`.")
         md.append("Manage fonts with `nanoframes fonts list | add <path>` (the bundled face already registered).\n")
+        md.append("---\n")
+
+    if raster_svg and raster_frame:
+        md.append("## 4¾ · Text outside the font system: the `text_handler`\n")
+        md.append("Everything above draws text with fonts ThorVG loaded. Text that cannot live there —")
+        md.append("LaTeX math, a brand face, emoji — is a *library callback's* job, not the framework's:")
+        md.append("pass `text_handler` to `bake_svg` / `render_frame`, and every `<text data-raster>`")
+        md.append("node is offered to it at bake time. The callback returns **PNG bytes**, placed at an")
+        md.append("anchor-driven bbox (`data-anchor` / `data-width` / `data-height` / `data-yaw`);")
+        md.append("returning `None` keeps the ThorVG font path. The callback must be a deterministic")
+        md.append("pure function of the request — no hidden framework memo, and the frame cache is")
+        md.append("bypassed while one is attached.\n")
+        md.append("The composition is still a plain SVG — the same file also renders via CLI fonts:")
+        md.append("```svg")
+        md.append(raster_svg.rstrip())
+        md.append("```\n")
+        md.append("The walkthrough's own demo handler maps `hello world` → `你好世界` and paints a")
+        md.append("stroke + drop shadow with the bundled Sarasa Mono SC (through Pillow, not ThorVG):")
+        md.append("```python")
+        md.append(inspect.getsource(_fancy_text_handler).rstrip())
+        md.append("```\n")
+        md.append(f"![raster-text t=1.0]({rel(raster_frame)})\n")
+        md.append("This is a library-API feature: the CLI has no Python callback, so `data-raster`")
+        md.append("files fall back to fonts there. Contract: `docs/composition.md` → External raster text.\n")
         md.append("---\n")
 
     md.append("## 5 · Determinism & the re-render cache\n")

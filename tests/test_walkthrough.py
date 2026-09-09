@@ -17,6 +17,9 @@ def test_walkthrough_generates_artifacts(tmp_path):
     assert "byte-identical: True" in det
     assert os.path.exists(os.path.join(out, "video", "story.mp4"))
     assert os.path.exists(os.path.join(out, "assets", "dot.png"))
+    # text showcases: auto-layout (CJK) + external raster text (text_handler)
+    assert os.path.exists(os.path.join(out, "frames", "text-features.png"))
+    assert os.path.exists(os.path.join(out, "frames", "raster-text.png"))
     # manifest carries a deterministic sha
     import json
 
@@ -35,3 +38,7 @@ def test_walkthrough_readme_is_well_formed(tmp_path):
     # relative image/video links (open in a plain markdown editor)
     assert "](frames/story_t2.png)" in text
     assert "video/story.mp4" in text
+    # external raster text showcase section + demo handler source
+    assert "## 4¾ · Text outside the font system" in text
+    assert "data-raster" in text and "_fancy_text_handler" in text
+    assert "](frames/raster-text.png)" in text

@@ -43,10 +43,41 @@ renderer-exact `Measurer` (`nanoframes/measure.py`, `curve.py`, `textflow.py`):
 
 Consistency invariant: measurement uses the same font list, loader, and raster as the final frame. If auto-layout runs without a `Measurer` it is a no-op, so plain compositions bake exactly as before (all existing tests pass).
 
+## External text: the `text_handler` escape hatch (v1)
+
+Every finding above is about text **ThorVG draws with a loaded font**. When the
+text itself cannot live there — LaTeX math, a brand face that crashes this
+loader, emoji — the framework steps aside instead of growing a font engine:
+
+`<text data-raster="kind">` is offered to a library-supplied `text_handler`
+(`bake_svg` / `render_frame` parameter). The handler receives a `TextRequest`
+(content, kind, style, the live animated fill, raw attrs) and returns **PNG
+bytes**; bake replaces the node with an `<image>` at an anchor-driven bbox
+(`data-anchor` = one of 9 corner/edge/center anchors, default `center`;
+`data-width` / `data-height` contain the PNG without distortion; `data-yaw`
+rotates it around the anchor point). `None` keeps the normal ThorVG font
+path — chips, wrap, curve and fit all still apply there.
+
+Consistency note: this is the deliberate exception to "measure by rendering".
+A handled text's ink box is exact **by construction**: the PNG is literally
+what the frame draws, and its size comes from the bytes (Pillow), never from
+ThorVG metrics or fallback-font widths — so nothing can drift. The handler
+must be a deterministic pure function of the request (there is no framework
+memo; slow backends cache internally), and `render_frame` bypasses
+`FrameCache` while a handler is attached, since the cache key knows nothing
+about it. CLI rendering has no Python callback, so `data-raster` files fall
+back to fonts there — this is a library-API feature.
+
+Reference: `docs/composition.md` → External raster text,
+`nanoframes/rastertext.py`, `tests/test_rastertext.py` (a hello → 你好 dummy
+handler end-to-end), and the walkthrough showcase built from
+`examples/raster-title.nf.svg`.
+
 ## What else is absorbable from hyperframes / remotion (ranked)
 
 | idea | source | nanoframes status |
 |---|---|---|
+| TeX / any custom typesetting — LaTeX math, exotic faces (manim compiles TeX to glyph-path SVG so its renderer never loads fonts) | manim | ✅ v1 as the `text_handler` hook above — outside ThorVG fonts entirely (library API; a CLI bridge is deferred). |
 | measure + auto-fit font size (`fitTextFontSize` shrink-down until it fits one line) | hyperframes `core/text`, remotion layout-utils | ⚠️ trivial to add on top of `Measurer` (binary/step search). |
 | word-level wrapping / caption timing | remotion `@remotion/captions`, layout-utils; hyperframes caption blocks | wrap ✅ done; caption-timing needs duration→width math, straightforward. |
 | shrinkwrap "rounded text box" | remotion `@remotion/rounded-text-box` | ✅ done as `data-bg`. |
