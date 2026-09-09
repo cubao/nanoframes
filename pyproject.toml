@@ -24,5 +24,12 @@ nanoframes = "nanoframes.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["nanoframes"]
 
+# docs/ and skills/ live at the repo root but ship inside the installed
+# package, so agents and humans find them next to the code that implements
+# them (nanoframes/docs, nanoframes/skills).
+[tool.hatch.build.targets.wheel.force-include]
+"docs" = "nanoframes/docs"
+"skills" = "nanoframes/skills"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -32,3 +32,8 @@ tests/            unit + render + snapshot + CLI tests
 
 - [Architecture](docs/architecture.md) — why SVG + ThorVG, the pipeline, scope decisions.
 - [Composition](docs/composition.md) — the `.nf.svg` contract (timing attributes + animation timeline).
+- [Text capabilities](docs/text-capabilities.md) — measured chips/wrap/curve/fit, bundled CJK font, `text_handler` escape hatch.
+
+`docs/` and `skills/` also ship inside the pip wheel (`nanoframes/docs`,
+`nanoframes/skills`); running `nanoframes` with no arguments prints where the
+docs and the agent skill live — repo checkout or installed package alike.

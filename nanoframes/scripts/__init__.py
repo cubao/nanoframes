@@ -39,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     times = args.times or list(DEFAULT_TIMES)
     if args.comps:
         comps = [c if os.path.isabs(c) else os.path.join(EXAMPLES, c) for c in args.comps]
+    elif not os.path.isdir(EXAMPLES):
+        print("no examples/ next to this install — snapshot baselines are a "
+              "repo-checkout tool", file=sys.stderr)
+        comps = []
     else:
         comps = sorted(
             os.path.join(EXAMPLES, f) for f in os.listdir(EXAMPLES)

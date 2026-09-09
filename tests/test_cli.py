@@ -21,6 +21,13 @@ def run(argv):
     return code, buf.getvalue()
 
 
+def test_no_args_prints_docs_skill_guide():
+    code, out = run([])
+    assert code == 2
+    assert "composition.md" in out
+    assert "SKILL.md" in out
+
+
 def test_init_creates_composition(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     code, _ = run(["init", "hello"])

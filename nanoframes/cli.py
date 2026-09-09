@@ -365,8 +365,51 @@ def _frame_dest(doc, out, t: float) -> str:
     return f"{name}_t{t:g}.png"
 
 
+def _resource_dirs() -> tuple[str, str] | None:
+    """Absolute (docs_dir, skills_dir) — repo checkout first, then package copy.
+
+    In a repo checkout the docs/skills sit next to the package
+    (``<repo>/docs``, ``<repo>/skills``); in a wheel install they are embedded
+    inside the package (``nanoframes/docs``, ``nanoframes/skills``).
+    """
+    pkg = os.path.dirname(os.path.abspath(__file__))
+    for base in (os.path.dirname(pkg), pkg):
+        docs = os.path.join(base, "docs")
+        skills = os.path.join(base, "skills", "nanoframes")
+        if os.path.isdir(docs) and os.path.isdir(skills):
+            return docs, skills
+    return None
+
+
+def guide_text() -> str:
+    """Point users (agents) at the docs and agent skill shipped with the package."""
+    lines = [
+        "nanoframes — SVG-first, browserless, deterministic frame rendering on ThorVG.",
+        "Docs and the agent skill ship with the package; read them before composing:",
+        "",
+    ]
+    found = _resource_dirs()
+    if found:
+        docs, skills = found
+        lines += [
+            f"  composition contract ... {os.path.join(docs, 'composition.md')}",
+            f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
+            f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
+            f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
+            "",
+        ]
+    else:
+        lines += ["  (docs/skills not found next to this install)", ""]
+    lines += ["Usage: nanoframes <command> ...    (nanoframes --help for the command list)"]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args_list = sys.argv[1:] if argv is None else argv
+    if not args_list:
+        print(guide_text())
+        return 2
+    args = build_parser().parse_args(args_list)
     if hasattr(args, "fhandler") and args.fhandler is not None:
         return args.fhandler(args)
     try:

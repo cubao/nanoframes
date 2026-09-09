@@ -97,7 +97,7 @@ deterministic, inspectable motion.
 | frame.md / design.md system     | composition doc + lint (v1) |
 | binary TreePack compressed pack | deferred optional binary cache (P2) |
 
-**Kept:** deterministic seekable frames, clip/track timing, `check`/`preview`/`render` agent loop,
+**Kept:** deterministic seekable frames, clip timing, `check`/`preview`/`render` agent loop,
 MP4 export, and an agent-facing skill.
 
 ## Non-goals
@@ -106,10 +106,16 @@ MP4 export, and an agent-facing skill.
 - No JS runtime / no GSAP semantics.
 - No production audio mastering; no cloud rendering.
 
-## Milestones (Loops)
+## Milestones
 
-- **P0** scaffold → composition model + parser → timeline evaluator → frame renderer + single-frame
-  proof. *(in progress)*
-- **P1** CLI (`init`/`render`/`preview`/`check`), batch + MP4 export, example compositions +
-  snapshot tests.
-- **P2** agent skill (`SKILL.md`), optional binary cache, audio mux passthrough.
+- **v1 (done, 2026-09)** composition model + parser, timeline evaluator, ThorVG
+  frame renderer, CLI (`init`/`check`/`render`/`preview`/`video`/`measure`/
+  `fonts`/`walkthrough`), MP4 export + audio mux, fast re-render cache,
+  renderer-exact text story (chips/wrap/curve/fit), bundled mono CJK font,
+  `text_handler` escape hatch, example compositions + visual snapshot suite,
+  agent skill (`skills/nanoframes/SKILL.md`).
+- **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
+  (it is a library-API feature by design); in-scene video.
+
+`docs/` and `skills/` ship inside the pip wheel as `nanoframes/docs` and
+`nanoframes/skills`; `nanoframes` (no args) prints their installed locations.

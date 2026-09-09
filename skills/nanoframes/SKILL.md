@@ -21,8 +21,9 @@ For any "make me a video / animated card / motion graphic" request:
 
 1. **Plan** — canvas size, duration, fps, beats. Decide what moves (translate /
    scale / rotate), fades, and what stays static.
-2. **Write** a `.nf.svg` composition (see contract below). Reuse `examples/`
-   and `nanoframes init <name>` for a template.
+2. **Write** a `.nf.svg` composition (see contract below). Start from
+   `nanoframes init <name>` (the template ships with the package); repo
+   checkouts additionally carry `examples/`.
 3. **Check** — `nanoframes check <comp>.nf.svg` lints the contract (exit 1 on
    errors). Fix until ok.
 4. **Preview** a frame — `nanoframes preview <comp>.nf.svg --t 2.0` renders and
@@ -42,7 +43,8 @@ changes with `python3 -m nanoframes.scripts.snapshots`).
 `data-duration` (seconds), optional `data-composition-id`.
 
 **Element presence**: `data-start` (enter time, sec), `data-duration` (how long
-visible, default = comp duration), `data-fade` (fade-in sec).
+visible, default = comp duration), `data-fade` (fade seconds at clip start —
+**mirrored as a fade-out at the clip end**).
 
 **Animation** `<script type="application/nanoframes+json">` (wrap in `CDATA`):
 one `animations` array. Each entry has a CSS `target` (`#id`, `.class`, or tag)
@@ -59,7 +61,8 @@ Supported animated props:
 
 - Canvas MUST have positive `data-width`/`data-height`; `data-duration` > 0.
 - Every animation `target` must actually match an element (lint enforces this).
-- Keep keyframes sorted by `t`, within `[0, data-duration]`.
+- Keep keyframes within `[0, data-duration]` (lint warns otherwise). The
+  evaluator sorts by `t` itself, so file order does not matter.
 - Could any clip exceed the composition duration? Keep `data-start + data-duration`
   within the total — otherwise `check` warns.
 - `transform` order is baked as translate -> rotate -> scale.
@@ -68,7 +71,13 @@ Supported animated props:
   band over the off-screen extent in ThorVG. Fade/grow in place or translate
   inside bounds; don't slide things in from outside the canvas.
 - Relative `<image href>` paths resolve against the composition's directory.
-  Text renders with a system font loaded automatically.
+- **Text just works for CJK**: a bundled monospace face (Sarasa Mono SC) is the
+  default fallback, so Chinese renders solidly and monospaced without any font
+  setup. Use `font-family="Sarasa Mono SC"` for deterministic-width Chinese;
+  `nanoframes fonts list|add|verify` manages extra faces. Auto layout
+  (`data-bg` chips, `data-wrap`, `data-curve-d`, `data-fit`) and the
+  `text_handler` escape hatch for exotic text are documented in
+  [text-capabilities.md](../../docs/text-capabilities.md).
 - ThorVG rasterizes the **SVG Tiny 1.2** subset — avoid CSS layout, filters,
   or SVG2-only geometry attributes. Prefer primitives + gradients + transforms.
 
@@ -103,6 +112,17 @@ nanoframes render <comp>.nf.svg --t 2 -o shot.png
 nanoframes render <comp>.nf.svg -o out/        # full batch of frames
 nanoframes video  <comp>.nf.svg -o out.mp4     # ffmpeg MP4
 nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
+nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
+nanoframes fonts list|add|verify|install          # CJK font toolbox
+nanoframes walkthrough                  # regenerate the one-take tour (build/)
 ```
 
-Full contract: `docs/composition.md`. Engine/toolchain: `docs/architecture.md`.
+`nanoframes` with no arguments prints where the docs and this skill live
+(also available via `python -m nanoframes`). Full contract:
+[composition.md](../../docs/composition.md). Engine/toolchain:
+[architecture.md](../../docs/architecture.md). Text story & caveats:
+[text-capabilities.md](../../docs/text-capabilities.md).
+
+All of `docs/` and `skills/` ship inside the installed package too
+(`site-packages/nanoframes/docs`, `site-packages/nanoframes/skills`), so an
+installed agent gets the same references.
