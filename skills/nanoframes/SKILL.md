@@ -37,6 +37,49 @@ Iterate: tweak the SVG/edit keyframes -> preview again -> render. Visual
 regressions are caught by `tests/snapshots/` (regenerate after intentional
 changes with `python3 -m nanoframes.scripts.snapshots`).
 
+## Craft references (read only what the task routes to)
+
+This file is the thin control plane. Design/motion craft lives in
+`references/` next to this file (`skills/nanoframes/references/`, shipped in
+the wheel with the rest of the skill). Read `references/README.md` (translation
+conventions + mechanical rules) plus **only** the routed references below — do
+not open the whole library.
+
+| User intent | References to read when present |
+| --- | --- |
+| Any new/edit/verify composition | `references/README.md` |
+| Title card, quote, kinetic typography, CJK headline, words moving | `references/recipe-typography.md` + `design-taste.md` + `motion-taste.md` |
+| Logo, wordmark, brand lockup animation | `references/recipe-logo.md` + `design-taste.md` + `motion-taste.md` |
+| Lower third, name tag, caption bar, overlay card | `references/recipe-lower-thirds.md` + `design-taste.md` + `motion-taste.md` |
+| Loader, spinner, icon animation, success/error/warning state | `references/recipe-loaders-icons.md` + `motion-taste.md` |
+| Data, stats, KPI, chart, metrics, count-up, dashboard figure | `references/recipe-data-stats.md` + `design-taste.md` + `motion-taste.md` |
+| Long-form, explainer, multi-idea, feature list, timeline, before/after, recap | `references/chapter-transitions.md` + `motion-taste.md` |
+| Seamless loop requested | `motion-taste.md` (loops) + the routed recipe |
+| "premium", "clean", "minimal", "modern", "sleek", "polished" | `design-taste.md` (restraint defaults) + the routed recipe |
+
+Mixed prompts: choose one primary recipe from the main deliverable, then add
+secondary references (e.g. a logo stat card uses `recipe-logo.md` +
+`recipe-data-stats.md`).
+
+## Design defaults (always apply)
+
+These few defaults are non-negotiable for every composition; see
+`design-taste.md` for the full reasoning.
+
+- **Premium means subtract, not add.** Carry premium with scale, weight,
+  brightness, spacing, and timing — never with cards, borders, dividers,
+  shadows, glow, or stacked tints.
+- **Chrome/container budget is 0 by default.** Separate with whitespace and
+  alignment first, a single hairline second, a filled card last and only when
+  it does a job.
+- **One surface tone, one accent system, one type idea.** Never stack two
+  near-black/near-white tints; one loud color per frame; serif = editorial,
+  grotesque = product, mono (`Sarasa Mono SC`) = technical/CJK.
+- **The final frame is a poster.** It must work as a clean still with the
+  message intact — settle and hold before the clip ends.
+- **Design quality is a completion blocker.** A render that is generic,
+  crowded, or chrome-heavy is not done.
+
 ## Composition contract (a `.nf.svg`)
 
 **Canvas** (root `<svg>`): `data-width`, `data-height`, `data-fps` (default 30),

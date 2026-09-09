@@ -183,7 +183,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if not rows:
         print("no <text> elements")
         return 0
-    print(f"{"id":<12}{"text":<28}{"size":>5}  width(px)")
+    print(f"{'id':<12}{'text':<28}{'size':>5}  width(px)")
     for i, t, size, w in rows:
         print(f"{i:<12}{t[:26]:<28}{size:>5}  {w}")
     return 0

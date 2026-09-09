@@ -10,20 +10,26 @@ name = "nanoframes"
 version = "0.1.0"
 description = "SVG-first, browserless, deterministic frame rendering built on ThorVG. Offline hyperframes-style animated compositions for fast AI-agent iteration."
 readme = "README.md"
-# Floor is 3.8 on purpose: users run 3.8, and the whole package is written
-# 3.8-safe (every annotated module uses `from __future__ import annotations`,
-# so PEP 585/604 annotation syntax is inert; no 3.9+ runtime constructs).
+# Floor is 3.9 — set by the engine binding, not us: thorvg-python has used
+# `ctypes.Array[...]` subscripts (a 3.9+ feature) since its initial commit, so
+# it never imported on 3.8 (1.1.1 and 1.1.3 both verified broken on 3.8).
+# 3.9/3.10/3.12 all pass the full suite. Code hygiene: no 3.10+ constructs;
+# every annotated module uses `from __future__ import annotations`).
 # Ruff linting intentionally stays on a modern target-version.
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
+# Latest thorvg-python (>=1.1.3) bundles ThorVG C++ 1.0.4: newer SVG/text
+# rasterization and a working LottieAnimation.get_marker() (the lottie import
+# path reads markers). 1.1.2/1.1.3 also fixed Python-side accessor/paint API
+# bugs of the 1.0.x bindings.
 dependencies = [
-    "thorvg-python",
+    "thorvg-python>=1.1.3",
     "pillow",
     "numpy",  # renderer-exact text measurement (ink bbox from raster pixels)
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "fonttools"]  # fonttools: tests inspect the bundled TTF
 
 [project.scripts]
 nanoframes = "nanoframes.cli:main"

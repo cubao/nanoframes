@@ -1,5 +1,7 @@
 """Tests for the composition model + parser."""
 
+from __future__ import annotations
+
 import pytest
 
 from nanoframes.model import Animation, Element, Keyframe
