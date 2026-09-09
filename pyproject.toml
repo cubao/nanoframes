@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanoframes"
-version = "0.1.1"
+version = "0.1.2"
 description = "SVG-first, browserless, deterministic frame rendering built on ThorVG. Offline hyperframes-style animated compositions for fast AI-agent iteration."
 readme = "README.md"
 # Floor is 3.9 — set by the engine binding, not us: thorvg-python has used
