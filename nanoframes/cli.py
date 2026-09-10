@@ -66,6 +66,21 @@ TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
 DEFAULT_CACHE = ".nanoframes-cache"
 
 
+def _add_scale(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "--scale", type=float, default=1.0, metavar="F",
+        help="draft render at F x the size (e.g. 0.5); faster, for previewing",
+    )
+
+
+def _scale_of(args: argparse.Namespace) -> float:
+    scale = getattr(args, "scale", 1.0)
+    if scale <= 0:
+        print(f"nanoframes: --scale must be positive, got {scale}", file=sys.stderr)
+        raise SystemExit(2)
+    return scale
+
+
 def _make_cache(args) -> FrameCache | None:
     return None if getattr(args, "no_cache", False) else FrameCache(DEFAULT_CACHE)
 
@@ -101,6 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, default=None, help="render only this time (seconds)")
     sp.add_argument("-o", "--out", default="out", help="output directory or file path")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
+    _add_scale(sp)
     sp.set_defaults(handler=cmd_render)
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
@@ -109,13 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.add_argument("--t", type=float, required=True, help="time in seconds to preview")
     sp.add_argument("--threads", type=int, default=4)
+    _add_scale(sp)
     sp.set_defaults(handler=cmd_preview)
 
     sp = sub.add_parser("video", help="render the whole clip to an MP4 via ffmpeg")
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.add_argument("-o", "--out", default="out.mp4", help="output MP4 path")
     sp.add_argument("--fps", type=int, default=None, help="override composition fps")
-    sp.add_argument("--scale", default=None, help="ffmpeg scale filter, e.g. 720:720")
+    _add_scale(sp)
     sp.add_argument("--threads", type=int, default=4)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
@@ -143,7 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("lottie", help="render a Lottie JSON scene to MP4 (ThorVG loader, offline)")
     sp.add_argument("file", help="path to a Lottie/Bodymovin .json scene")
     sp.add_argument("-o", "--out", default="out.mp4", help="output MP4 path")
-    sp.add_argument("--scale", default=None, help="ffmpeg scale filter, e.g. 720:720")
+    _add_scale(sp)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
     sp.add_argument("--threads", type=int, default=4)
@@ -323,10 +340,11 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     out_dir = args.out
     cache = _make_cache(args)
+    scale = _scale_of(args)
     if args.t is not None:
         # single frame -> write PNG to args.out (treat as file or dir/<name>_t.png)
         dst = _frame_dest(doc, args.out, args.t)
-        render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache)
+        render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache, scale=scale)
         print(f"rendered {dst}")
         return 0
 
@@ -337,7 +355,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     for i in range(comp.frame_count):
         t = i * step
         dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
-        render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache)
+        render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache, scale=scale)
     print(f"rendered {comp.frame_count} frames to {out_dir}/ ({prefix}.*.png)")
     return 0
 
@@ -345,7 +363,8 @@ def cmd_render(args: argparse.Namespace) -> int:
 def cmd_preview(args: argparse.Namespace) -> int:
     doc = _load(args.composition)
     dst = "/tmp/nanoframes_preview.png"
-    render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=_make_cache(args))
+    render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=_make_cache(args),
+                 scale=_scale_of(args))
     if sys.platform == "darwin":
         subprocess.run(["open", dst], check=True)
     elif sys.platform == "linux":
@@ -363,7 +382,7 @@ def cmd_video(args: argparse.Namespace) -> int:
         print("nanoframes: refusing to render a composition with lint errors "
               "(run `nanoframes check`)", file=sys.stderr)
         return 1
-    render_video(doc, args.out, fps=args.fps, scale=args.scale, threads=args.threads,
+    render_video(doc, args.out, fps=args.fps, scale=_scale_of(args), threads=args.threads,
                  keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio)
     print(f"wrote {args.out}")
     return 0
@@ -374,7 +393,7 @@ def cmd_lottie(args: argparse.Namespace) -> int:
     from nanoframes.lottie import LottieError, render_lottie_video
 
     try:
-        render_lottie_video(args.file, args.out, scale=args.scale, threads=args.threads,
+        render_lottie_video(args.file, args.out, scale=_scale_of(args), threads=args.threads,
                             keep_frames=args.keep_frames, audio=args.audio)
     except (LottieError, subprocess.CalledProcessError) as exc:
         print(f"nanoframes: {exc}", file=sys.stderr)

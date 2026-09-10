@@ -1,16 +1,21 @@
 """Lint the nanoframes composition contract.
 
 `lint` returns findings (errors/warnings) about a parsed composition: canvas
-metadata sanity, animation targets resolving, keyframe timing in range, and clip
-windows within the composition duration.
+metadata sanity, animation targets resolving, keyframe timing in range, clip
+windows within the composition duration, and referenced image assets existing.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from nanoframes.model import Composition
 from nanoframes.parse import Document, ParseError, parse_file, parse_string
+from nanoframes.xmlutil import local_name
+
+_IMAGE_REFS = ("href", "{http://www.w3.org/1999/xlink}href", "src")
+_NON_LOCAL = ("http:", "https:", "data:")
 
 
 @dataclass
@@ -70,11 +75,42 @@ def _check_clips(comp: Composition, findings: list[Finding]) -> None:
             )
 
 
+def _check_assets(doc: Document, findings: list[Finding]) -> None:
+    """Warn when an ``<image>`` points at a file that is not there.
+
+    ThorVG loads the SVG happily and simply draws nothing, so a moved asset
+    silently renders an empty layer in every frame. Only file-backed
+    compositions are checked: a string-parsed document has no directory to
+    resolve relative paths against.
+    """
+    if doc.base_dir is None:
+        return
+    seen: set[str] = set()
+    for node in doc.root.iter():
+        if local_name(node.tag) != "image":
+            continue
+        for attr in _IMAGE_REFS:
+            ref = node.get(attr)
+            if not ref or ref.startswith(_NON_LOCAL) or ref in seen:
+                continue
+            seen.add(ref)
+            path = ref if os.path.isabs(ref) else os.path.join(doc.base_dir, ref)
+            if not os.path.exists(os.path.normpath(path)):
+                findings.append(
+                    Finding(
+                        "warning",
+                        f"element {node.get('id') or '<image>'}: asset not found: {ref}"
+                        " (renders as an empty layer)",
+                    )
+                )
+
+
 def lint_document(doc: Document) -> list[Finding]:
     findings: list[Finding] = []
     _check_canvas(doc.composition, findings)
     _check_animations(doc.composition, findings)
     _check_clips(doc.composition, findings)
+    _check_assets(doc, findings)
     return findings
 
 

@@ -33,6 +33,13 @@ For any "make me a video / animated card / motion graphic" request:
    `nanoframes render <comp>.nf.svg -o out/`
    `nanoframes video <comp>.nf.svg -o out.mp4`
 
+**Draft before you commit.** For any composition longer than a few seconds,
+export once with `--scale 0.5` (or `0.25`) and watch the whole clip before
+paying for the full-quality render: the draft makes the canvas and every
+embedded `<image>` smaller, which is where the time actually goes. Draft
+output is for judging timing and composition, not for delivery — re-export at
+the default scale for the final file.
+
 Iterate: tweak the SVG/edit keyframes -> preview again -> render. Visual
 regressions are caught by `tests/snapshots/` (regenerate after intentional
 changes with `python3 -m nanoframes.scripts.snapshots`).
@@ -154,6 +161,7 @@ nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png
 nanoframes render <comp>.nf.svg -o out/        # full batch of frames
 nanoframes video  <comp>.nf.svg -o out.mp4     # ffmpeg MP4
+nanoframes video  <comp>.nf.svg -o out.mp4 --scale 0.5       # draft: half-size, ~4x faster
 nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
 nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
 nanoframes fonts list|add|verify|install          # CJK font toolbox

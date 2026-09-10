@@ -22,6 +22,14 @@ text-to-lottie deliverable format) to MP4 offline through ThorVG's native
 Lottie loader. The agent skill ships a motion/design craft reference library
 (`skills/nanoframes/references/`, adapted from text-to-lottie, MIT).
 
+`--scale F` renders a **draft** at a fraction of the composition size. The
+canvas *and* every embedded `<image>` shrink together — ThorVG re-resamples each
+image source on every frame, so on a board-heavy clip the assets, not the canvas,
+are what has to shrink for a draft to be fast. Measured on a 47.5s 1600x1200 clip
+over a 1560x991 board: 2m47s at full quality, 49s at `--scale 0.5`, 17s at `0.25`.
+Draft frames are for judging timing and composition; re-export at the default
+scale for delivery.
+
 ## Layout
 
 ```

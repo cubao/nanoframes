@@ -71,6 +71,34 @@ def test_check_fails_on_broken(tmp_path):
     assert "error" in out
 
 
+def test_check_warns_on_missing_image_asset(tmp_path):
+    """A missing asset renders an empty layer, so check must say so."""
+    comp = tmp_path / "c.nf.svg"
+    comp.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="100" '
+        'data-duration="1"><image id="board" href="board_export/board.png" '
+        'width="100" height="100"/></svg>'
+    )
+    code, out = run(["check", str(comp)])
+    assert code == 0  # a warning, not a refusal to render
+    assert "board_export/board.png" in out
+    assert "not found" in out
+
+
+def test_check_accepts_present_image_asset(tmp_path):
+    import shutil
+
+    comp = tmp_path / "c.nf.svg"
+    shutil.copy(os.path.join(EXAMPLES, "assets", "dot.png"), tmp_path / "dot.png")
+    comp.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="100" '
+        'data-duration="1"><image id="dot" href="dot.png" width="100" height="100"/></svg>'
+    )
+    code, out = run(["check", str(comp)])
+    assert code == 0
+    assert "not found" not in out
+
+
 def test_render_single_frame(tmp_path):
     dst = str(tmp_path / "frame.png")
     code, out = run(["render", TITLE, "--t", "2.0", "-o", dst])

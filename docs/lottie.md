@@ -9,7 +9,7 @@ same engine and the same ffmpeg mux as `.nf.svg` compositions.
 nanoframes lottie scene.json -o out.mp4
 nanoframes lottie scene.json -o out.mp4 --keep-frames frames/   # keep the PNGs
 nanoframes lottie scene.json -o out.mp4 --audio track.mp3       # mux audio (aac)
-nanoframes lottie scene.json -o out.mp4 --scale 720:720         # ffmpeg -vf scale
+nanoframes lottie scene.json -o out.mp4 --scale 0.5             # draft at half size
 ```
 
 Library API (`nanoframes.lottie`): `load_scene(path)` validates a scene,
@@ -27,7 +27,7 @@ works, subject to ThorVG's loader coverage.
 
 ## Rendering contract
 
-- **Canvas**: the scene's own `w`/`h`.
+- **Canvas**: the scene's own `w`/`h`, times `--scale` for a draft render.
 - **Timing**: fps = scene `fr` (fallback 30); frame count = the loader's
   total (`op - ip`); every integer frame `[0, total)` is rasterized once.
 - **Determinism**: same file + same library = byte-identical frames and MP4

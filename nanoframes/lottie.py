@@ -9,7 +9,7 @@ humans, this path turns the same JSON into a deterministic MP4 offline.
 
 Rendering model
 ---------------
-- Canvas size comes from the scene's own ``w``/``h``.
+- Canvas size comes from the scene's own ``w``/``h`` (times ``--scale``).
 - Frame rate and length come from the scene: ``fr`` (fps) and the loader's
   total frame count (``op - ip``).
 - Frames are drawn with ThorVG's native Lottie loader via
@@ -43,6 +43,7 @@ import tempfile
 
 import thorvg_python as tvg
 
+from nanoframes.scale import draft_size
 from nanoframes.video import mux_frames_to_mp4
 
 
@@ -88,24 +89,27 @@ def render_lottie_frames(
     frame_dir: str,
     prefix: str = "frame",
     threads: int = 1,
+    scale: float = 1.0,
 ) -> tuple[int, int, int]:
     """Render every frame of ``path`` into ``<frame_dir>/<prefix>.NNNNN.png``.
 
+    ``scale`` rasterizes at that fraction of the scene's own size (a draft).
     Returns ``(fps, frame_count, duration_frames)``. Deterministic: the same
     input yields byte-identical PNGs (same engine, same loader, same order).
     """
     scene = load_scene(path)
     os.makedirs(frame_dir, exist_ok=True)
+    width, height = draft_size(scene["width"], scene["height"], scale)
 
     engine = tvg.Engine(threads=threads)
     canvas = tvg.SwCanvas(engine)
     try:
-        canvas.set_target(scene["width"], scene["height"])
+        canvas.set_target(width, height)
         anim = tvg.LottieAnimation(engine)
         pic = anim.get_picture()
         if int(pic.load(path)) != 0:
             raise LottieError(f"{path}: ThorVG could not load the scene")
-        pic.set_size(scene["width"], scene["height"])
+        pic.set_size(width, height)
         canvas.add(pic)
 
         total = int(anim.get_total_frame()[1])
@@ -127,13 +131,14 @@ def render_lottie_frames(
 def render_lottie_video(
     path: str,
     out_path: str,
-    scale: str | None = None,
+    scale: float = 1.0,
     threads: int = 4,
     keep_frames: str | None = None,
     audio: str | None = None,
 ) -> str:
     """Render ``path`` to a deterministic MP4 at ``out_path``.
 
+    ``scale`` rasterizes a draft at that fraction of the scene size.
     ``keep_frames`` leaves the PNG sequence in that directory (otherwise a
     temp dir is cleaned up). Returns ``out_path``.
     """
@@ -157,8 +162,9 @@ def render_lottie_video(
             cleanup = True
         try:
             prefix = scene["json"].get("nm") or "lottie"
-            fps, _, _ = render_lottie_frames(path, frame_dir, prefix=prefix, threads=threads)
-            return mux_frames_to_mp4(frame_dir, prefix, fps, out_path, scale=scale, audio=audio)
+            fps, _, _ = render_lottie_frames(path, frame_dir, prefix=prefix, threads=threads,
+                                             scale=scale)
+            return mux_frames_to_mp4(frame_dir, prefix, fps, out_path, audio=audio)
         finally:
             if cleanup:
                 shutil.rmtree(frame_dir, ignore_errors=True)

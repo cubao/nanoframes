@@ -83,6 +83,22 @@ deterministic, inspectable motion.
 - Energy is per-frame and isolated, so batch rendering stays deterministic and trivially
   parallelizable later.
 
+### Draft rendering (`--scale`)
+
+Per-frame cost is dominated by what a frame *contains*, not by how large it is drawn: ThorVG
+resamples every `<image>` source into its destination rect on every frame, so a 1560x991 board
+costs the same on a 1600x1200 canvas as on a 400x300 one. Shrinking only the canvas therefore
+buys ~10%; the resolution knob has to reach the assets to be worth having.
+
+`nanoframes.scale` does both. `draft_size` sizes the canvas (rounded to even pixels, since
+`yuv420p` rejects odd dimensions) and `prescale_images` rewrites each distinct `<image>` source
+once, before the frame loop, to a disk-cached copy at that scale. ThorVG then resamples from a
+small source, and per-frame cost scales the way you would expect. The authored path is recorded
+in `data-src`, so a later pass at a different scale resizes the original rather than a copy.
+
+Draft output is for judging timing and composition — it is not a pixel-exact downscale of the
+full-quality frame, so deliver at the default scale.
+
 ## Scope decisions (what we drop from hyperframes)
 
 | Hyperframes scope              | nanoframes |
