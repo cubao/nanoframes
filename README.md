@@ -40,5 +40,6 @@ tests/            unit + render + snapshot + CLI tests
 - [Lottie import](docs/lottie.md) — render Lottie JSON scenes to MP4 (`nanoframes lottie`).
 
 `docs/` and `skills/` also ship inside the pip wheel (`nanoframes/docs`,
-`nanoframes/skills`); running `nanoframes` with no arguments prints where the
-docs and the agent skill live — repo checkout or installed package alike.
+`nanoframes/skills`); running `nanoframes` with no arguments — or
+`nanoframes --help` — prints where the docs and the agent skill live, repo
+checkout or installed package alike.

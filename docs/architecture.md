@@ -125,4 +125,4 @@ MP4 export, and an agent-facing skill.
   ui-microinteractions, diagram/technical, visual-effects).
 
 `docs/` and `skills/` ship inside the pip wheel as `nanoframes/docs` and
-`nanoframes/skills`; `nanoframes` (no args) prints their installed locations.
+`nanoframes/skills`; `nanoframes` (no args, or `--help`) prints their installed locations.

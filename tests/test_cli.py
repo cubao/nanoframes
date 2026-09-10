@@ -28,6 +28,25 @@ def test_no_args_prints_docs_skill_guide():
     assert "SKILL.md" in out
 
 
+def test_help_prints_docs_skill_guide():
+    """Agents reach for --help first; it must carry the docs/skill pointer too."""
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        with pytest.raises(SystemExit) as excinfo:
+            main(["--help"])
+    assert excinfo.value.code == 0
+    out = buf.getvalue()
+    # the pointer block, same as the bare invocation
+    assert "composition.md" in out
+    assert "lottie.md" in out
+    assert "SKILL.md" in out
+    # ... alongside the command list
+    assert "init" in out and "lottie" in out and "render" in out
+
+
 def test_init_creates_composition(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     code, _ = run(["init", "hello"])

@@ -162,7 +162,7 @@ nanoframes walkthrough                  # regenerate the one-take tour (build/)
 ```
 
 `nanoframes` with no arguments prints where the docs and this skill live
-(also available via `python -m nanoframes`). Full contract:
+(`nanoframes --help` prints the same pointers — also available via `python -m nanoframes`). Full contract:
 [composition.md](../../docs/composition.md). Engine/toolchain:
 [architecture.md](../../docs/architecture.md). Text story & caveats:
 [text-capabilities.md](../../docs/text-capabilities.md).

@@ -71,9 +71,18 @@ def _make_cache(args) -> FrameCache | None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    # The docs/skill pointer must ride on --help as well: agents reach for
+    # `nanoframes --help` first, and a bare command list drops them into a
+    # subcommand without ever showing where the contract lives.
+    epilog = "\n".join([
+        "Docs and the agent skill ship with the package; read them before composing:",
+        *_resource_lines(),
+    ])
     p = argparse.ArgumentParser(
         prog="nanoframes",
         description="SVG-first, browserless, deterministic frame rendering on ThorVG.",
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", action="version", version=f"nanoframes {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
@@ -405,6 +414,21 @@ def _resource_dirs() -> tuple[str, str] | None:
     return None
 
 
+def _resource_lines() -> list[str]:
+    """The docs/skill pointer block, shared by the bare guide and the --help epilog."""
+    found = _resource_dirs()
+    if not found:
+        return ["  (docs/skills not found next to this install)"]
+    docs, skills = found
+    return [
+        f"  composition contract ... {os.path.join(docs, 'composition.md')}",
+        f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
+        f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
+        f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
+        f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
+    ]
+
+
 def guide_text() -> str:
     """Point users (agents) at the docs and agent skill shipped with the package."""
     lines = [
@@ -412,20 +436,8 @@ def guide_text() -> str:
         "Docs and the agent skill ship with the package; read them before composing:",
         "",
     ]
-    found = _resource_dirs()
-    if found:
-        docs, skills = found
-        lines += [
-            f"  composition contract ... {os.path.join(docs, 'composition.md')}",
-            f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
-            f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
-            f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
-            f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
-            "",
-        ]
-    else:
-        lines += ["  (docs/skills not found next to this install)", ""]
-    lines += ["Usage: nanoframes <command> ...    (nanoframes --help for the command list)"]
+    lines += _resource_lines()
+    lines += ["", "Usage: nanoframes <command> ...    (nanoframes --help for the command list)"]
     return "\n".join(lines)
 
 
