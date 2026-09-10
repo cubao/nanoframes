@@ -15,6 +15,7 @@ same way with the same fonts, so metrics and final frames cannot drift.
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 
 from nanoframes import bake
@@ -88,8 +89,12 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4,
 _MEASURER = None
 
 
-def _measurer():
-    """A process-wide renderer-exact Measurer (lazily created, reused across frames)."""
+def measurer():
+    """A process-wide renderer-exact Measurer (lazily created, reused everywhere).
+
+    Shared with lint and `nanoframes debug` so a composition's text is measured
+    once per distinct string across checking, diagnosing and rendering.
+    """
     global _MEASURER
     if _MEASURER is None:
         from nanoframes.measure import Measurer
@@ -97,9 +102,34 @@ def _measurer():
     return _MEASURER
 
 
+def frame_is_blank(img) -> bool:
+    """True when a rendered frame has no opaque pixel at all."""
+    if img.mode not in ("RGBA", "LA"):
+        return False
+    return img.getchannel("A").getextrema()[1] == 0
+
+
+def blank_frame_warning(img, t: float) -> str | None:
+    """Print (and return) a one-line diagnosis for a frame that drew nothing.
+
+    A fully transparent frame is the failure mode with no other symptom: no
+    error, no exception, a valid PNG. The usual causes are every element being
+    outside its clip window at this time, or geometry that lands off-canvas —
+    both of which ``nanoframes debug`` answers element by element.
+    """
+    if not frame_is_blank(img):
+        return None
+    message = (f"nanoframes: frame t={t:g} rendered fully transparent (no pixel drawn)."
+               f" Likely: every element is outside its data-start/data-duration window here,"
+               f" or its geometry leaves the canvas — run `nanoframes debug <comp> --t {t:g}`.")
+    print(message, file=sys.stderr)
+    return message
+
+
 def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4,
                  cache: "FrameCache | None" = None,
-                 text_handler=None, scale: float = 1.0) -> "object":
+                 text_handler=None, scale: float = 1.0,
+                 warn_blank: bool = True) -> "object":
     """Render one frame of a composition at time ``t``.
 
     Returns a Pillow Image; if ``out_path`` is given the PNG is also saved. When
@@ -115,6 +145,9 @@ def render_frame(doc: Document, t: float, out_path: str | None = None, threads: 
     shrink together. The composition is not modified on disk — the in-memory
     tree's image sources are swapped, and restored on the next ``scale >= 1``
     render of the same ``doc``.
+
+    ``warn_blank`` prints a stderr diagnosis for a fully transparent frame;
+    batch and video renders turn it off and report the count once instead.
     """
     if text_handler is not None:
         cache = None
@@ -127,8 +160,10 @@ def render_frame(doc: Document, t: float, out_path: str | None = None, threads: 
                 hit.save(out_path)
             return hit
     prescale_images(doc, scale)
-    svg = bake.bake_svg(doc, t, measurer=_measurer(), text_handler=text_handler)
+    svg = bake.bake_svg(doc, t, measurer=measurer(), text_handler=text_handler)
     img = render_svg(svg, width, height, threads=threads)
+    if warn_blank:
+        blank_frame_warning(img, t)
     if cache is not None:
         cache.put(doc.identity, t, img)
     if out_path:

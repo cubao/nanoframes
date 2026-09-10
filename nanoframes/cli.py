@@ -4,6 +4,7 @@ Commands
 --------
   init        <name>            scaffold a new `.nf.svg` composition
   check       <comp>            lint the composition contract (exit 1 on errors)
+  debug       <comp>            where each element's geometry lands, frame by frame
   render      <comp>            render: single frame `--t SEC`, or full batch
   preview     <comp>            render one frame and open it (needs `--t`)
   video       <comp>            render the whole clip to an MP4 via ffmpeg
@@ -24,7 +25,7 @@ from nanoframes import __version__
 from nanoframes.cache import FrameCache
 from nanoframes.lint import has_errors, lint_path
 from nanoframes.parse import ParseError, parse_file
-from nanoframes.render import render_frame
+from nanoframes.render import frame_is_blank, measurer, render_frame
 from nanoframes.video import render_video
 from nanoframes import walkthrough
 
@@ -110,6 +111,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("check", help="lint the composition contract")
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.set_defaults(handler=cmd_check)
+
+    sp = sub.add_parser("debug", help="show where each element's geometry lands")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("--t", type=float, default=0.0, help="frame to report (seconds)")
+    sp.add_argument("--samples", type=int, default=24, help="frames sampled by the clip scan")
+    sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
+    sp.add_argument("--loop", action="store_true",
+                    help="also compare the first and last frame (loop seam)")
+    sp.set_defaults(handler=cmd_debug)
 
     sp = sub.add_parser("render", help="render a frame or the full clip to PNG")
     sp.add_argument("composition", help="path to a .nf.svg composition")
@@ -319,13 +329,61 @@ def cmd_fonts_install(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    """Lint the contract (geometry checks measure text, so ThorVG may load)."""
     findings = lint_path(args.composition)
     for f in findings:
         print(str(f))
-    if has_errors(findings):
-        print(f"nanoframes: {sum(1 for f in findings if f.severity == 'error')} error(s)")
+    errors = sum(1 for f in findings if f.severity == "error")
+    if errors:
+        print(f"nanoframes: {errors} error(s)")
         return 1
     print(f"nanoframes: ok ({len(findings)} finding(s), 0 errors)")
+    return 0
+
+
+def cmd_debug(args: argparse.Namespace) -> int:
+    """Report where each element's geometry lands, frame by frame."""
+    from nanoframes import diagnose
+
+    doc = _load(args.composition)
+    m = measurer()
+    report = diagnose.frame_report(doc, args.t, measurer=m)
+    print(f"frame {report.frame_index}  t={report.t:g}s  canvas {report.width}x{report.height}")
+    if report.coverage is not None:
+        print(f"  alpha coverage: {report.coverage * 100:.1f}% of the canvas")
+    if not report.elements:
+        print("  (no renderable elements)")
+    for el in report.elements:
+        print(f"  {'  ' * el.depth}{el.label:<16}{el.status_line()}")
+    for blank in report.blanks:
+        print(f"  ^ {blank.label} paints nothing at this time: its geometry misses the canvas"
+              f" — an animated translate that leaves the frame, or a rotate with no pivot"
+              f" (`nanoframes check` names those)")
+
+    if not args.no_scan:
+        scan = diagnose.scan_clip(doc, measurer=m, samples=max(2, args.samples))
+        print(f"clip scan: {scan.sampled} of {scan.frame_count} frames sampled")
+        for entry in scan.reported():
+            counts = (f"painted in {entry.painted_frames}/{scan.sampled} sampled frames,"
+                      f" on-canvas in {entry.on_canvas_frames}/{scan.sampled}")
+            flag = ""
+            if entry.never_visible:
+                flag = "  <-- draws nothing in any sampled frame"
+            elif entry.first_off_at is not None:
+                flag = f"  (first off-canvas at t={entry.first_off_at:g})"
+            print(f"  {entry.label:<16}{counts}{flag}")
+        if not scan.never_visible and not any(e.first_off_at is not None for e in scan.elements):
+            print("  every element lands on the canvas throughout")
+
+    if args.loop:
+        seam = diagnose.loop_seam(doc)
+        verdict = "closed (identical)" if seam.closed else "OPEN"
+        print(f"loop seam: frame 0 (t={seam.first_t:g}) vs last frame (t={seam.last_t:g}):"
+              f" {seam.differing_fraction * 100:.2f}% of pixels differ,"
+              f" max channel delta {seam.max_channel_delta} — {verdict}")
+        if not seam.closed:
+            print("  a seamless loop closes at t = duration - 1/fps; the motion has to"
+                  " finish by then and hold (see docs/composition.md)")
     return 0
 
 
@@ -352,12 +410,27 @@ def cmd_render(args: argparse.Namespace) -> int:
     os.makedirs(out_dir, exist_ok=True)
     prefix = comp.composition_id or os.path.splitext(os.path.basename(args.composition))[0]
     step = 1.0 / comp.fps
+    blank = []
     for i in range(comp.frame_count):
         t = i * step
         dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
-        render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache, scale=scale)
+        img = render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache,
+                           scale=scale, warn_blank=False)
+        if frame_is_blank(img):
+            blank.append(t)
     print(f"rendered {comp.frame_count} frames to {out_dir}/ ({prefix}.*.png)")
+    _report_blank_frames(blank, comp.frame_count, args.composition)
     return 0
+
+
+def _report_blank_frames(blank: list[float], total: int, composition: str) -> None:
+    """One summary line for frames that came out fully transparent."""
+    if not blank:
+        return
+    shown = ", ".join(f"{t:g}" for t in blank[:6]) + ("…" if len(blank) > 6 else "")
+    print(f"nanoframes: {len(blank)} of {total} frames rendered fully transparent"
+          f" (t={shown}s) — every element is hidden or off-canvas there;"
+          f" run `nanoframes debug {composition} --t {blank[0]:g}`.", file=sys.stderr)
 
 
 def cmd_preview(args: argparse.Namespace) -> int:

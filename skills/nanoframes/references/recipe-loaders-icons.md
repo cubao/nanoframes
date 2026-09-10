@@ -55,10 +55,13 @@ badges, empty-state nudges, progress indicators.
   the design calls for round caps — verify ThorVG renders it as expected.
 - Phase offsets: same timeline shape, `data-start` shifted by the phase
   duration, same period.
-- Seamless check: render frame `0` and frame `data-duration - 1/fps`; they
-  must be identical (or the intended loop overlap).
-- Keep animated icons inside the canvas with margin — rotation of a
-  square-ish icon whose corners leave the canvas paints black bands.
+- Seamless check: finish the cycle by `data-duration - 1/fps` (the last
+  rendered frame); frame `0` and that frame must match. `nanoframes debug
+  <comp> --loop` diffs them for you.
+- Keep animated icons on-canvas with margin — geometry past the edge is
+  clipped, which silently eats a rotating icon's corners; and give a spinner a
+  self-centered pivot (`{"deg": deg, "center": "auto"}`) or it orbits the
+  canvas origin instead of spinning where it sits.
 - Mono digits (`Sarasa Mono SC`) for any counter/percent so nothing jitters.
 
 ## Failure modes & acceptance

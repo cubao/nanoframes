@@ -62,6 +62,94 @@ colors interpolate RGB; anything non-interpolable holds the earlier keyframe.
 Bake emits `transform="translate(x,y) rotate(d) scale(sx,sy)"` (translate ·
 rotate · scale order).
 
+#### `rotate` and its pivot
+
+`rotate(deg)` is SVG's own shorthand for rotating around **`(0,0)`** — the
+canvas origin, not the element. A long element authored at `(480, 300)` swept
+by a bare `rotate(90)` lands near `(-300, -480)`, i.e. off-canvas, where it
+draws nothing. Three forms are accepted:
+
+| form | pivots on |
+|---|---|
+| `"rotate": deg` | the origin `(0,0)` — only for geometry authored around it |
+| `"rotate": [deg, cx, cy]` | an explicit point |
+| `"rotate": {"deg": deg, "center": "auto"}` | the element's own geometry box center |
+
+```json
+{ "t": 0.0, "transform": { "translate": [480, 360], "rotate": {"deg": 0, "center": "auto"} } }
+```
+
+`"center": "auto"` resolves per element at bake time to the center of the
+element's own geometry (a group's children included), so it is the form to
+reach for when you mean "spin this thing where it is". It bakes to
+`translate(cx,cy) rotate(d) translate(-cx,-cy)`. Keep the *same* rotate form
+across an animation's keyframes: the interpolator only blends matching shapes
+(a number cannot interpolate into a pivot list, so it holds the earlier value).
+`nanoframes check` warns about both mistakes — a pivotless rotate that would
+swing the element away, and mixed forms across keyframes.
+
+#### Animated transforms layer inside the element's own
+
+A keyframe `transform` is *motion*, not a replacement: bake emits
+`transform="<the element's own> <animated>"`, so a positioned element keeps its
+position while it animates.
+
+```svg
+<g id="crank" transform="translate(480 360)">   <!-- static position -->
+  <line .../>                                   <!-- animated rotate spins here -->
+</g>
+```
+
+That is exactly equivalent to nesting a wrapper group
+(`<g transform="translate(480 360)"><g id="crank">…`), so the single-layer
+form is safe to use. Only `opacity`, `transform`, `fill` and `stroke` are
+overwritten by the timeline; every other attribute stays as authored.
+
+## Geometry and the canvas
+
+The baked frame pins its viewport to the composition's canvas
+(`viewBox="0 0 data-width data-height"`), so **the canvas is exactly what the
+composition declares**: geometry that leaves it is clipped at the edge and
+nothing else changes. Declaring your own `viewBox` on the root `<svg>` is kept
+as authored, which is the escape hatch for rendering a larger coordinate system
+into the canvas.
+
+Clipping is not an error, but two geometry mistakes render as *nothing at all*
+with no other symptom, and `nanoframes check` warns about both:
+
+- **geometry that never lands on the canvas** in any frame (an element
+  translated out, or a pivot that throws it away);
+- **a pivotless `rotate`** whose pivot sits far from the element (see above).
+
+`nanoframes debug <comp>` reports where each element's box actually lands per
+frame, and flags the ones that paint nothing; it also compares a loop's seam
+frames.
+
+## Seamless loops
+
+`frame_count = round(duration × fps)` and rendering walks `t = i/fps` for
+`i` in `0 … frame_count-1`. **The clip's last frame is therefore
+`T' = duration - 1/fps`, not `duration`** — one frame short. A player looping
+the file plays last frame → frame 0, so *that* pair is the seam:
+
+- finish the motion by `T' = duration - 1/fps`, and hold it to the end;
+- make frame 0 and frame `T'` identical in position, opacity and color — which
+  means a full-cycle animation reaches its starting state exactly at `T'`, not
+  at `duration`;
+- verify with `nanoframes debug <comp> --loop`, which renders both seam frames
+  and reports the fraction of pixels that differ.
+
+```json
+{ "animations": [{ "target": "#orbit", "keyframes": [
+  { "t": 0.0,   "transform": { "rotate": 0   } },
+  { "t": 1.9667, "transform": { "rotate": 360 } },   // T' for duration=2.0, fps=30
+  { "t": 2.0,   "transform": { "rotate": 360 } }     // hold the seam state
+] }] }
+```
+
+A keyframe placed at `duration` alone is one frame too late: the last rendered
+frame still sits just before the end state, so the loop jumps.
+
 ## Media
 
 - **Raster images**: `<image href="assets/foo.png" />` (relative paths are
@@ -79,14 +167,14 @@ SVG meaning but only within that subset.
 
 ### Known ThorVG behaviors
 
-- **Keep transformed elements on-canvas.** An element whose transformed extent
-  leaves the canvas (especially rotated, partially off-screen) is clipped
-  coarsely: ThorVG paints **black** over the off-screen extent. Animate within
-  the frame (fade/scale/grow in place, translate inside bounds) rather than
-  sliding in from outside the canvas.
 - **Text needs a loaded font.** ThorVG only rasterizes `<text>` after a font is
   registered (`Text.font_load`, done automatically per engine). Renders are
   therefore limited to fonts present on the host unless you supply one.
+- **A frame that draws nothing is a valid PNG.** If every element is outside
+  its clip window at a time, or its geometry is off-canvas, the frame comes out
+  fully transparent — no error, no exception. Rendering prints a warning to
+  stderr when that happens; run `nanoframes debug` to see which element is to
+  blame.
 
 ## Text auto-layout (`data-*` on `<text>`)
 
@@ -145,6 +233,8 @@ labels (each Han char = `font-size` px wide). Query it with
 ```bash
 nanoframes init my-video            # scaffold a .nf.svg
 nanoframes check my-video.nf.svg    # lint (exit 1 on errors)
+nanoframes debug my-video.nf.svg --t 2.0        # where each element lands, frame by frame
+nanoframes debug my-video.nf.svg --loop         # + compare the loop's seam frames
 nanoframes measure my-video.nf.svg  # report renderer-exact text widths
 nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
 nanoframes preview my-video.nf.svg --t 2.0         # render + open

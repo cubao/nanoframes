@@ -585,6 +585,7 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append("|---|---|")
     md.append("| `nanoframes init <name>` | scaffold a `.nf.svg` |")
     md.append("| `nanoframes check <comp>` | lint the contract (exit 1 on errors) |")
+    md.append("| `nanoframes debug <comp> --t <sec>` | where each element's geometry lands per frame (and `--loop` diffs the seam) |")
     md.append("| `nanoframes preview <comp> --t <sec>` | render one frame and open it |")
     md.append("| `nanoframes render <comp> --t <sec>` | render a single frame to PNG |")
     md.append("| `nanoframes render <comp> -o dir` | render the full clip |")

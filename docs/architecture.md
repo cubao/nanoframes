@@ -78,10 +78,24 @@ deterministic, inspectable motion.
 ## Rendering (thorvg-python)
 
 - `bake(t)` writes a temp standalone SVG (strips the `<script>`, applies the computed attrs).
+  The baked root carries `viewBox="0 0 W H"` (unless the author declared one): ThorVG otherwise
+  infers a picture's size from its content bounding box, so a single element outside the canvas
+  rescales — or blanks — the whole frame. Pinning the viewport makes off-canvas geometry exactly
+  what it should be: clipped.
 - a renderer creates `thorvg_python.Engine` + `SwCanvas`, sets the target size, loads the SVG as
   a `Picture`, `add → update → draw → sync`, and reads a Pillow image via `get_pillow()`.
 - Energy is per-frame and isolated, so batch rendering stays deterministic and trivially
   parallelizable later.
+
+### Geometry: bounds, lint, debug
+
+A frame's visual failures are geometric before they are visual, so `nanoframes.bounds` answers
+them with arithmetic instead of rasterization: shape geometry → affine transform chain →
+axis-aligned box. `lint` samples the timeline and warns when an element never lands on the canvas
+or a pivotless `rotate` would swing it away; `nanoframes debug` (`nanoframes.diagnose`) prints
+each element's box, how many frames it is actually visible in, and the pixel diff across a loop's
+seam. Text boxes come from the same renderer-exact `Measurer` the layout passes use, so a
+reported box is the box that gets drawn.
 
 ### Draft rendering (`--scale`)
 

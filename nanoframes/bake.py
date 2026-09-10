@@ -44,7 +44,39 @@ def _node_element(node: ET.Element, comp: Composition) -> Element:
     )
 
 
-def _transform_string(tf: object) -> str | None:
+def _rotate_string(r: object, auto_center=None) -> str:
+    """One ``rotate`` from the timeline: bare degrees, [deg,cx,cy], or {"deg", "center"}."""
+    if isinstance(r, dict):
+        try:
+            deg = float(r["deg"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"rotate needs a numeric 'deg', got {r!r}") from None
+        center = r.get("center", "auto")
+        if isinstance(center, str):
+            if center != "auto":
+                raise ValueError(f"rotate 'center' must be \"auto\" or [cx,cy], got {center!r}")
+            resolved = auto_center() if auto_center is not None else None
+            if resolved is None:  # geometry unknown -> SVG's own default pivot
+                return f"rotate({deg:g})"
+            cx, cy = resolved
+        else:
+            if len(center) != 2:
+                raise ValueError(f"rotate 'center' must be \"auto\" or [cx,cy], got {center!r}")
+            cx, cy = float(center[0]), float(center[1])
+        if (cx, cy) == (0.0, 0.0):
+            return f"rotate({deg:g})"
+        return f"translate({cx:g},{cy:g}) rotate({deg:g}) translate({-cx:g},{-cy:g})"
+    if isinstance(r, (list, tuple)) and len(r) >= 3:
+        return f"rotate({r[0]:g} {r[1]:g} {r[2]:g})"
+    return f"rotate({float(r):g})"
+
+
+def transform_string(tf: object, auto_center=None) -> str | None:
+    """Serialize a timeline ``transform`` value to an SVG transform string.
+
+    Order is translate -> rotate -> scale. ``auto_center`` (a callable returning
+    ``(cx, cy)`` or None) resolves ``{"rotate": {"center": "auto"}}``.
+    """
     if not isinstance(tf, dict):
         return str(tf) if tf else None
     parts: list[str] = []
@@ -52,22 +84,74 @@ def _transform_string(tf: object) -> str | None:
         t = tf["translate"]
         parts.append(f"translate({t[0]:g},{t[1]:g})")
     if "rotate" in tf:
-        # SVG rotates around (0,0); a rotate pivot can be given as [deg,cx,cy]
-        r = tf["rotate"]
-        if isinstance(r, (list, tuple)) and len(r) >= 3:
-            parts.append(f"rotate({r[0]:g} {r[1]:g} {r[2]:g})")
-        else:
-            parts.append(f"rotate({float(r):g})")
+        parts.append(_rotate_string(tf["rotate"], auto_center))
     if "scale" in tf:
         s = tf["scale"]
         parts.append(f"scale({s[0]:g},{s[1]:g})")
     return " ".join(parts) if parts else None
 
 
-def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
-             text_handler=None) -> str:
+def compose_transforms(static: str | None, animated: str | None) -> str | None:
+    """Layer an animated transform inside the element's own static transform.
+
+    A keyframed ``transform`` describes motion *in addition to* where the
+    author put the element, so the static transform stays outermost: the result
+    is ``static ∘ animated`` (SVG list order), exactly what nesting a wrapper
+    group would have produced.
+    """
+    if not animated:
+        return static or None
+    return f"{static} {animated}" if static else animated
+
+
+def element_transform(node: ET.Element, animated: object,
+                      measurer: "Measurer | None" = None) -> str | None:
+    """The ``transform`` a baked node carries for this frame's animated value."""
+    def auto_center():
+        from nanoframes.bounds import local_bounds
+
+        box = local_bounds(node, measurer).box
+        return box.center if box is not None else None
+
+    resolver = auto_center if _wants_auto_center(animated) else None
+    return compose_transforms(node.get("transform"), transform_string(animated, resolver))
+
+
+def _wants_auto_center(tf: object) -> bool:
+    if not isinstance(tf, dict):
+        return False
+    rotate = tf.get("rotate")
+    return isinstance(rotate, dict) and rotate.get("center", "auto") == "auto"
+
+
+def pin_viewport(root: ET.Element, width: float, height: float) -> None:
+    """Give a baked frame an explicit canvas viewport.
+
+    ThorVG sizes a picture with no ``width``/``height``/``viewBox`` from its
+    **content bounding box**. Any element the author lets leave the canvas then
+    enlarges that box, the loader scales the whole drawing down to fit it, and
+    the frame silently comes out shifted, shrunk, or (when the excursion is
+    large) entirely empty. Pinning the viewport to the composition's canvas
+    makes off-canvas geometry what it should be: clipped, nothing more.
+
+    An author-declared ``viewBox`` is kept, so a composition that deliberately
+    renders a larger coordinate system into the canvas still does.
+    """
+    if root.get("viewBox") is None:
+        root.set("viewBox", f"0 0 {width:g} {height:g}")
+    if root.get("width") is None:
+        root.set("width", f"{width:g}")
+    if root.get("height") is None:
+        root.set("height", f"{height:g}")
+
+
+def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
+              text_handler=None) -> ET.Element:
+    """The per-frame XML tree: every element's visibility, opacity, transform,
+    color and text layout materialized for time ``t``, timeline stripped."""
     comp = doc.composition
     root = copy.deepcopy(doc.root)
+    pin_viewport(root, comp.width, comp.height)
 
     # Rebuild the per-selector animation values and a selector->node index.
     targeted = evaluate(comp, t)
@@ -99,7 +183,7 @@ def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
         opacity = props["opacity"]
         if opacity < 1.0:
             node.set("opacity", f"{opacity:.4f}")
-        tf = _transform_string(props["transform"])
+        tf = element_transform(node, props["transform"], measurer)
         if tf:
             node.set("transform", tf)
         if tag in _FILL_STROKE_TAGS:
@@ -134,7 +218,14 @@ def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
         from nanoframes.textflow import apply_text_autoflow
         apply_text_autoflow(root, measurer)
 
-    return ET.tostring(root, encoding="unicode")
+    return root
+
+
+def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
+             text_handler=None) -> str:
+    """``bake_tree`` serialized as a standalone SVG document string."""
+    return ET.tostring(bake_tree(doc, t, measurer=measurer, text_handler=text_handler),
+                       encoding="unicode")
 
 
 def _dereference_images(root: ET.Element, base_dir: str) -> None:

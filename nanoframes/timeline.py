@@ -161,3 +161,39 @@ def effective_opacity(element: Element, t: float) -> tuple[bool, float]:
     if element.fade_out > 0:
         opacity = min(opacity, (end - t) / element.fade_out)
     return True, max(0.0, opacity)
+
+
+def last_frame_time(comp: Composition, fps: int | None = None) -> float:
+    """The time of the clip's *last* rendered frame.
+
+    Rendering walks ``t = i / fps`` for ``i in 0..frame_count-1``, so the last
+    frame sits at ``duration - 1/fps`` — one frame short of the duration. A
+    seamless loop therefore has to close at this time, not at ``duration``:
+    whatever the motion looks like here is what plays next to frame 0.
+    """
+    rate = fps or comp.fps
+    if rate <= 0:
+        return max(0.0, comp.duration)
+    return max(0.0, comp.duration - 1.0 / rate)
+
+
+def sample_times(comp: Composition, cap: int = 24) -> list[float]:
+    """Times worth inspecting: both ends, every keyframe, and what lies between.
+
+    Sampled evenly down to ``cap`` entries when a composition has more distinct
+    beats than that; the traps worth finding (geometry that never lands on the
+    canvas, a pivot that throws it away) persist across frames, so even
+    sampling still finds them.
+    """
+    if comp.duration <= 0:
+        return [0.0]
+    times = {0.0, last_frame_time(comp), comp.duration}
+    for anim in comp.animations:
+        times.update(min(max(kf.t, 0.0), comp.duration) for kf in anim.keyframes)
+    ordered = sorted(times)
+    midpoints = [(a + b) / 2.0 for a, b in zip(ordered, ordered[1:]) if b > a]
+    ordered = sorted(set(ordered + midpoints))
+    if cap > 1 and len(ordered) > cap:
+        stride = (len(ordered) - 1) / (cap - 1)
+        ordered = [ordered[round(i * stride)] for i in range(cap)]
+    return ordered

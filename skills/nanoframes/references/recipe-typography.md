@@ -18,7 +18,8 @@ entrances, CJK headlines. Route here for any prompt whose main deliverable is
 - A title card is full-frame with a background; overlays/captions keep the
   background transparent unless asked.
 - Text must stay fully readable in every animated frame — no clipping at the
-  canvas edge (black-band rule), no overlap between stacked lines mid-motion.
+  canvas edge, no overlap between stacked lines mid-motion (an element that
+  only *ever* sits off-canvas is flagged by `nanoframes check`).
 
 ## Roles (before keyframing)
 
@@ -75,8 +76,9 @@ Meaning-driven word motion (semantic rule): *fall* drops, *rise* lifts,
 
 ## Failure modes & acceptance
 
-- **Unsafe-edge text** — words clipped by canvas or ThorVG black bands → all
-  text fully inside bounds at every checked frame.
+- **Unsafe-edge text** — words clipped by the canvas edge or slid off it → all
+  text fully inside bounds at every checked frame (`nanoframes debug` lists the
+  boxes; `check` flags text that never lands on the canvas).
 - **Mixed-baseline rows** — label + value sharing one baseline sinks the
   label (cap-center per run, see `design-taste.md`).
 - **Uniform-everything motion** — no active word, no stagger → re-choreograph.

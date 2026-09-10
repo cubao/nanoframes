@@ -10,6 +10,10 @@ rasterized deterministically by **ThorVG** (`thorvg-python`) to PNG, then muxed 
 Because nothing depends on a browser, an AI agent can render a frame or a whole clip locally in
 milliseconds and iterate fast: `check` → `preview` → `render`.
 
+When a frame comes out empty or an element is missing, `nanoframes debug <comp>` says why: it
+prints where each element's transformed geometry lands, whether that is on the canvas, how many
+frames the element is actually visible in, and how far a loop's two seam frames are apart.
+
 ## Status
 
 **v1 complete.** Full offline pipeline works end-to-end: `init` → `check` →

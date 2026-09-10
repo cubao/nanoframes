@@ -48,11 +48,12 @@ full-frame card per the ask.
   scale-x anchored with a compensating translate (`scale` in nanoframes
   scales around the origin — position the rect so its anchor is at the
   growth point, or pair `scale` with `translate`).
-- All motion inside the canvas: the card enters from its own settled
-  position, never from off-screen (black-band rule).
+- The card enters from its own settled position; a slide in from just outside
+  the frame also works (the canvas clips it), as long as it lands on-canvas and
+  is not mid-slide in the frames that matter.
 - Exit via clip window `data-duration` + `data-fade` gives a mirrored fade
-  out; for a slide-out, keyframe the translate back toward center, not off
-  canvas.
+  out; for a slide-out, keyframe the translate back toward center or just past
+  the canvas edge.
 - Name + role stacking: two separate `<text>` elements with a consistent
   gap; cap-center math only matters when runs share a row (e.g. "NAME —
   ROLE" on one line — then align by cap height, see `design-taste.md`).

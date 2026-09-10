@@ -9,10 +9,11 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from nanoframes.parse import Document
-from nanoframes.render import render_frame
+from nanoframes.render import frame_is_blank, render_frame
 
 
 def mux_frames_to_mp4(
@@ -82,14 +83,23 @@ def render_video(
     try:
         prefix = comp.composition_id or "frame"
         step = 1.0 / fps
+        blank: list[float] = []
         for i in range(comp.frame_count):
             t = i * step
-            img = render_frame(doc, t, threads=threads, cache=cache, scale=scale)
+            img = render_frame(doc, t, threads=threads, cache=cache, scale=scale,
+                               warn_blank=False)
             dst = os.path.join(frame_dir, f"{prefix}.{i:05d}.png")
             if keep_frames:
                 img.save(dst)
             else:
                 img.save(dst, compress_level=_TRANSIENT_PNG_LEVEL)
+            if frame_is_blank(img):
+                blank.append(t)
+        if blank:
+            print(f"nanoframes: {len(blank)} of {comp.frame_count} frames are fully"
+                  f" transparent (first at t={blank[0]:g}s) — every element is hidden or"
+                  f" off-canvas there; run `nanoframes debug <comp> --t {blank[0]:g}`.",
+                  file=sys.stderr)
         return mux_frames_to_mp4(frame_dir, prefix, fps, out_path, audio=audio)
     finally:
         if cleanup:

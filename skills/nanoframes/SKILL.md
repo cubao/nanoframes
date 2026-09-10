@@ -27,7 +27,9 @@ For any "make me a video / animated card / motion graphic" request:
 3. **Check** — `nanoframes check <comp>.nf.svg` lints the contract (exit 1 on
    errors). Fix until ok.
 4. **Preview** a frame — `nanoframes preview <comp>.nf.svg --t 2.0` renders and
-   opens that second.
+   opens that second. If it comes out empty or an element is missing, run
+   `nanoframes debug <comp>.nf.svg --t 2.0` instead of guessing: it names the
+   element whose geometry misses the canvas.
 5. **Render** — single frame, full batch, or video:
    `nanoframes render <comp>.nf.svg --t 2.0 -o shot.png`
    `nanoframes render <comp>.nf.svg -o out/`
@@ -104,7 +106,8 @@ easing), hex colors interpolate RGB.
 
 Supported animated props:
 - `opacity` (0..1)
-- `transform`: `{"translate":[x,y], "scale":[sx,sy], "rotate":deg}`
+- `transform`: `{"translate":[x,y], "scale":[sx,sy], "rotate":deg}` — for a
+  pivot on the element itself use `"rotate": {"deg": deg, "center": "auto"}`
 - `fill` / `stroke` (`#RRGGBB`)
 
 ## Rules to keep renders valid & deterministic
@@ -116,10 +119,20 @@ Supported animated props:
 - Could any clip exceed the composition duration? Keep `data-start + data-duration`
   within the total — otherwise `check` warns.
 - `transform` order is baked as translate -> rotate -> scale.
-- **Keep transformed elements on-canvas.** An element whose animated extent
-  leaves the frame (esp. a rotated, partially-offscreen element) paints a black
-  band over the off-screen extent in ThorVG. Fade/grow in place or translate
-  inside bounds; don't slide things in from outside the canvas.
+- **`rotate` pivots on the canvas origin `(0,0)` unless told otherwise** —
+  `rotate(deg)` alone throws an element authored at (480,300) to about
+  (-300,-480). Write `{"deg": deg, "center": "auto"}` to spin an element where
+  it is, or `[deg, cx, cy]` for an explicit point; the same form must be used
+  in every keyframe of that animation. `check` warns when a missing pivot would
+  swing an element away.
+- **An animated `transform` layers inside the element's own `transform`**, so
+  `<g id="crank" transform="translate(480 360)">` keeps its position while it
+  spins. Geometry that leaves the canvas is clipped at the edge (the frame
+  pins its viewport to the canvas) — but geometry that never lands on the
+  canvas draws nothing, which `check` warns about.
+- **Seamless loop:** the last rendered frame is `duration - 1/fps`, not
+  `duration`. Finish the motion by then, hold it, and verify with
+  `nanoframes debug <comp> --loop`. See [composition.md](../../docs/composition.md).
 - Relative `<image href>` paths resolve against the composition's directory.
 - **Text just works for CJK**: a bundled monospace face (Sarasa Mono SC) is the
   default fallback, so Chinese renders solidly and monospaced without any font
@@ -157,6 +170,8 @@ Supported animated props:
 ```bash
 nanoframes init <name>                  # scaffold <name>.nf.svg
 nanoframes check <comp>.nf.svg          # lint; exit 1 on errors
+nanoframes debug <comp>.nf.svg --t 2    # where each element's geometry lands per frame
+nanoframes debug <comp>.nf.svg --loop   # + first/last frame diff (loop seam)
 nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png
 nanoframes render <comp>.nf.svg -o out/        # full batch of frames
@@ -168,6 +183,12 @@ nanoframes fonts list|add|verify|install          # CJK font toolbox
 nanoframes lottie <scene.json> -o out.mp4         # ThorVG Lottie loader -> MP4
 nanoframes walkthrough                  # regenerate the one-take tour (build/)
 ```
+
+**When a frame comes out empty or an element is missing, run
+`nanoframes debug`** — it lists each element's post-transform box, whether it
+is on-canvas, and (with the clip scan) whether it is ever visible. A frame that
+draws nothing renders as a valid, fully transparent PNG, so this is the command
+that turns a blank output into a named culprit.
 
 `nanoframes` with no arguments prints where the docs and this skill live
 (`nanoframes --help` prints the same pointers — also available via `python -m nanoframes`). Full contract:

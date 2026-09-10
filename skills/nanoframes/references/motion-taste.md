@@ -83,25 +83,32 @@ least ~0.4–0.8 s before the clip ends or the next beat starts.
 - **Serious data = calm ease-out, no bounce.** Reserve pops for brand/UI
   moments.
 
-## Render-risk rules (ThorVG-specific)
+## Render-risk rules (nanoframes-specific)
 
-- **Never move geometry off-canvas** — transformed extents that leave the
-  frame paint a black band (see `references/README.md`). All choreography
-  above is written to stay inside the canvas.
-- Fade/scale in place instead of slides-from-off-canvas; use translate only
-  within bounds.
+- **Keep the subject on-canvas — but for the right reason.** Leaving the frame
+  only clips it. The failure worth avoiding is an element that never lands on
+  the canvas at all: it draws nothing, silently. `nanoframes check` warns about
+  that case and `nanoframes debug <comp>` names it per frame. Motion *into*
+  frame from off-canvas is allowed and often beats fading in place.
+- **Pivot before you rotate.** `"rotate": deg` turns around the canvas origin;
+  `{"deg": deg, "center": "auto"}` turns around the element itself. A long arm
+  authored away from `(0,0)` and spun on the origin sweeps the wrong part of
+  the frame (and usually leaves it). `scale` shares the caveat: it scales about
+  the origin, so anchor the geometry for a grow-from-one-end.
 - No motion blur, glow, blur, or particles: fake velocity with a streak shape
   that fades; fake glow with a soft-edged radial gradient blob behind the
   object; bake repeated elements by hand (they are cheap in SVG).
 - Effects that need a *job*: reveal, emphasis, transition, state, or
   material. If the composition reads with the effect deleted, the effect is
   decoration — delete it.
-- The "camera" is a wrapper `<g>` transform, and it can only zoom **out**
-  (scale < 1 reveals canvas edge) or pan within content margin — a zoom-in
-  past the canvas edge is impossible without black bands. Prefer element
-  choreography over fake camera moves; if a move is needed, make it one
-  dominant, smooth (`ease-in-out`), slow translate of a wrapper group that
-  has margin slack.
+- The "camera" is a wrapper `<g>` transform: zoom and pan are both available —
+  the canvas clips the overflow — so choose the move the story wants instead of
+  one the renderer permits. Prefer element choreography; when a camera move is
+  right, make it one dominant, smooth (`ease-in-out`), slow transform.
+
+A loop that must not jump closes at `duration - 1/fps` — the last rendered
+frame — and holds the seam state; `nanoframes debug <comp> --loop` reports how
+far the two seam frames are apart.
 
 ## Final motion review
 
