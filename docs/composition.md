@@ -56,37 +56,46 @@ colors interpolate RGB; anything non-interpolable holds the earlier keyframe.
 | property | value | interpolation |
 |---|---|---|
 | `opacity` | float `0..1` | linear/eased |
-| `transform` | `{"translate":[x,y], "scale":[sx,sy], "rotate":deg}` | elementwise |
+| `transform` | `{"translate":[x,y], "rotate":deg, "scale":[sx,sy], "center":"auto"}` | elementwise |
 | `fill` / `stroke` | `#RRGGBB` (or `#RRGGBBAA`) | RGB lerp |
 
 Bake emits `transform="translate(x,y) rotate(d) scale(sx,sy)"` (translate ·
 rotate · scale order).
 
-#### `rotate` and its pivot
+#### Pivots: `center` for `rotate` and `scale`
 
-`rotate(deg)` is SVG's own shorthand for rotating around **`(0,0)`** — the
-canvas origin, not the element. A long element authored at `(480, 300)` swept
-by a bare `rotate(90)` lands near `(-300, -480)`, i.e. off-canvas, where it
-draws nothing. Three forms are accepted:
+SVG's own shorthand turns and grows an element around **`(0,0)`** — the canvas
+origin, not the element. A long arm authored at `(480, 300)` swept by a bare
+`rotate(90)` lands near `(-300, -480)`, i.e. off-canvas, where it draws nothing;
+a rule authored at `y=150` with `"scale": [1, 0.02]` collapses toward the top
+edge instead of growing in place. `center` is the anchor for both:
 
 | form | pivots on |
 |---|---|
-| `"rotate": deg` | the origin `(0,0)` — only for geometry authored around it |
-| `"rotate": [deg, cx, cy]` | an explicit point |
-| `"rotate": {"deg": deg, "center": "auto"}` | the element's own geometry box center |
+| *(omitted)* | the origin `(0,0)` — SVG semantics, right for geometry authored around it |
+| `"center": "auto"` | the element's own geometry box center |
+| `"center": [cx, cy]` | an explicit point |
+| `"rotate": [deg, cx, cy]` | an explicit point for that rotate only (wins over `center`) |
 
 ```json
-{ "t": 0.0, "transform": { "translate": [480, 360], "rotate": {"deg": 0, "center": "auto"} } }
+{ "t": 0.0, "transform": { "translate": [480, 360], "rotate": 0, "center": "auto" } }
+{ "t": 0.0, "transform": { "scale": [1.0, 0.02], "center": "auto" } }
 ```
 
 `"center": "auto"` resolves per element at bake time to the center of the
 element's own geometry (a group's children included), so it is the form to
-reach for when you mean "spin this thing where it is". It bakes to
-`translate(cx,cy) rotate(d) translate(-cx,-cy)`. Keep the *same* rotate form
-across an animation's keyframes: the interpolator only blends matching shapes
-(a number cannot interpolate into a pivot list, so it holds the earlier value).
-`nanoframes check` warns about both mistakes — a pivotless rotate that would
-swing the element away, and mixed forms across keyframes.
+reach for when you mean "spin / grow this thing where it is — or where it is
+parked by its parent". It bakes to
+`translate(cx,cy) <op> translate(-cx,-cy)`, once per anchored op. `scale` also
+accepts a bare number (`"scale": 0.5`) for uniform scaling.
+
+Keep the *same* shape across an animation's keyframes: the interpolator only
+blends matching shapes (a number cannot interpolate into a pivot list, so it
+holds the earlier value, and a bare `scale` holds while a `[sx,sy]` moves).
+`nanoframes check` warns about both traps — an unanchored `rotate`/`scale` that
+would throw the element off its mark, and shapes that change across keyframes —
+and errors on values bake cannot express (a `rotate` written as an object, a
+malformed `center`/`scale`), so the render never fails on them mid-clip.
 
 #### Animated transforms layer inside the element's own
 

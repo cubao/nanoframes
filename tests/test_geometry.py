@@ -113,8 +113,8 @@ def _node(doc, element_id: str):
 def test_self_centered_rotate_pivots_on_the_element():
     doc = comp('<rect id="spin" x="400" y="200" width="160" height="140" fill="#0f0"/>',
                script='{"animations":[{"target":"#spin","keyframes":['
-                      '{"t":0,"transform":{"rotate":{"deg":0,"center":"auto"}}},'
-                      '{"t":2,"transform":{"rotate":{"deg":90,"center":"auto"}}}]}]}')
+                      '{"t":0,"transform":{"rotate":0,"center":"auto"}},'
+                      '{"t":2,"transform":{"rotate":90,"center":"auto"}}]}]}')
     svg = bake.bake_svg(doc, 2.0)
     # box center of the rect is (480, 270): pivot expressed as three transforms
     assert "translate(480,270) rotate(90) translate(-480,-270)" in svg
@@ -124,8 +124,8 @@ def test_self_centered_rotate_pivots_on_the_element():
 def test_self_centered_rotate_keeps_the_element_in_place():
     doc = comp('<rect id="spin" x="400" y="200" width="160" height="140" fill="#0f0"/>',
                script='{"animations":[{"target":"#spin","keyframes":['
-                      '{"t":0,"transform":{"rotate":{"deg":0,"center":"auto"}}},'
-                      '{"t":2,"transform":{"rotate":{"deg":90,"center":"auto"}}}]}]}')
+                      '{"t":0,"transform":{"rotate":0,"center":"auto"}},'
+                      '{"t":2,"transform":{"rotate":90,"center":"auto"}}]}]}')
     from nanoframes.render import render_frame
 
     def green_center(t):
@@ -156,6 +156,74 @@ def test_pivotless_rotate_swings_the_element_off_the_canvas():
 
     assert green(0.0) == (420, 539, 352, 367)  # authored: bottom-right arm
     assert green(2.0) is None or green(2.0)[0] < 0  # rotated about (0,0): gone
+
+
+# ---------------------------------------------------------------------------
+# scale pivots: a bar grows where it sits, not from the canvas corner
+# ---------------------------------------------------------------------------
+
+
+def _element_box(doc, t: float, element_id: str):
+    """Post-transform box of one element at ``t`` (geometry, not pixels)."""
+    from nanoframes import diagnose
+
+    for record in diagnose.frame_report(doc, t, coverage=False).elements:
+        if record.label == f"#{element_id}":
+            assert record.box is not None, f"{element_id} has no measured box at t={t}"
+            return record.box
+    raise AssertionError(f"no #{element_id} at t={t}")
+
+
+def test_scale_with_center_auto_grows_in_place():
+    doc = comp('<rect id="bar" x="60" y="150" width="6" height="120" fill="#5ef17c"/>',
+               script='{"animations":[{"target":"#bar","keyframes":['
+                      '{"t":0,"transform":{"scale":[1.0,0.02],"center":"auto"}},'
+                      '{"t":2,"transform":{"scale":[1.0,1.0],"center":"auto"}}]}]}')
+    assert _element_box(doc, 2.0, "bar") == bounds.Box(60.0, 150.0, 66.0, 270.0)
+    started, mid = _element_box(doc, 0.0, "bar"), _element_box(doc, 1.0, "bar")
+    for box in (started, mid):
+        assert (box.x0, box.x1) == (60.0, 66.0)      # x stays where it was authored
+        assert box.center[1] == pytest.approx(210.0)  # grows both ways around its middle
+    assert started.height < 5 and 50 < mid.height < 70
+
+
+def test_pivotless_scale_grows_from_the_canvas_corner():
+    """Plain `scale` keeps SVG semantics: the anchor, not the element, stays put."""
+    doc = comp('<rect id="bar" x="60" y="150" width="6" height="120" fill="#5ef17c"/>',
+               script='{"animations":[{"target":"#bar","keyframes":['
+                      '{"t":0,"transform":{"scale":[1.0,0.02]}},'
+                      '{"t":2,"transform":{"scale":[1.0,1.0]}}]}]}')
+    assert _element_box(doc, 0.0, "bar").y0 < 10  # collapsed toward the top edge
+    assert _element_box(doc, 1.0, "bar").center[1] < 120  # still climbing downward
+
+
+def test_inline_rotate_pivot_wins_over_the_transform_center():
+    doc = comp('<rect id="arm" x="10" y="10" width="40" height="8" fill="#0f0"/>',
+               script='{"animations":[{"target":"#arm","keyframes":['
+                      '{"t":0,"transform":{"rotate":[0,10,20],"center":"auto"}}]}]}')
+    assert "rotate(0 10 20)" in bake.bake_svg(doc, 0.0)
+
+
+def test_explicit_center_pair_works_without_measurable_geometry():
+    """``center: auto`` needs geometry; an explicit pivot never does."""
+    svg = bake.bake_svg(comp('<rect id="r" x="0" y="0" width="10" height="10" fill="#000"/>',
+                             script='{"animations":[{"target":"#r","keyframes":['
+                                    '{"t":0,"transform":{"scale":0.5,"center":[5,5]}}]}]}'), 0.0)
+    assert "translate(5,5) scale(0.5) translate(-5,-5)" in svg
+
+
+def test_scaffold_template_grows_its_accent_bar_in_place(tmp_path):
+    """`nanoframes init` must not ship the footgun the docs warn about."""
+    from nanoframes.cli import main
+
+    path = tmp_path / "t.nf.svg"
+    assert main(["init", "t", "-o", str(path)]) == 0
+    text = path.read_text()
+    assert '"center": "auto"' in text
+    doc = parse_string(text)
+    assert _element_box(doc, 3.0, "accent") == bounds.Box(60.0, 150.0, 66.0, 270.0)
+    mid = _element_box(doc, 0.9, "accent")  # mid-grow
+    assert (mid.x0, mid.x1) == (60.0, 66.0) and mid.center[1] == pytest.approx(210.0)
 
 
 # ---------------------------------------------------------------------------

@@ -23,8 +23,8 @@
       {
         "target": "#accent-bar",
         "keyframes": [
-          {"t": 0.5, "opacity": 0.0, "transform": {"translate": [0, 0], "scale": [0.02, 1.0]}},
-          {"t": 1.1, "opacity": 1.0, "transform": {"translate": [0, 0], "scale": [1.0, 1.0]}, "ease": "ease-in-out"}
+          {"t": 0.5, "opacity": 0.0, "transform": {"translate": [0, 0], "scale": [0.02, 1.0], "center": [40, 100]}},
+          {"t": 1.1, "opacity": 1.0, "transform": {"translate": [0, 0], "scale": [1.0, 1.0], "center": [40, 100]}, "ease": "ease-in-out"}
         ]
       },
       {

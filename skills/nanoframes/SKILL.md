@@ -106,8 +106,9 @@ easing), hex colors interpolate RGB.
 
 Supported animated props:
 - `opacity` (0..1)
-- `transform`: `{"translate":[x,y], "scale":[sx,sy], "rotate":deg}` — for a
-  pivot on the element itself use `"rotate": {"deg": deg, "center": "auto"}`
+- `transform`: `{"translate":[x,y], "rotate":deg, "scale":[sx,sy]}` — SVG-style
+  shorthand, so `rotate`/`scale` act about the canvas origin unless you anchor
+  them: add `"center": "auto"` (the element's own box) or `"center": [cx, cy]`
 - `fill` / `stroke` (`#RRGGBB`)
 
 ## Rules to keep renders valid & deterministic
@@ -119,12 +120,14 @@ Supported animated props:
 - Could any clip exceed the composition duration? Keep `data-start + data-duration`
   within the total — otherwise `check` warns.
 - `transform` order is baked as translate -> rotate -> scale.
-- **`rotate` pivots on the canvas origin `(0,0)` unless told otherwise** —
+- **`rotate` and `scale` act on the canvas origin `(0,0)` unless anchored** —
   `rotate(deg)` alone throws an element authored at (480,300) to about
-  (-300,-480). Write `{"deg": deg, "center": "auto"}` to spin an element where
-  it is, or `[deg, cx, cy]` for an explicit point; the same form must be used
-  in every keyframe of that animation. `check` warns when a missing pivot would
-  swing an element away.
+  (-300,-480), and a bar authored at y=150 with `"scale": [1, 0.02]` collapses
+  toward the top edge. Add `"center": "auto"` (follows the element) or
+  `"center": [cx, cy]` next to the op; `rotate` also takes an inline
+  `[deg, cx, cy]`. Keep one shape across the animation's keyframes. `check`
+  warns when an unanchored op would move the element off its mark, and errors
+  on a `rotate` object / malformed `center`.
 - **An animated `transform` layers inside the element's own `transform`**, so
   `<g id="crank" transform="translate(480 360)">` keeps its position while it
   spins. Geometry that leaves the canvas is clipped at the edge (the frame

@@ -66,27 +66,75 @@ def _check_animations(comp: Composition, findings: list[Finding]) -> None:
                         f"{anim.target}: keyframe t={kf.t} outside duration {comp.duration}",
                     )
                 )
-        forms = {_rotate_form(kf.props.get("transform")) for kf in anim.keyframes}
+        forms = {_transform_shape(kf.props.get("transform")) for kf in anim.keyframes}
         forms.discard(None)
         if len(forms) > 1:
             findings.append(Finding(
                 "warning",
-                f"{anim.target}: rotate is written in more than one form across keyframes"
+                f"{anim.target}: transform is written in more than one shape across keyframes"
                 f" ({', '.join(sorted(forms))}); the interpolator can only blend matching"
-                " forms and holds the earlier value otherwise",
+                " shapes and holds the earlier value otherwise",
             ))
 
 
-def _rotate_form(tf: object) -> str | None:
-    """How a keyframe writes ``rotate``: bare, [deg,cx,cy], {"deg",...}, or absent."""
-    if not isinstance(tf, dict) or "rotate" not in tf:
+def _transform_shape(tf: object) -> str | None:
+    """How a keyframe writes ``rotate``/``scale``: degrees, [deg,cx,cy], pair, scalar…"""
+    if not isinstance(tf, dict):
         return None
-    rotate = tf["rotate"]
-    if isinstance(rotate, dict):
-        return "self-centered" if "center" in rotate else "deg-object"
-    if isinstance(rotate, (list, tuple)):
-        return "pivot-list" if len(rotate) >= 3 else "list"
-    return "degrees"
+    shapes = []
+    if "rotate" in tf:
+        rotate = tf["rotate"]
+        if isinstance(rotate, dict):
+            shapes.append("rotate-object")
+        elif isinstance(rotate, (list, tuple)):
+            shapes.append("rotate-pivot-list" if len(rotate) >= 3 else "rotate-list")
+        else:
+            shapes.append("rotate-degrees")
+    scale = tf.get("scale")
+    if scale is not None:
+        if isinstance(scale, (list, tuple)):
+            shapes.append(f"scale-{len(scale)}-list")
+        else:
+            shapes.append("scale-scalar")
+    return "+".join(shapes) if shapes else None
+
+
+def _check_transform_values(comp: Composition, findings: list[Finding]) -> None:
+    """Reject transform values bake cannot express, before a render fails on them."""
+    for anim in comp.animations:
+        for kf in anim.sorted:
+            tf = kf.props.get("transform")
+            if not isinstance(tf, dict):
+                continue
+            for problem in _transform_problems(tf):
+                findings.append(Finding("error", f"{anim.target} (t={kf.t:g}): {problem}"))
+
+
+def _transform_problems(tf: dict) -> list[str]:
+    problems: list[str] = []
+    rotate = tf.get("rotate")
+    if isinstance(rotate, dict) or (isinstance(rotate, (list, tuple)) and len(rotate) != 3):
+        problems.append(
+            "rotate takes degrees or [deg, cx, cy] — for a pivot that follows the element"
+            ' put "center": "auto" next to it'
+        )
+    translate = tf.get("translate")
+    if translate is not None and not (
+        isinstance(translate, (list, tuple)) and len(translate) in (1, 2)
+    ):
+        problems.append(f"translate takes [x, y], got {translate!r}")
+    if "scale" in tf:
+        scale = tf["scale"]
+        if isinstance(scale, bool) or not isinstance(scale, (int, float, list, tuple)) \
+                or (isinstance(scale, (list, tuple)) and not 1 <= len(scale) <= 2):
+            problems.append(f"scale takes [sx, sy] or a number, got {scale!r}")
+    center = tf.get("center")
+    if center is not None and not (
+        (isinstance(center, str) and center == "auto")
+        or (isinstance(center, (list, tuple)) and len(center) == 2)
+    ):
+        problems.append(f'center takes "auto" or [cx, cy], got {center!r}')
+    return problems
 
 
 def _check_clips(comp: Composition, findings: list[Finding]) -> None:
@@ -151,8 +199,13 @@ def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:
     findings: list[Finding] = []
     _check_canvas(doc.composition, findings)
     _check_animations(doc.composition, findings)
+    _check_transform_values(doc.composition, findings)
     _check_clips(doc.composition, findings)
     _check_assets(doc, findings)
+    if has_errors(findings):
+        # Bake would raise on the transform values just reported: stop before the
+        # geometry checks rather than crashing the whole lint pass.
+        return findings
     _check_rotate_pivots(doc, measurer, findings)
     _check_visibility(doc, measurer, findings)
     return findings
@@ -218,24 +271,30 @@ def _has_text(doc: Document) -> bool:
 
 
 def _check_rotate_pivots(doc: Document, measurer, findings: list[Finding]) -> None:
-    """Warn where a pivotless ``rotate`` swings the element away from its spot.
+    """Warn where a pivotless ``rotate``/``scale`` swings the element away.
 
-    ``rotate(deg)`` is SVG's own shorthand for rotating around ``(0,0)`` — fine
-    for geometry authored around the origin, wrong for anything else, and the
-    result usually ends up off-canvas (where it renders as nothing). An element
-    already rotating on its own origin is left alone.
+    ``rotate(deg)`` and ``scale(sx,sy)`` are SVG's own shorthands for turning and
+    growing around ``(0,0)`` — fine for geometry authored around the origin,
+    wrong for anything else, and the result usually ends up off-canvas (where it
+    renders as nothing). An element already pivoting on its own origin is left
+    alone, and so is a keyframe that says ``"center"``.
     """
     for anim in doc.composition.animations:
+        reported: set = set()
         for kf in anim.sorted:
             tf = kf.props.get("transform")
-            if not isinstance(tf, dict) or "rotate" not in tf:
+            if not isinstance(tf, dict) or "center" in tf:
                 continue
-            rotate = tf["rotate"]
+            rotate = tf.get("rotate")
             if isinstance(rotate, (list, tuple)) and len(rotate) >= 3:
-                continue  # explicit pivot
-            if isinstance(rotate, dict) and "center" in rotate:
-                continue  # self-centering pivot
+                continue  # inline pivot
+            operation = "rotate" if "rotate" in tf else ("scale" if "scale" in tf else None)
+            if operation is None:
+                continue
             for node in _matching_nodes(doc, anim.target):
+                key = (operation, node.get("id"), bounds.label(node))
+                if key in reported:
+                    continue  # one finding per animation per element
                 box = bounds.local_bounds(node, measurer).box
                 if box is None or box.contains_point(0.0, 0.0):
                     continue
@@ -243,12 +302,13 @@ def _check_rotate_pivots(doc: Document, measurer, findings: list[Finding]) -> No
                 distance = math.hypot(cx, cy)
                 if distance <= box.diagonal / 2.0:
                     continue  # origin is inside the element's own footprint
+                reported.add(key)
                 findings.append(Finding(
                     "warning",
-                    f"{bounds.label(node)}: rotate(deg) has no pivot, so it turns around"
+                    f"{bounds.label(node)}: {operation} has no pivot, so it happens around"
                     f" the origin (0,0) — {distance:.0f}px from this element's center"
-                    f" at ({cx:.0f},{cy:.0f}); it will swing off its position. Use"
-                    f' {{"rotate": {{"deg": deg, "center": "auto"}}}} or [deg, cx, cy].',
+                    f' at ({cx:.0f},{cy:.0f}); add "center": "auto" to follow the element'
+                    f" (or \"center\": [cx, cy] / an inline [deg, cx, cy] for rotate).",
                 ))
                 break
 

@@ -53,8 +53,8 @@ TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
       {{
         "target": "#accent",
         "keyframes": [
-          {{"t": 0.4, "opacity": 0.0, "transform": {{"scale": [1.0, 0.02]}}}},
-          {{"t": 1.0, "opacity": 1.0, "transform": {{"scale": [1.0, 1.0]}}, "ease": "ease-in-out"}}
+          {{"t": 0.4, "opacity": 0.0, "transform": {{"scale": [1.0, 0.02], "center": "auto"}}}},
+          {{"t": 1.0, "opacity": 1.0, "transform": {{"scale": [1.0, 1.0], "center": "auto"}}, "ease": "ease-in-out"}}
         ]
       }}
     ]

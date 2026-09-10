@@ -149,6 +149,18 @@ MP4 export, and an agent-facing skill.
   assets, deterministic full-pass render) + `docs/lottie.md` + walkthrough
   section; craft reference library in the skill
   (`skills/nanoframes/references/`, adapted from text-to-lottie).
+- **0.1.6 (2026-09)** — field feedback from a real clip (a 21-iteration
+  pelican-on-a-bicycle loop) landed three fixes with one root cause: the baked
+  frame had no viewport, so ThorVG sized the picture from its **content
+  bounding box** and any element outside the canvas silently rescaled or
+  blanked the whole frame. `bake` now pins `viewBox`/`width`/`height`, animated
+  transforms layer *inside* the element's own static transform instead of
+  replacing it, and `nanoframes.bounds` + `nanoframes.diagnose` back a new
+  `nanoframes debug` command (per-frame element boxes, whole-clip visibility
+  scan, loop-seam pixel diff) plus lint findings for geometry that never lands
+  on the canvas. Transforms gained one pivot concept — `"center"` for both
+  `rotate` and `scale` — and the `init` template uses it, so a bar grows where
+  it sits instead of collapsing toward the canvas corner.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); in-scene video; Lottie markers
   surfaced in the CLI; remaining recipe ports (product-promo,

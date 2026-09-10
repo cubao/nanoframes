@@ -45,9 +45,9 @@ full-frame card per the ask.
 ## Construction notes (nanoframes mechanics)
 
 - Entrance idiom: fade + translate up a few px into place; bars grow via
-  scale-x anchored with a compensating translate (`scale` in nanoframes
-  scales around the origin — position the rect so its anchor is at the
-  growth point, or pair `scale` with `translate`).
+  scale-x with `"center": "auto"` (or `"center": [cx, cy]` to wipe from one
+  end) — without a `center`, `scale` acts on the canvas origin and the bar
+  collapses toward the corner.
 - The card enters from its own settled position; a slide in from just outside
   the frame also works (the canvas clips it), as long as it lands on-canvas and
   is not mid-slide in the frames that matter.

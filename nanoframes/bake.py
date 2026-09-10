@@ -44,50 +44,83 @@ def _node_element(node: ET.Element, comp: Composition) -> Element:
     )
 
 
-def _rotate_string(r: object, auto_center=None) -> str:
-    """One ``rotate`` from the timeline: bare degrees, [deg,cx,cy], or {"deg", "center"}."""
+def _pivot(op: str, pivot: "tuple[float, float] | None") -> str:
+    """Wrap one transform operation so it happens about ``pivot`` instead of (0,0)."""
+    if pivot is None or pivot == (0.0, 0.0):
+        return op
+    cx, cy = pivot
+    return f"translate({cx:g},{cy:g}) {op} translate({-cx:g},{-cy:g})"
+
+
+def _resolve_center(tf: dict, auto_center) -> "tuple[float, float] | None":
+    """The transform's pivot: ``"auto"`` (the element's own box) or explicit ``[cx,cy]``.
+
+    Returns None when no pivot was asked for (SVG's origin) or when a requested
+    ``"auto"`` has no geometry to resolve against.
+    """
+    center = tf.get("center")
+    if center is None:
+        return None
+    if isinstance(center, str):
+        if center != "auto":
+            raise ValueError(f"transform 'center' must be \"auto\" or [cx,cy], got {center!r}")
+        return auto_center() if auto_center is not None else None
+    if isinstance(center, (list, tuple)) and len(center) == 2:
+        return (float(center[0]), float(center[1]))
+    raise ValueError(f"transform 'center' must be \"auto\" or [cx,cy], got {center!r}")
+
+
+def _rotate_string(r: object, pivot: "tuple[float, float] | None" = None) -> str:
+    """One ``rotate`` from the timeline: bare degrees, or [deg,cx,cy] for an inline pivot."""
     if isinstance(r, dict):
-        try:
-            deg = float(r["deg"])
-        except (KeyError, TypeError, ValueError):
-            raise ValueError(f"rotate needs a numeric 'deg', got {r!r}") from None
-        center = r.get("center", "auto")
-        if isinstance(center, str):
-            if center != "auto":
-                raise ValueError(f"rotate 'center' must be \"auto\" or [cx,cy], got {center!r}")
-            resolved = auto_center() if auto_center is not None else None
-            if resolved is None:  # geometry unknown -> SVG's own default pivot
-                return f"rotate({deg:g})"
-            cx, cy = resolved
-        else:
-            if len(center) != 2:
-                raise ValueError(f"rotate 'center' must be \"auto\" or [cx,cy], got {center!r}")
-            cx, cy = float(center[0]), float(center[1])
-        if (cx, cy) == (0.0, 0.0):
-            return f"rotate({deg:g})"
-        return f"translate({cx:g},{cy:g}) rotate({deg:g}) translate({-cx:g},{-cy:g})"
-    if isinstance(r, (list, tuple)) and len(r) >= 3:
-        return f"rotate({r[0]:g} {r[1]:g} {r[2]:g})"
-    return f"rotate({float(r):g})"
+        raise ValueError(
+            "rotate takes degrees or [deg, cx, cy]; put a reusable pivot in the"
+            ' transform\'s "center" (e.g. {"rotate": 45, "center": "auto"})'
+        )
+    if isinstance(r, (list, tuple)):
+        if len(r) == 3:
+            return f"rotate({r[0]:g} {r[1]:g} {r[2]:g})"  # inline pivot wins over 'center'
+        raise ValueError(f"rotate needs [deg, cx, cy], got {list(r)!r}")
+    return _pivot(f"rotate({float(r):g})", pivot)
+
+
+def _scale_string(s: object, pivot: "tuple[float, float] | None" = None) -> str:
+    """One ``scale``: ``[sx, sy]``, ``[s]`` (uniform), or a bare number."""
+    if isinstance(s, (int, float)) and not isinstance(s, bool):
+        return _pivot(f"scale({float(s):g})", pivot)
+    if isinstance(s, (list, tuple)) and 1 <= len(s) <= 2:
+        sx = float(s[0])
+        sy = float(s[1]) if len(s) == 2 else sx
+        return _pivot(f"scale({sx:g},{sy:g})", pivot)
+    raise ValueError(f"scale needs [sx, sy] or a number, got {s!r}")
 
 
 def transform_string(tf: object, auto_center=None) -> str | None:
     """Serialize a timeline ``transform`` value to an SVG transform string.
 
-    Order is translate -> rotate -> scale. ``auto_center`` (a callable returning
-    ``(cx, cy)`` or None) resolves ``{"rotate": {"center": "auto"}}``.
+    Order is translate -> rotate -> scale. ``center`` (``"auto"`` or ``[cx,cy]``)
+    is the pivot for *both* ``rotate`` and ``scale``, since SVG's own defaults
+    turn them around the canvas origin — which moves an element that was not
+    authored there. ``auto_center`` is the callable that resolves ``"auto"`` to
+    the element's own geometry box center; without it (or without measurable
+    geometry) ``"auto"`` falls back to the origin. ``rotate``'s inline
+    ``[deg, cx, cy]`` keeps working and takes precedence over ``center``.
     """
     if not isinstance(tf, dict):
         return str(tf) if tf else None
+    pivot = _resolve_center(tf, auto_center)
     parts: list[str] = []
     if "translate" in tf:
         t = tf["translate"]
-        parts.append(f"translate({t[0]:g},{t[1]:g})")
+        if not isinstance(t, (list, tuple)) or len(t) not in (1, 2):
+            raise ValueError(f"translate needs [x, y], got {t!r}")
+        tx = float(t[0])
+        ty = float(t[1]) if len(t) == 2 else 0.0
+        parts.append(f"translate({tx:g},{ty:g})")
     if "rotate" in tf:
-        parts.append(_rotate_string(tf["rotate"], auto_center))
+        parts.append(_rotate_string(tf["rotate"], pivot))
     if "scale" in tf:
-        s = tf["scale"]
-        parts.append(f"scale({s[0]:g},{s[1]:g})")
+        parts.append(_scale_string(tf["scale"], pivot))
     return " ".join(parts) if parts else None
 
 
@@ -118,10 +151,7 @@ def element_transform(node: ET.Element, animated: object,
 
 
 def _wants_auto_center(tf: object) -> bool:
-    if not isinstance(tf, dict):
-        return False
-    rotate = tf.get("rotate")
-    return isinstance(rotate, dict) and rotate.get("center", "auto") == "auto"
+    return isinstance(tf, dict) and tf.get("center") == "auto"
 
 
 def pin_viewport(root: ET.Element, width: float, height: float) -> None:

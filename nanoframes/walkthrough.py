@@ -444,7 +444,8 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append("Instead of GSAP/CSS in a browser, motion lives in a tiny declarative JSON. Each animation targets")
     md.append("a CSS selector (`#id`, `.class`, or tag) and has ordered keyframes; between keyframes values")
     md.append("interpolate linearly (optional easing), deterministically. Supported animated properties: `opacity`,")
-    md.append("`transform` (`translate`/`scale`/`rotate`), and `fill`/`stroke` color.\n")
+    md.append("`transform` (`translate`/`scale`/`rotate`, with `\"center\"` anchoring the rotate/scale pivot"
+              " — SVG's own shorthand acts on the canvas origin), and `fill`/`stroke` color.\n")
     md.append("```json")
     md.append(script)
     md.append("```\n")

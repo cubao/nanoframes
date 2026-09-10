@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 
 import pytest
 
@@ -71,17 +72,27 @@ def test_lint_warns_about_a_pivotless_rotate_far_from_the_origin():
     assert "no pivot" in out and "#arm" in out and 'center": "auto"' in out
 
 
-@pytest.mark.parametrize("rotate", [
-    '[0, 220, 158]',                                    # explicit pivot
-    '{"deg": 0, "center": "auto"}',                     # self-centering
+@pytest.mark.parametrize("transform", [
+    '{"rotate": [0, 220, 158]}',                        # inline pivot
+    '{"rotate": 0, "center": "auto"}',                  # pivot from the transform
+    '{"rotate": 0, "center": [220, 158]}',              # explicit pivot
 ])
-def test_lint_accepts_rotates_that_carry_a_pivot(rotate):
-    keyframe = '{"t": %s, "transform": {"rotate": %s}}'
+def test_lint_accepts_rotates_that_carry_a_pivot(transform):
+    keyframe = '{"t": %s, "transform": %s}'
     script = ('{"animations":[{"target":"#arm","keyframes":['
-              + keyframe % ("0", rotate) + "," + keyframe % ("2", rotate) + "]}]}")
+              + keyframe % ("0", transform) + "," + keyframe % ("2", transform) + "]}]}")
     doc = comp('<rect id="arm" x="160" y="150" width="120" height="16" fill="#0f0"/>',
                script=script)
     assert "no pivot" not in warnings(lint_string(doc))
+
+
+def test_lint_warns_about_a_pivotless_scale_that_would_grow_from_the_corner():
+    doc = comp('<rect id="bar" x="300" y="400" width="200" height="40" fill="#0f0"/>',
+               script='{"animations":[{"target":"#bar","keyframes":['
+                      '{"t":0,"transform":{"scale":[1.0,0.02]}},'
+                      '{"t":2,"transform":{"scale":[1.0,1.0]}}]}]}')
+    out = warnings(lint_string(doc))
+    assert "scale has no pivot" in out and "#bar" in out
 
 
 def test_lint_allows_rotating_around_the_origin_inside_the_element():
@@ -92,13 +103,43 @@ def test_lint_allows_rotating_around_the_origin_inside_the_element():
     assert "no pivot" not in warnings(lint_string(doc))
 
 
-def test_lint_warns_when_rotate_forms_do_not_match_across_keyframes():
+def test_lint_warns_when_transform_shapes_do_not_match_across_keyframes():
     doc = comp('<rect id="arm" x="160" y="150" width="120" height="16" fill="#0f0"/>',
                script='{"animations":[{"target":"#arm","keyframes":['
                       '{"t":0,"transform":{"rotate":0}},'
                       '{"t":2,"transform":{"rotate":[90,220,158]}}]}]}')
     out = warnings(lint_string(doc))
-    assert "more than one form" in out
+    assert "more than one shape" in out
+
+
+def test_lint_errors_on_a_transform_bake_cannot_express():
+    """A rotate object (the shape this API dropped) must fail `check`, not the render."""
+    doc = comp('<rect id="arm" x="160" y="150" width="120" height="16" fill="#0f0"/>',
+               script='{"animations":[{"target":"#arm","keyframes":['
+                      '{"t":0,"transform":{"rotate":{"deg":0,"center":"auto"}}}]}]}')
+    findings = lint_string(doc)
+    errors = [str(f) for f in findings if f.severity == "error"]
+    assert any("rotate takes degrees" in e for e in errors), findings
+
+
+@pytest.mark.parametrize("transform", [
+    '{"scale": true}',
+    '{"center": 5}',
+    '{"scale": [1,2,3]}',
+    '{"translate": 5}',
+    '{"rotate": [45]}',
+    '{"rotate": [0,1,2,3]}',
+])
+def test_lint_errors_on_malformed_transform_values(transform):
+    """Whatever bake refuses, `check` must name first — never a mid-render crash."""
+    from nanoframes.bake import transform_string
+
+    doc = comp('<rect id="r" x="10" y="10" width="40" height="40" fill="#0f0"/>',
+               script='{"animations":[{"target":"#r","keyframes":['
+                      '{"t":0,"transform":' + transform + '}]}]}')
+    assert any(f.severity == "error" for f in lint_string(doc)), transform
+    with pytest.raises(ValueError):
+        transform_string(json.loads(transform))
 
 
 # ---------------------------------------------------------------------------

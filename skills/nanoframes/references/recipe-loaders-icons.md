@@ -59,9 +59,9 @@ badges, empty-state nudges, progress indicators.
   rendered frame); frame `0` and that frame must match. `nanoframes debug
   <comp> --loop` diffs them for you.
 - Keep animated icons on-canvas with margin — geometry past the edge is
-  clipped, which silently eats a rotating icon's corners; and give a spinner a
-  self-centered pivot (`{"deg": deg, "center": "auto"}`) or it orbits the
-  canvas origin instead of spinning where it sits.
+  clipped, which silently eats a rotating icon's corners; and give a spinner
+  `"center": "auto"` or it orbits the canvas origin instead of spinning where it
+  sits (same for a pulse/scale that must grow in place).
 - Mono digits (`Sarasa Mono SC`) for any counter/percent so nothing jitters.
 
 ## Failure modes & acceptance

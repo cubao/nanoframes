@@ -32,13 +32,12 @@ nanoframes mechanics; the timing/taste/quality rules are shared.
    geometry that never lands on the canvas at all: it draws nothing, in every
    frame, silently. `nanoframes check` warns about it and
    `nanoframes debug <comp>` reports each element's box.
-2. **`rotate` pivots on `(0,0)` unless told otherwise.** `"rotate": 45` turns
-   the element around the canvas origin, which throws anything authored
-   elsewhere off its mark (and usually off-canvas). Use
-   `{"deg": deg, "center": "auto"}` to spin an element where it is, or
-   `[deg, cx, cy]`; keep one form across the animation's keyframes. The same
-   caution applies to `scale` — it scales about the origin, so anchor the
-   geometry (or compensate with `translate`) when a bar should grow from an end.
+2. **`rotate` and `scale` act on `(0,0)` unless anchored.** `"rotate": 45`
+   turns the element around the canvas origin, which throws anything authored
+   elsewhere off its mark (and usually off-canvas); `"scale"` collapses a bar
+   toward the canvas corner instead of growing in place. Add `"center": "auto"`
+   next to the op (or `"center": [cx, cy]`, or an inline `[deg, cx, cy]` for
+   rotate) and keep one shape across the animation's keyframes.
 3. **An animated `transform` layers inside the element's static one** — put a
    positioned element's position in its own `transform` and animate the
    rotation/scale on the same element; no wrapper group is needed.

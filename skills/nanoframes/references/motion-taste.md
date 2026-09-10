@@ -90,11 +90,12 @@ least ~0.4–0.8 s before the clip ends or the next beat starts.
   the canvas at all: it draws nothing, silently. `nanoframes check` warns about
   that case and `nanoframes debug <comp>` names it per frame. Motion *into*
   frame from off-canvas is allowed and often beats fading in place.
-- **Pivot before you rotate.** `"rotate": deg` turns around the canvas origin;
-  `{"deg": deg, "center": "auto"}` turns around the element itself. A long arm
-  authored away from `(0,0)` and spun on the origin sweeps the wrong part of
-  the frame (and usually leaves it). `scale` shares the caveat: it scales about
-  the origin, so anchor the geometry for a grow-from-one-end.
+- **Anchor before you rotate or scale.** `"rotate": deg` turns around the
+  canvas origin and `"scale": [sx, sy]` grows from it, so anything authored away
+  from `(0,0)` sweeps the wrong part of the frame (and usually leaves it).
+  `"center": "auto"` follows the element, `"center": [cx, cy]` pins an explicit
+  point, and a wipe/grow-from-one-end is a *choice* made with an explicit pivot
+  rather than an accident of the origin.
 - No motion blur, glow, blur, or particles: fake velocity with a streak shape
   that fades; fake glow with a soft-edged radial gradient blob behind the
   object; bake repeated elements by hand (they are cheap in SVG).

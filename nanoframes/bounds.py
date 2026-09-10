@@ -11,7 +11,7 @@ Consumers:
 * ``nanoframes lint`` — flags elements that never land on the canvas and
   ``rotate`` pivots that swing an element away from where it was authored;
 * ``nanoframes debug`` — the per-element box report;
-* bake's ``{"rotate": {"center": "auto"}}`` — pivot on the element's own box.
+* bake's ``"center": "auto"`` transform pivot — the element's own box center.
 
 Transforms are tracked as 2D affine matrices ``(a, b, c, d, e, f)`` in SVG
 order (``x' = a·x + c·y + e``). Boxes are axis-aligned and conservative: a
@@ -291,7 +291,7 @@ def local_bounds(node, measurer=None) -> Bounds:
     """Geometry of ``node`` + descendants, excluding the node's own transform.
 
     That is the coordinate system the node's ``transform`` maps *from* — the
-    space a ``{"rotate": {"center": "auto"}}`` pivot must be expressed in.
+    space a transform's ``"center": "auto"`` pivot must be expressed in.
     """
     result = own_bounds(node, measurer)
     for child in node:
