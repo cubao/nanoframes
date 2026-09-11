@@ -240,6 +240,20 @@ MP4 export, and an agent-facing skill.
   dotted-paper variant) rasterizes to nothing. `text-anchor` mattered most: it
   silently left-aligned every node label, overflowing boxes that had been sized
   for centred text.
+- **0.1.9 (2026-09)** — the hand-drawn register: `"skin": "sketchy"` draws any
+  diagram with hand-drawn strokes. The browser version of this look is an SVG
+  turbulence filter, which ThorVG does not rasterize, so the wobble is computed
+  geometry instead (`nanoframes.diagram.sketchy`): every edge bowed and drawn
+  twice, ring arcs sampled and displaced perpendicular to the radius, seeded
+  from each shape's name so the same spec renders byte-identically on every
+  machine. The palette follows the hand-drawn explainer convention
+  (`hi-nikola/hand-drawn-explainer-video-nikola`, Apache-2.0): warm-white
+  `#f8f6ef` page, marker outlines, one restrained accent. Structure is
+  untouched — grid, budgets, connector clearance and centred text are the same
+  as every other skin, and text is never roughened. The prompt-catalog side of
+  that ecosystem (`yang0/handraw-style`'s 261 numbered art directions) is
+  referenced for choosing a *look*, not ported: it addresses image generation,
+  not SVG.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); in-scene video; Lottie markers
   surfaced in the CLI; remaining recipe ports (product-promo,

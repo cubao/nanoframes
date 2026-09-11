@@ -44,6 +44,19 @@ _DEFAULT_DARK = {
     "link": "#6a95d8",
 }
 
+_DEFAULT_SKETCHY = {
+    # Warm-white paper and the restrained crayon accents of the hand-drawn
+    # explainer register (exact base color #F8F6EF; see docs/diagram.md).
+    "paper": "#f8f6ef",
+    "paper_2": "#f1ece0",
+    "ink": "#2b2a28",
+    "muted": "#5c5850",
+    "soft": "#8a847a",
+    "rule": "#2b2a28",
+    "rule_solid": "#c9c2b4",
+    "accent": "#e2543c",
+    "link": "#2f5e9e",
+}
 # Offline font stacks. The browser skin uses Instrument Serif / Geist / Geist
 # Mono web fonts; a headless render only has fonts registered on the ThorVG
 # engine (see `nanoframes fonts`), so the stacks name what can actually load and
@@ -79,7 +92,7 @@ PRESETS = {
 class Tokens:
     """Resolved colors for one skin, plus the active type ramp."""
 
-    skin: str            # "light" | "dark" | "terminal"
+    skin: str            # "light" | "dark" | "sketchy" | "terminal"
     paper: str
     paper_2: str
     ink: str
@@ -165,6 +178,8 @@ def resolve(skin: str = "light", preset: str | None = None, size: str = "standar
         raise ValueError(f"unknown size class {size!r}; known: {', '.join(sorted(RAMP))}")
     if skin in ("light", "dark"):
         base = dict(_DEFAULT_LIGHT if skin == "light" else _DEFAULT_DARK)
+    elif skin == "sketchy":
+        base = dict(_DEFAULT_SKETCHY)
     elif skin == "terminal":
         # Fixed alternate skin (the source's CLI-window register).
         base = {
@@ -173,5 +188,5 @@ def resolve(skin: str = "light", preset: str | None = None, size: str = "standar
             "rule_solid": "#2b2b2b", "accent": "#ff5a36", "link": "#5c5c5c",
         }
     else:
-        raise ValueError(f"unknown skin {skin!r}; known: light, dark, terminal")
+        raise ValueError(f"unknown skin {skin!r}; known: light, dark, sketchy, terminal")
     return Tokens(skin=skin, ramp=dict(RAMP[size]), **base)

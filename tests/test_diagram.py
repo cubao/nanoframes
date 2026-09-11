@@ -636,3 +636,64 @@ def test_centred_runs_cover_their_measured_width(measure):
         measured = measure.ink(content, "Arial", "400", size).w
         assert abs(span - measured) <= 0.25 * size + 1.0, \
             f"{content!r}: emitted span {span:.1f} vs measured {measured:.1f}"
+
+
+# ---------------------------------------------------------------------------
+# sketchy (hand-drawn) skin
+# ---------------------------------------------------------------------------
+
+
+def test_sketchy_skin_is_deterministic(measure):
+    """The wobble is a pure function of the shape's coordinates and name."""
+    a = compose(flow_spec(skin="sketchy"), measurer=measure)
+    b = compose(flow_spec(skin="sketchy"), measurer=measure)
+    assert a == b
+
+
+def test_sketchy_draws_outlines_as_wobbly_paths(measure):
+    scene = build_scene(parse_spec(flow_spec(skin="sketchy")), measurer=measure)
+    wobbly = [p for p in scene.paths() if " Q " in p.d and p.d.startswith("M ")]
+    assert len(wobbly) >= 8, "each box edge should bow as its own stroke"
+    # Plain node boxes keep only their fill; the outline is the rough paths.
+    for group in scene.groups:
+        if not group.name.startswith("node:"):
+            continue
+        boxes = [p for p in group.parts if isinstance(p, Rect) and p.weight == "box"]
+        assert boxes and all(b.stroke is None for b in boxes), \
+            "a sketchy box must not also emit a straight outline"
+
+
+def test_sketchy_upholds_the_warm_paper_canvas(measure):
+    svg = compose(flow_spec(skin="sketchy"), measurer=measure)
+    assert 'fill="#f8f6ef"' in svg          # the register's exact base color
+    assert "rgba(" not in svg               # ThorVG paints rgba solid black
+
+
+def test_sketchy_wobble_stays_local(measure):
+    """A stroke may look hand-drawn, but it must not wander off its shape."""
+    from nanoframes.diagram import sketchy
+
+    for name in ("node:edge", "zone:priv", "ring:capture"):
+        for d in sketchy.rough_rect(100.0, 200.0, 120.0, 48.0, name):
+            for x, y in re.findall(r"(-?[\d.]+),(-?[\d.]+)", d):
+                assert 100.0 - 4 <= float(x) <= 220.0 + 4
+                assert 200.0 - 4 <= float(y) <= 248.0 + 4
+
+
+def test_sketchy_arcs_are_sampled_within_the_radius(measure):
+    from nanoframes.diagram import sketchy
+
+    d = sketchy.rough_arc(300.0, 300.0, 200.0, -90.0, -30.0, "ring:capture")
+    points = [(float(x), float(y)) for x, y in re.findall(r"(-?[\d.]+),(-?[\d.]+)", d)]
+    assert len(points) >= 7
+    radii = [math.hypot(x - 300.0, y - 300.0) for x, y in points]
+    assert all(abs(r - 200.0) <= 4 for r in radii)
+
+
+def test_plain_skins_emit_no_wobble(measure):
+    svg = compose(flow_spec(), measurer=measure)
+    scene = build_scene(parse_spec(flow_spec()), measurer=measure)
+    assert "#f8f6ef" not in svg
+    # Every connector is a straight/elbow path with no quadratic bows of its own.
+    for path in scene.paths():
+        assert " M " not in path.d, "a clean connector should be one path"

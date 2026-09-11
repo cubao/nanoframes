@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 
 from nanoframes.diagram import geometry as geo
+from nanoframes.diagram import sketchy
 from nanoframes.diagram import scene as scene_mod
 from nanoframes.diagram import text as txt
 from nanoframes.diagram.scene import Group, Path, Rect, Scene, Text
@@ -213,6 +214,49 @@ def resolve_ramp(spec: Spec) -> dict:
     return resolve(spec.skin, spec.preset).ramp
 
 
+# ---------------------------------------------------------------------------
+# sketchy (hand-drawn) shapes
+# ---------------------------------------------------------------------------
+
+
+def _roughen_chip(group: Group, x: float, y: float, w: float, h: float,
+                  name: str, tokens: Tokens) -> None:
+    """Replace a plain tag chip with a hand-drawn one, if one was emitted."""
+    for i, part in enumerate(group.parts):
+        if isinstance(part, Rect) and part.weight == "chip" and abs(part.x - x) < 0.6 \
+                and abs(part.y - y) < 0.6:
+            group.parts[i:i + 1] = _sketchy_paths(
+                x, y, w, h, name,
+                {"stroke": part.stroke, "stroke_opacity": part.stroke_opacity,
+                 "stroke_width": part.stroke_width}, tokens)
+            return
+
+
+def _rough(tokens: Tokens) -> bool:
+    """Whether this skin draws with hand-drawn strokes."""
+    return tokens.skin == "sketchy"
+
+
+def _sketchy_paths(x: float, y: float, w: float, h: float, name: str, style: dict,
+                   tokens: Tokens, seed_offset: int = 0) -> list:
+    """A hand-drawn rectangle outline, styled like the ``Rect`` it replaces."""
+    out = []
+    for i, d in enumerate(sketchy.rough_rect(x, y, w, h, name, seed_offset)):
+        # The second pass is lighter, like a re-traced edge.
+        width = style["stroke_width"] * (0.7 if i >= 4 else 1.0)
+        out.append(Path(d=d, stroke=style["stroke"], stroke_width=width,
+                        dash=style.get("dash"), opacity=style.get("stroke_opacity", 1.0)))
+    return out
+
+
+def _sketchy_style(style: dict) -> dict:
+    """``node_style``'s dict as a stroke style for a rough outline."""
+    return {"stroke": style["stroke"],
+            "stroke_opacity": style["stroke_opacity"],
+            "stroke_width": style.get("stroke_width", 1.0) + 0.9,
+            "dash": style.get("dash")}
+
+
 def _wants_legend(spec: Spec) -> bool:
     if spec.legend is not None:
         return spec.legend
@@ -296,11 +340,20 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
         x, y, w, h = boxes[node.id]
         g = Group(name=f"node:{node.id}")
         g.start, g.fade = b.slice(REVEAL_FADE)
-        g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
-                            **t.node_style(node.type)))
+        style = t.node_style(node.type)
+        if _rough(t):
+            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
+                                fill=style["fill"], fill_opacity=style["fill_opacity"]))
+            g.parts += _sketchy_paths(x, y, w, h, f"node:{node.id}",
+                                      _sketchy_style(style), t)
+        else:
+            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box", **style))
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, node.label, node.sub, node.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=node.focal)
+        if _rough(t):
+            _roughen_chip(g, x + txt.TAG_INSET_X, y + txt.TAG_INSET_Y,
+                          txt.TAG_W, txt.TAG_H, f"tag:{node.id}", t)
         groups.append(g)
 
     groups += labels
@@ -399,8 +452,18 @@ def _route_edge(b: _Builder, spec: Spec, boxes: dict, edge) -> Path:
     z = _port_point(boxes[edge.target], b_side, b_ratio)
     points, _ = geo.elbow(a, z, a_side, b_side)
     style = t.edge_style(edge.style)
-    path = Path(d=geo.path_d(points), stroke=style["stroke"],
-                stroke_width=style["width"], dash=style["dash"], points=points)
+    if _rough(t):
+        # Hand-drawn connectors: each leg bows, corners stay on the elbow points.
+        name = f"edge:{edge.source}->{edge.target}"
+        d = ""
+        for i in range(len(points) - 1):
+            (x1, y1), (x2, y2) = points[i], points[i + 1]
+            d += sketchy.wobbly_line(x1, y1, x2, y2, sketchy._seed(name), i)
+        path = Path(d=d, stroke=style["stroke"], stroke_width=style["width"] + 0.4,
+                    dash=style["dash"], points=points)
+    else:
+        path = Path(d=geo.path_d(points), stroke=style["stroke"],
+                    stroke_width=style["width"], dash=style["dash"], points=points)
     if style["head"] == "filled":
         path.head, path.head_at = geo.arrowhead(points)
         path.head_fill = style["stroke"]
@@ -452,10 +515,18 @@ def _zone_group(b: _Builder, spec: Spec, node, boxes: dict):
     x, y = geo.q4(x0), geo.q4(y0)
     w, h = geo.q4(x1 - x), geo.q4(y1 - y)
     g = Group(name=f"zone:{zone.id}")
-    g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=8.0, weight="zone",
-                        fill=t.zone_fill[0], fill_opacity=t.zone_fill[1],
-                        stroke=t.zone_stroke[0], stroke_opacity=t.zone_stroke[1],
-                        stroke_width=0.8))
+    if _rough(t):
+        g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=8.0, weight="zone",
+                            fill=t.zone_fill[0], fill_opacity=t.zone_fill[1]))
+        g.parts += _sketchy_paths(
+            x, y, w, h, f"zone:{zone.id}",
+            {"stroke": t.zone_stroke[0], "stroke_opacity": t.zone_stroke[1],
+             "stroke_width": 0.8}, t)
+    else:
+        g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=8.0, weight="zone",
+                            fill=t.zone_fill[0], fill_opacity=t.zone_fill[1],
+                            stroke=t.zone_stroke[0], stroke_opacity=t.zone_stroke[1],
+                            stroke_width=0.8))
     label = zone.label.upper()
     tracking = round(0.14 * t.ramp["tag"], 2)
     run_w = txt.visual_width(b.measurer, label, FONT_MONO, "400", t.ramp["tag"],
@@ -533,9 +604,15 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
             continue
         phi_end = math.atan2(p_entry[1] - cy, p_entry[0] - cx) - 1.2 / radius
         end = (cx + radius * math.cos(phi_end), cy + radius * math.sin(phi_end))
-        arc = Path(d=(f"M {geo.r2(p_exit[0])},{geo.r2(p_exit[1])}"
-                      f" A {radius:g} {radius:g} 0 0 1 {geo.r2(end[0])},{geo.r2(end[1])}"),
-                   stroke=t.muted, stroke_width=1.2, points=[p_exit, p_entry])
+        if _rough(t):
+            start_deg = math.degrees(math.atan2(p_exit[1] - cy, p_exit[0] - cx))
+            arc = Path(d=sketchy.rough_arc(cx, cy, radius, start_deg,
+                                           math.degrees(phi_end), f"ring:{here.id}"),
+                       stroke=t.muted, stroke_width=1.6, points=[p_exit, p_entry])
+        else:
+            arc = Path(d=(f"M {geo.r2(p_exit[0])},{geo.r2(p_exit[1])}"
+                          f" A {radius:g} {radius:g} 0 0 1 {geo.r2(end[0])},{geo.r2(end[1])}"),
+                       stroke=t.muted, stroke_width=1.2, points=[p_exit, p_entry])
         arc.head, arc.head_at = _head_at(end, math.degrees(phi_end) + 90.0)
         arc.head_fill = t.muted
         arcs.append(arc)
@@ -576,8 +653,14 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
     hub = Group(name="hub")
     hub.start, hub.fade = b.slice(REVEAL_FADE)
     hub_x, hub_y = geo.q4(cx - hub_w / 2.0), geo.q4(cy - hub_h / 2.0)
+    hub_style = {"fill": t.ink, "fill_opacity": 1.0, "stroke": t.ink,
+                 "stroke_opacity": 1.0, "stroke_width": 1.0}
     hub.parts.append(Rect(x=hub_x, y=hub_y, w=hub_w, h=hub_h, rx=8.0, weight="box",
-                          fill=t.ink, fill_opacity=1.0, stroke=t.ink, stroke_opacity=1.0))
+                          fill=t.ink, fill_opacity=1.0,
+                          stroke=None if _rough(t) else t.ink))
+    if _rough(t):
+        hub.parts += _sketchy_paths(hub_x, hub_y, hub_w, hub_h, "hub",
+                                    _sketchy_style(hub_style), t)
     hub.parts += txt.node_texts(b.measurer, hub_x, hub_y, hub_w, hub_h,
                                 loop.hub_label, loop.hub_sub, "", t.ramp,
                                 b.node_font, b.sub_font, t.paper, t.paper, t.paper, t.accent)
@@ -587,8 +670,13 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
         x, y, w, h = boxes[st.id]
         g = Group(name=f"node:{st.id}")
         g.start, g.fade = b.slice(REVEAL_FADE)
-        g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
-                            **t.node_style("focal" if st.focal else "backend")))
+        style = t.node_style("focal" if st.focal else "backend")
+        if _rough(t):
+            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
+                                fill=style["fill"], fill_opacity=style["fill_opacity"]))
+            g.parts += _sketchy_paths(x, y, w, h, f"node:{st.id}", _sketchy_style(style), t)
+        else:
+            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box", **style))
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, st.label, st.sub, st.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=st.focal)

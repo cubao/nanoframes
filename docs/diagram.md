@@ -42,7 +42,7 @@ One JSON object; the two kinds share a header.
 | key | values | notes |
 |---|---|---|
 | `diagram` | `flow`, `loop` | required |
-| `skin` | `light` (default), `dark`, `terminal` | the source's token skins |
+| `skin` | `light` (default), `dark`, `sketchy`, `terminal` | token skins; `sketchy` draws hand-drawn strokes on warm paper |
 | `preset` | `doc-inline`, `doc-wide`, `slide-16x9`, `slide-4x3`, `social-og`, `social-square`, `print-a4-landscape`, `print-letter-landscape`, `fit` | canvas floor + type ramp; `fit` means the canvas is derived from content |
 | `canvas` | `{"width": 1280, "height": 720}` | explicit canvas; overrides the preset, still a *minimum* |
 | `title` / `subtitle` | strings | serif title, sans subtitle, drawn last (nothing covers them) |
@@ -125,6 +125,7 @@ do not survive, and the builder works around each (probed, not assumed):
 | `letter-spacing` | ignored | tracked runs (zone eyebrows, tags) emitted one `<text>` per character at the CSS advance |
 | `text-anchor` | ignored — everything left-aligned at `x` | centred runs emitted one `<text>` per glyph, placed by the calibrated advance |
 | `<pattern>` dot grid | rasterizes to nothing | not emitted (the dotted-paper variant is unavailable) |
+| `<filter>` (turbulence, the browser's sketchy effect) | not rasterized | the sketchy skin computes its wobble as geometry instead (`nanoframes.diagram.sketchy`) |
 
 Consequences worth knowing:
 
@@ -137,6 +138,22 @@ Consequences worth knowing:
   so weights are not emitted: hierarchy comes from size, spacing and color.
 - CJK labels work (the bundled mono face), and the width budget rules the
   source documents for Hangul/Han apply unchanged.
+
+## Hand-drawn output (`"skin": "sketchy"`)
+
+A rendering register, not a second layout system: the same spec, boxes, grid and
+connector rules, drawn with hand-drawn strokes on the warm-white page of the
+hand-drawn explainer convention (`#f8f6ef`). Every edge is drawn as its own
+bowed stroke, twice, with a lighter re-trace; ring arcs are sampled and wobbled
+perpendicular to the radius; the tag chips and the loop hub go rough with
+everything else. Text is untouched.
+
+The browser version of this look is an SVG turbulence filter, which ThorVG does
+not rasterize — so the wobble is computed geometry instead
+(`nanoframes.diagram.sketchy`, amplitude 2.6px, seeded from each shape's name).
+That makes it deterministic: the same spec renders byte-identically on every
+machine and in every process order. Craft rules:
+`skills/nanoframes/references/diagram-sketchy.md`.
 
 ## Library API
 

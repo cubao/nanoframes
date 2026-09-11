@@ -67,6 +67,7 @@ not open the whole library.
 | "premium", "clean", "minimal", "modern", "sleek", "polished" | `design-taste.md` (restraint defaults) + the routed recipe |
 | Diagram: architecture, system map, flowchart, process, pipeline, deployment | `references/diagram-design.md` + `references/diagram-flow.md` |
 | Diagram: loop, flywheel, cycle, self-improving system | `references/diagram-design.md` + `references/diagram-loop.md` |
+| Diagram: hand-drawn / sketchy / whiteboard register | `references/diagram-sketchy.md` + the routed grammar |
 
 Mixed prompts: choose one primary recipe from the main deliverable, then add
 secondary references (e.g. a logo stat card uses `recipe-logo.md` +

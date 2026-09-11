@@ -11,6 +11,12 @@ text-to-lottie contributors) from the Lottie/Skottie world into the nanoframes
 declarative SVG timeline. Anything renderer-specific was re-expressed in
 nanoframes mechanics; the timing/taste/quality rules are shared.
 
+`diagram-sketchy.md` additionally adapts the hand-drawn explainer conventions of
+[hi-nikola/hand-drawn-explainer-video-nikola](https://github.com/hi-nikola/hand-drawn-explainer-video-nikola)
+(Apache-2.0) — its warm-paper palette and marker-outline register — while noting
+[yang0/handraw-style](https://github.com/yang0/handraw-style)'s numbered style
+gallery as an image-generation prompt catalog this renderer cannot draw.
+
 `diagram-design.md`, `diagram-flow.md` and `diagram-loop.md` adapt
 [cathrynlavery/diagram-design](https://github.com/cathrynlavery/diagram-design)
 (MIT license, © 2025 Cathryn Lavery) instead: the editorial design system and
