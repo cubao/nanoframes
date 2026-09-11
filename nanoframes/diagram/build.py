@@ -27,10 +27,10 @@ from nanoframes.diagram.tokens import FONT_MONO, FONT_SANS, FONT_SERIF, PRESETS,
 
 REVEAL_FADE = 0.35
 REVEAL_STEP = 0.16
-# Visible clearance between an arrow label's mask and its connector stroke
-# (source SKILL.md §6 rule 2: 6–10px). The mask extends ~2px below the text
-# block, so a 10px anchor gap lands at the top of that band.
-ARROW_GAP = 10.0
+# Visible clearance between an arrow label's ink and its connector stroke
+# (source SKILL.md §6 rule 2: 6–10px). Measured from the ink's descent, so a
+# CJK label — whose glyphs sit lower than Latin ones — keeps the same gap.
+ARROW_GAP = 8.0
 LEGEND_H = 60.0
 ZONE_PAD = 16.0
 ZONE_HEAD = 32.0
@@ -386,8 +386,11 @@ def _edge_label_group(b: _Builder, path: Path, edge, start: float, fade: float) 
     """Masked arrow label with the source's mandatory 6–10px stroke clearance."""
     t = b.tokens
     g = Group(name=f"label:{edge.source}->{edge.target}", start=start, fade=fade)
-    (anc_x, anc_y), orientation, _ = geo.label_anchor(path.points, ARROW_GAP,
-                                                      edge.label_side or "")
+    metrics = txt.measure(b.measurer, edge.label.upper(), FONT_MONO, "400",
+                          t.ramp["arrow"])
+    (anc_x, anc_y), orientation, _ = geo.label_anchor(
+        path.points, ARROW_GAP, edge.label_side or "",
+        descent=metrics.bottom, ascent=-metrics.top)
     run = Text(x=round(anc_x, 1), y=round(anc_y, 1), content=edge.label.upper(),
                size=t.ramp["arrow"], fill=t.muted, family=FONT_MONO,
                anchor="middle" if orientation == "h" else "start",

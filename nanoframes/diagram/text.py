@@ -218,8 +218,9 @@ def text_box(run, measurer) -> tuple:
         x = run.x - width - MASK_PAD_X
     else:
         x = run.x + left - MASK_PAD_X
-    height = (run.size * 0.9) + 2 * MASK_PAD_Y
-    y = run.y - height + MASK_PAD_Y
+    metrics = measure(measurer, run.content, run.family, "400", run.size)
+    height = metrics.height + 2 * MASK_PAD_Y
+    y = run.y + metrics.top - MASK_PAD_Y
     return (round(x, 1), round(y, 1), round(width + 2 * MASK_PAD_X, 1), round(height, 1))
 
 

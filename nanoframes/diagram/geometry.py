@@ -144,22 +144,25 @@ def longest_segment(points: list) -> tuple:
     return mid, vec, best
 
 
-def label_anchor(points: list, gap: float, prefer: str = "") -> tuple:
+def label_anchor(points: list, gap: float, prefer: str = "",
+                 descent: float = 0.0, ascent: float = 0.0) -> tuple:
     """Where an arrow label goes, and its orientation.
 
     Returns ``((x, y), orientation, segment_mid)`` where orientation is
     ``"h"`` (label above a horizontal run) or ``"v"`` (label beside a vertical
     run). ``gap`` is the visible clearance from the stroke the connector rules
-    require (6–10px); the returned anchor is the label's baseline end, so the
-    caller adds the mask height on top.
+    require (6–10px), measured from the *ink* — ``descent`` (how far the ink
+    falls below the baseline) and ``ascent`` (how far the ink rises above it)
+    come from the measurer, because a broad fallback face's CJK ink sits lower
+    than a Latin one and would otherwise touch the line.
     """
     mid, vec, _ = longest_segment(points)
     horizontal = abs(vec[0]) >= abs(vec[1])
     if prefer in ("h", "v"):
         horizontal = prefer == "h"
     if horizontal:
-        return (mid[0], mid[1] - gap), "h", mid
-    return (mid[0] + gap, mid[1]), "v", mid
+        return (mid[0], mid[1] - gap + descent), "h", mid
+    return (mid[0] + gap + ascent, mid[1]), "v", mid
 
 
 def end_tangent(points: list) -> tuple:
