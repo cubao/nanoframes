@@ -173,6 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_scale(sp)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
+    sp.add_argument("--bg", default="white",
+                    help="backdrop for the scene's transparent areas (a color, or 'none'"
+                         " to keep alpha in --keep-frames PNGs); default: white")
     sp.add_argument("--threads", type=int, default=4)
     sp.set_defaults(handler=cmd_lottie)
 
@@ -463,11 +466,16 @@ def cmd_video(args: argparse.Namespace) -> int:
 
 def cmd_lottie(args: argparse.Namespace) -> int:
     """Render a Lottie JSON scene offline (ThorVG's native loader) to MP4."""
-    from nanoframes.lottie import LottieError, render_lottie_video
+    from nanoframes.lottie import LottieError, parse_background, render_lottie_video
 
     try:
+        background = parse_background(args.bg)
+        if background is None and not args.keep_frames:
+            print("nanoframes: --bg none only affects --keep-frames PNGs;"
+                  " the MP4 flattens alpha onto black", file=sys.stderr)
         render_lottie_video(args.file, args.out, scale=_scale_of(args), threads=args.threads,
-                            keep_frames=args.keep_frames, audio=args.audio)
+                            keep_frames=args.keep_frames, audio=args.audio,
+                            background=background)
     except (LottieError, subprocess.CalledProcessError) as exc:
         print(f"nanoframes: {exc}", file=sys.stderr)
         return 2

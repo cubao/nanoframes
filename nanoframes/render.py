@@ -29,6 +29,23 @@ class RenderError(RuntimeError):
     """Raised when ThorVG fails to load or rasterize a frame."""
 
 
+def set_canvas_target(canvas, width: int, height: int) -> None:
+    """``SwCanvas.set_target`` with the alpha convention Pillow actually reads.
+
+    ThorVG's default colorspace (``ABGR8888``) is *alpha-premultiplied*, and the
+    binding hands that buffer to ``Image.frombuffer("RGBA", ...)`` — which reads
+    straight alpha. Left at the default, every semi-transparent pixel came back
+    darkened by its own alpha: 50%-white rasterized to ``(127,127,127,127)``
+    instead of ``(255,255,255,127)``, and the MP4 path (``yuv420p`` discards
+    alpha) kept the darkened RGB, washing out semi-transparent areas of the
+    picture. ``ABGR8888S`` is the un-premultiplied variant, so the bytes mean
+    what Pillow assumes they mean.
+    """
+    import thorvg_python as tvg  # heavy import, keep it lazy
+
+    canvas.set_target(width, height, None, tvg.Colorspace.ABGR8888S)
+
+
 def _write_temp(svg_str: str) -> str:
     fd, path = tempfile.mkstemp(prefix="nanoframes_", suffix=".svg")
     try:
@@ -66,7 +83,7 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4,
                 holder.font_load(fpath)
             except Exception:
                 continue
-        canvas.set_target(width, height)
+        set_canvas_target(canvas, width, height)
         pic = tvg.Picture(engine)
         result = pic.load(path)
         if result != 0:

@@ -16,6 +16,14 @@ Rendering model
   ``LottieAnimation``: ``picture.load(path)`` parses, ``set_frame(i)`` seeks,
   ``canvas.add(picture)`` + draw/sync rasterizes (the binding's documented
   ``canvas.push`` API is outdated — it does not exist on SwCanvas).
+- A Lottie scene is transparent by design: the format has no scene-level
+  background property (top level is ``nm/layers/ver/fr/ip/op/w/h/assets/
+  markers/slots``), so the backdrop belongs to whatever plays the animation.
+  Scenes are authored against the player's page — usually white — so frames
+  are composited onto ``background`` (white by default, ``--bg`` on the CLI)
+  before they are written or muxed. Otherwise the alpha is simply dropped by
+  ``yuv420p`` and a scene drawn for a light page lands on black. Pass
+  ``background=None`` to keep the alpha channel instead.
 - Determinism matches ``.nf.svg`` rendering: same file, same library, same
   frames. There is no frame cache (each render is a full pass); a content
   hash is a cheap way to skip re-renders.
@@ -43,12 +51,64 @@ import tempfile
 
 import thorvg_python as tvg
 
+from nanoframes.render import set_canvas_target
 from nanoframes.scale import draft_size
 from nanoframes.video import mux_frames_to_mp4
+
+#: The backdrop a Lottie frame is composited onto when none is given. Scenes
+#: are authored against a player's page, and that page is white in the Lottie
+#: ecosystem's previewers — so a scene that ships no background of its own
+#: reads the way its author saw it, instead of as shapes on black.
+DEFAULT_BACKGROUND = (255, 255, 255)
+
+_NAMED_COLORS = {
+    "white": (255, 255, 255),
+    "black": (0, 0, 0),
+    "none": None,
+    "transparent": None,
+}
 
 
 class LottieError(ValueError):
     """Raised when a Lottie file cannot be parsed or rendered."""
+
+
+def parse_background(value) -> tuple[int, int, int] | None:
+    """Turn a ``--bg`` value into an ``(r, g, b)`` tuple, or ``None`` to keep alpha.
+
+    Accepts ``none``/``transparent``, ``white``/``black``, ``#rgb``/``#rrggbb``,
+    and ``"r,g,b"``. Raises ``LottieError`` on anything else — a typo in a
+    color should not silently render as some other color.
+    """
+    if value is None:
+        return DEFAULT_BACKGROUND
+    if isinstance(value, tuple):
+        return value
+    text = str(value).strip().lower()
+    if text in _NAMED_COLORS:
+        return _NAMED_COLORS[text]
+    if text.startswith("#"):
+        digits = text[1:]
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        if len(digits) == 6:
+            try:
+                return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
+            except ValueError:
+                pass
+        raise LottieError(f"not a color: {value!r} (use #rrggbb)")
+    if "," in text:
+        parts = [p.strip() for p in text.split(",")]
+        if len(parts) == 3:
+            try:
+                channels = tuple(int(p) for p in parts)
+            except ValueError:
+                channels = ()
+            if len(channels) == 3 and all(0 <= c <= 255 for c in channels):
+                return channels
+    raise LottieError(
+        f"not a color: {value!r} (use #rrggbb, 'r,g,b', white, black, or none)"
+    )
 
 
 def load_scene(path: str) -> dict:
@@ -90,10 +150,15 @@ def render_lottie_frames(
     prefix: str = "frame",
     threads: int = 1,
     scale: float = 1.0,
+    background: tuple[int, int, int] | None = DEFAULT_BACKGROUND,
 ) -> tuple[int, int, int]:
     """Render every frame of ``path`` into ``<frame_dir>/<prefix>.NNNNN.png``.
 
     ``scale`` rasterizes at that fraction of the scene's own size (a draft).
+    ``background`` is the color transparent regions are composited onto;
+    ``None`` keeps the alpha channel (PNG only — ``yuv420p`` cannot carry it,
+    so an MP4 of alpha frames flattens onto black).
+
     Returns ``(fps, frame_count, duration_frames)``. Deterministic: the same
     input yields byte-identical PNGs (same engine, same loader, same order).
     """
@@ -104,7 +169,7 @@ def render_lottie_frames(
     engine = tvg.Engine(threads=threads)
     canvas = tvg.SwCanvas(engine)
     try:
-        canvas.set_target(width, height)
+        set_canvas_target(canvas, width, height)
         anim = tvg.LottieAnimation(engine)
         pic = anim.get_picture()
         if int(pic.load(path)) != 0:
@@ -121,11 +186,21 @@ def render_lottie_frames(
             canvas.draw(True)
             canvas.sync()
             im = canvas.get_pillow()
+            if background is not None:
+                im = flatten(im, background)
             im.save(os.path.join(frame_dir, f"{prefix}.{i:05d}.png"))
         return scene["fps"], total, total
     finally:
         canvas.destroy()
         engine.term()
+
+
+def flatten(im, background: tuple[int, int, int]):
+    """Composite an RGBA frame onto ``background``, returning an opaque RGB image."""
+    from PIL import Image  # heavy import, keep it lazy
+
+    base = Image.new("RGBA", im.size, tuple(background) + (255,))
+    return Image.alpha_composite(base, im.convert("RGBA")).convert("RGB")
 
 
 def render_lottie_video(
@@ -135,12 +210,14 @@ def render_lottie_video(
     threads: int = 4,
     keep_frames: str | None = None,
     audio: str | None = None,
+    background: tuple[int, int, int] | None = DEFAULT_BACKGROUND,
 ) -> str:
     """Render ``path`` to a deterministic MP4 at ``out_path``.
 
     ``scale`` rasterizes a draft at that fraction of the scene size.
     ``keep_frames`` leaves the PNG sequence in that directory (otherwise a
-    temp dir is cleaned up). Returns ``out_path``.
+    temp dir is cleaned up). ``background`` is documented on
+    ``render_lottie_frames``. Returns ``out_path``.
     """
     out_path = os.path.abspath(out_path)
     keep_frames = os.path.abspath(keep_frames) if keep_frames else None
@@ -163,7 +240,7 @@ def render_lottie_video(
         try:
             prefix = scene["json"].get("nm") or "lottie"
             fps, _, _ = render_lottie_frames(path, frame_dir, prefix=prefix, threads=threads,
-                                             scale=scale)
+                                             scale=scale, background=background)
             return mux_frames_to_mp4(frame_dir, prefix, fps, out_path, audio=audio)
         finally:
             if cleanup:

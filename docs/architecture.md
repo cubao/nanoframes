@@ -144,23 +144,86 @@ MP4 export, and an agent-facing skill.
   renderer-exact text story (chips/wrap/curve/fit), bundled mono CJK font,
   `text_handler` escape hatch, example compositions + visual snapshot suite,
   agent skill (`skills/nanoframes/SKILL.md`).
-- **0.1.1 (2026-09)** `nanoframes lottie`: Lottie JSON import-render via
-  ThorVG's native loader (scene `w`/`h`/`fr`/`ip`/`op`, scene-relative
-  assets, deterministic full-pass render) + `docs/lottie.md` + walkthrough
-  section; craft reference library in the skill
-  (`skills/nanoframes/references/`, adapted from text-to-lottie).
-- **0.1.6 (2026-09)** — field feedback from a real clip (a 21-iteration
-  pelican-on-a-bicycle loop) landed three fixes with one root cause: the baked
-  frame had no viewport, so ThorVG sized the picture from its **content
-  bounding box** and any element outside the canvas silently rescaled or
-  blanked the whole frame. `bake` now pins `viewBox`/`width`/`height`, animated
-  transforms layer *inside* the element's own static transform instead of
-  replacing it, and `nanoframes.bounds` + `nanoframes.diagnose` back a new
-  `nanoframes debug` command (per-frame element boxes, whole-clip visibility
-  scan, loop-seam pixel diff) plus lint findings for geometry that never lands
-  on the canvas. Transforms gained one pivot concept — `"center"` for both
-  `rotate` and `scale` — and the `init` template uses it, so a bar grows where
-  it sits instead of collapsing toward the canvas corner.
+- **0.1.0 (2026-09)** — the first published release: v1's feature set, packaged.
+  `docs/` and `skills/` are force-included into the wheel and a bare
+  `nanoframes` prints where they landed, so an installed agent still finds the
+  composition contract. Publishing is sdist-only through `make upload`, with
+  the build backend pinned to `hatchling==1.27.0` — the last hatchling that
+  still served the then-supported Python floor as a build backend while
+  emitting Metadata-Version 2.4, which the twine in use accepts.
+- **0.1.1 (2026-09)** — the skill's **craft reference library**, absorbed from
+  text-to-lottie (MIT): `design-taste`, `motion-taste`, five recipes
+  (typography / logo / lower-thirds / loaders-icons / data-stats),
+  `chapter-transitions` and a translation-conventions README, all re-expressed
+  for the `.nf.svg` declarative timeline (frames → seconds, no off-canvas
+  motion, trim-path idioms → opacity/transform). The dependency floor was made
+  honest in the same release: `thorvg-python>=1.1.3` and `requires-python
+  >=3.9` — thorvg-python subscripts `ctypes.Array[...]`, a 3.9+ feature, so the
+  previous `>=3.8` floor could never actually have imported. A PEP 701 nested
+  f-string in the `measure` header, which killed every invocation on Python
+  3.8–3.11, went with it.
+- **0.1.2 (2026-09)** — `nanoframes lottie`: Lottie JSON import-render via
+  ThorVG's native loader (scene `w`/`h`/`fr`/`ip`/`op`, scene-relative assets,
+  deterministic full-pass render), making the text-to-lottie deliverable an
+  accepted *input* format rather than an authoring surface. Ships
+  `docs/lottie.md`, a hand-authored `examples/lottie/bounce.json`, and a
+  walkthrough section; `mux_frames_to_mp4` is extracted from `render_video` so
+  both pipelines share one deterministic ffmpeg option set.
+- **0.1.3 (2026-09)** — `--help` prints the docs/skill guide too. Agents reach
+  for `--help` first and were walking into subcommands without ever seeing the
+  composition contract; the pointer block moved into a shared
+  `_resource_lines()` used by both the bare-invocation guide and the parser
+  epilog, so the two cannot drift.
+- **0.1.4 (2026-09)** — `--scale` draft renders. ThorVG re-resamples every
+  `<image>` source into its destination rect on *every* frame, so scaling only
+  the canvas bought ~10% no matter how small it got; `nanoframes.scale` instead
+  rewrites each distinct local image once, before the frame loop, into a
+  disk-cached copy at the render scale. Measured on a 1425-frame 1600×1200 clip
+  over a 1560×991 board: 2m47s before, 49s at `--scale 0.5`, 17s at `0.25`,
+  with full-quality output byte-identical. `--scale` also gained one meaning
+  across `render`/`preview`/`video`/`lottie` (it had been an ffmpeg `-vf
+  scale=`, which rasterized full-size and threw the pixels away).
+- **0.1.5 (2026-09)** — field feedback from a 21-iteration clip (a 960×540
+  pelican-on-a-bicycle loop) reported three failures that shared one shape: the
+  composition rendered *something valid and silently wrong*. The baked root
+  `<svg>` carried no `width`/`height`/`viewBox`, so ThorVG sized the picture
+  from its **content bounding box** — one element outside the canvas rescaled
+  and shifted the entire frame (measured 84.6% opaque coverage at `master-demo`
+  t=0.1; larger excursions went fully transparent). `bake` now pins the
+  viewport unless the author declared one, which makes off-canvas geometry
+  exactly what it should be: clipped. An animated `transform` also layers
+  *inside* the element's own static transform instead of replacing it, and
+  `rotate`'s pivot became expressible at all. The failure mode had been
+  invisible, so `nanoframes.bounds` + `nanoframes.diagnose` back a new
+  `nanoframes debug` command — per-element post-transform boxes per frame,
+  on-canvas/clipped/off-canvas classification, a whole-clip visibility scan,
+  and the pixel diff between a loop's two seam frames — and `check` gained
+  findings for geometry that never lands on the canvas.
+- **0.1.6 (2026-09)** — one pivot concept for transforms: `"center"` (`"auto"`
+  for the element's own geometry box, or `[cx, cy]`) now anchors `scale` as
+  well as `rotate`, replacing the object form `{"rotate": {"deg":…,
+  "center":…}}` that 0.1.5 had introduced hours earlier and never released.
+  `check` errors on every transform value `bake` cannot express, with a test
+  locking lint and bake to the same set. The pivot warning then found real
+  instances in the shipped corpus — the `init` template's accent bar grew from
+  the canvas corner, `master-demo`'s orbs and rule and `title-card`'s accent
+  bar with it — so the template and all three examples were re-anchored, and a
+  dogfood test keeps the corpus at *zero* `check` findings.
+- **0.1.7 (2026-09)** — the Lottie import-render path was validated against a
+  real corpus (ThorVG's own `test/resources` scenes plus `airbnb/lottie-web`'s
+  animation gallery — 29 scenes, all render) and two defects surfaced, both
+  about alpha. ThorVG's software canvas defaults to an alpha-*premultiplied*
+  colorspace while the binding hands that buffer to Pillow's straight-alpha
+  `frombuffer("RGBA")`, so every semi-transparent pixel came back darkened by
+  its own alpha — on one corpus scene a quarter of the frame — and the MP4 path
+  (`yuv420p` discards alpha) kept the darkened RGB. The un-premultiplied
+  colorspace is now requested through `render.set_canvas_target`, shared by the
+  SVG and Lottie renderers. Separately: a Lottie scene carries no scene-level
+  background (the format has no such property), so an MP4 flattened the
+  transparent canvas onto black and light-page animations became shapes in a
+  void. `nanoframes lottie` now composites frames onto `--bg` — white by
+  default, the page these scenes are authored against; `none` keeps the alpha
+  for `--keep-frames`.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); in-scene video; Lottie markers
   surfaced in the CLI; remaining recipe ports (product-promo,

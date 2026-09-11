@@ -10,11 +10,14 @@ nanoframes lottie scene.json -o out.mp4
 nanoframes lottie scene.json -o out.mp4 --keep-frames frames/   # keep the PNGs
 nanoframes lottie scene.json -o out.mp4 --audio track.mp3       # mux audio (aac)
 nanoframes lottie scene.json -o out.mp4 --scale 0.5             # draft at half size
+nanoframes lottie scene.json -o out.mp4 --bg '#1e1e2e'          # backdrop (default white)
+nanoframes lottie scene.json -o out.mp4 --keep-frames f/ --bg none   # keep alpha in the PNGs
 ```
 
 Library API (`nanoframes.lottie`): `load_scene(path)` validates a scene,
 `render_lottie_frames(path, dir)` renders every frame to
-`<dir>/<name>.NNNNN.png`, `render_lottie_video(path, out)` muxes the MP4.
+`<dir>/<name>.NNNNN.png`, `render_lottie_video(path, out)` muxes the MP4,
+`parse_background(value)` turns a `--bg` string into an `(r, g, b)` tuple.
 Raising `LottieError` on unreadable/blank scenes.
 
 ## Where scenes come from
@@ -28,6 +31,23 @@ works, subject to ThorVG's loader coverage.
 ## Rendering contract
 
 - **Canvas**: the scene's own `w`/`h`, times `--scale` for a draft render.
+- **Backdrop**: a Lottie scene is **transparent by design** — the format has no
+  scene-level background property (the top level is `nm/layers/ver/fr/ip/op/
+  w/h/assets/markers/slots`), so the backdrop belongs to whatever plays the
+  animation. Scenes are authored against that player's page, which in the
+  Lottie ecosystem's previewers is white. Because `yuv420p` cannot carry an
+  alpha channel, frames are composited onto `--bg` before they are written or
+  muxed — white by default, `#rrggbb` / `r,g,b` / `white` / `black` otherwise.
+  `--bg none` keeps the alpha instead, which is only meaningful together with
+  `--keep-frames` (the MP4 still flattens onto black). Scenes that ship their
+  own opaque background layer are unaffected: `--bg` only fills what is
+  actually transparent.
+- **Alpha**: ThorVG's software canvas defaults to an alpha-*premultiplied*
+  colorspace, while the binding reads it back as straight alpha. nanoframes
+  requests the un-premultiplied variant, so a 50%-opacity white fill round-trips
+  as `(255,255,255,127)` rather than `(127,127,127,127)`. Before, every
+  semi-transparent area of a scene rendered too dark and desaturated, and the
+  MP4 path kept the darkened RGB.
 - **Timing**: fps = scene `fr` (fallback 30); frame count = the loader's
   total (`op - ip`); every integer frame `[0, total)` is rasterized once.
 - **Determinism**: same file + same library = byte-identical frames and MP4

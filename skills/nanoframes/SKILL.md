@@ -184,6 +184,7 @@ nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
 nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
 nanoframes fonts list|add|verify|install          # CJK font toolbox
 nanoframes lottie <scene.json> -o out.mp4         # ThorVG Lottie loader -> MP4
+nanoframes lottie scene.json -o out.mp4 --bg '#1e1e2e'   # backdrop (default white)
 nanoframes walkthrough                  # regenerate the one-take tour (build/)
 ```
 

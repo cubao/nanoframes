@@ -575,6 +575,10 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
         md.append("The loader's coverage is ThorVG's Lottie implementation — shapes, strokes,")
         md.append("gradients, images, masks/mattes, trim paths, repeaters, layer effects, text and")
         md.append("most expressions; the rendered frame is the contract when in doubt.")
+        md.append("A Lottie scene carries no background of its own — the format has no such field, so")
+        md.append("the backdrop belongs to whatever plays it — and an MP4 cannot hold an alpha")
+        md.append("channel. Frames are therefore composited onto `--bg` (white by default, the page")
+        md.append("these scenes are authored against); `--bg none` keeps the alpha in the PNGs.")
         md.append("Contract & limits: `docs/lottie.md`.\n")
         md.append("---\n")
 
