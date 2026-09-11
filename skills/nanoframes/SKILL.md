@@ -65,6 +65,8 @@ not open the whole library.
 | Long-form, explainer, multi-idea, feature list, timeline, before/after, recap | `references/chapter-transitions.md` + `motion-taste.md` |
 | Seamless loop requested | `motion-taste.md` (loops) + the routed recipe |
 | "premium", "clean", "minimal", "modern", "sleek", "polished" | `design-taste.md` (restraint defaults) + the routed recipe |
+| Diagram: architecture, system map, flowchart, process, pipeline, deployment | `references/diagram-design.md` + `references/diagram-flow.md` |
+| Diagram: loop, flywheel, cycle, self-improving system | `references/diagram-design.md` + `references/diagram-loop.md` |
 
 Mixed prompts: choose one primary recipe from the main deliverable, then add
 secondary references (e.g. a logo stat card uses `recipe-logo.md` +
@@ -183,6 +185,7 @@ nanoframes video  <comp>.nf.svg -o out.mp4 --scale 0.5       # draft: half-size,
 nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
 nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
 nanoframes fonts list|add|verify|install          # CJK font toolbox
+nanoframes diagram <spec.json> -o out.nf.svg      # diagram spec -> composition
 nanoframes lottie <scene.json> -o out.mp4         # ThorVG Lottie loader -> MP4
 nanoframes lottie scene.json -o out.mp4 --bg '#1e1e2e'   # backdrop (default white)
 nanoframes walkthrough                  # regenerate the one-take tour (build/)
@@ -203,6 +206,26 @@ that turns a blank output into a named culprit.
 All of `docs/` and `skills/` ship inside the installed package too
 (`site-packages/nanoframes/docs`, `site-packages/nanoframes/skills`), so an
 installed agent gets the same references.
+
+## Diagrams (spec-built, not hand-authored)
+
+For an **editorial diagram** — architecture map, system overview, process flow,
+operating loop — do not hand-place boxes and connectors in a `.nf.svg`. Write a
+small JSON spec and let `nanoframes diagram` build the composition: it sizes
+boxes from measured text, routes orthogonal connectors with rounded corners,
+fans attach points, masks arrow labels, draws arrowheads as polygons, and holds
+the source design system's 4px grid and complexity budgets.
+
+```bash
+nanoframes diagram spec.json -o diagram.nf.svg --check
+nanoframes render diagram.nf.svg --t 0 -o shot.png    # a still
+nanoframes video  diagram.nf.svg -o out.mp4           # with "reveal": true
+```
+
+Read `references/diagram-design.md` plus the routed grammar
+(`diagram-flow.md` or `diagram-loop.md`) before writing a spec; the contract is
+[docs/diagram.md](../../docs/diagram.md). Hand-author a `.nf.svg` only when the
+task is motion design, not a diagram.
 
 ## Lottie scenes (import-render, not authoring)
 

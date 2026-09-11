@@ -1,0 +1,16 @@
+{
+  "diagram": "loop",
+  "title": "The self-improving loop",
+  "subtitle": "Every pass writes back to the shared record",
+  "loop": {
+    "hub": {"label": "Shared memory", "sub": "one record"},
+    "stations": [
+      {"id": "capture", "label": "Capture", "sub": "signals in"},
+      {"id": "research", "label": "Research", "sub": "evidence"},
+      {"id": "decide", "label": "Decide", "sub": "human approves", "focal": true},
+      {"id": "act", "label": "Act", "sub": "work ships"},
+      {"id": "measure", "label": "Measure", "sub": "outcomes logged"},
+      {"id": "learn", "label": "Learn", "sub": "playbook updated"}
+    ]
+  }
+}

@@ -102,6 +102,16 @@ TAG_INSET_X = 8.0
 TAG_INSET_Y = 6.0
 
 
+def tag_reserve(tag: str, ramp: dict) -> float:
+    """Vertical space a corner type-tag takes from the label cluster.
+
+    The tag occupies the box's top-left corner; the centred label must clear it
+    (the source's node pattern puts the tag above the name, not through it), so
+    a tagged box grows by this much and its text block drops by half of it.
+    """
+    return (TAG_INSET_Y + TAG_H + 4.0) if tag else 0.0
+
+
 def box_size(measurer, label: str, sub: str, tag: str, ramp: dict,
              font_label: str, font_sub: str) -> tuple[float, float]:
     """Auto-sized node box ``(w, h)``, on the 4px grid.
@@ -123,7 +133,7 @@ def box_size(measurer, label: str, sub: str, tag: str, ramp: dict,
     # (see node_texts, which spends the same budget).
     half = label_m.bottom + LABEL_SUB_GAP + (-sub_m.top) / 2.0
     tall = (-label_m.top) + 2 * half + sub_m.bottom if sub else label_m.height
-    h = tall + 2 * PAD_Y
+    h = tall + 2 * PAD_Y + tag_reserve(tag, ramp)
     return float(max(80.0, _ceil4(w))), float(max(ramp["min_box_h"], _ceil4(h)))
 
 
@@ -142,19 +152,23 @@ def node_texts(measurer, x: float, y: float, w: float, h: float, label: str,
     is *measured* (not assumed from the point size), because this renderer's
     faces carry very different descender depths.
     """
-    from nanoframes.diagram.scene import Text
+    from nanoframes.diagram.scene import Rect, Text
 
     out = []
     cx = x + w / 2.0
+    reserved = tag_reserve(tag, ramp)
+    label_y0 = y + reserved / 2.0
+    label_h = h - reserved / 2.0
     has_sub = bool(sub)
     label_metrics = measure(measurer, label, font_label, "600", ramp["label"])
     if has_sub:
         sub_metrics = measure(measurer, sub, font_sub, "400", ramp["sub"])
         half = label_metrics.bottom + LABEL_SUB_GAP + (-sub_metrics.top) / 2.0
-        label_baseline = y + h / 2.0 - half
-        sub_baseline = y + h / 2.0 + half
+        label_baseline = label_y0 + label_h / 2.0 - half
+        sub_baseline = label_y0 + label_h / 2.0 + half
     else:
-        label_baseline = y + h / 2.0 - (label_metrics.top + label_metrics.bottom) / 2.0
+        label_baseline = (label_y0 + label_h / 2.0
+                          - (label_metrics.top + label_metrics.bottom) / 2.0)
         sub_baseline = label_baseline
     out.append(Text(x=cx, y=round(label_baseline, 1), content=label,
                     size=ramp["label"], fill=accent if focal else ink,
@@ -164,7 +178,13 @@ def node_texts(measurer, x: float, y: float, w: float, h: float, label: str,
                         size=ramp["sub"], fill=muted, family=font_sub,
                         anchor="middle", kind="sub"))
     if tag:
-        out.append(Text(x=x + TAG_INSET_X + TAG_W / 2.0, y=y + TAG_INSET_Y + TAG_H / 2.0 + 2.5,
+        # The chip and its text are emitted together so they cannot drift apart.
+        tag_m = measure(measurer, tag.upper(), font_sub, "400", ramp["tag"])
+        chip_x, chip_y = x + TAG_INSET_X, y + TAG_INSET_Y
+        out.append(Rect(x=chip_x, y=chip_y, w=TAG_W, h=TAG_H, rx=2, fill="none",
+                        stroke=ink, stroke_opacity=0.4, stroke_width=0.8, weight="chip"))
+        out.append(Text(x=chip_x + TAG_W / 2.0,
+                        y=chip_y + (TAG_H + (-tag_m.top) - tag_m.bottom) / 2.0,
                         content=tag.upper(), size=ramp["tag"],
                         fill=soft, family=font_sub, anchor="middle", kind="tag"))
     return out

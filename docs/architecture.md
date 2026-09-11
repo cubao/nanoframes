@@ -224,10 +224,26 @@ MP4 export, and an agent-facing skill.
   void. `nanoframes lottie` now composites frames onto `--bg` — white by
   default, the page these scenes are authored against; `none` keeps the alpha
   for `--keep-frames`.
+- **0.1.8 (2026-09)** — `nanoframes diagram`: the editorial diagram craft of
+  `cathrynlavery/diagram-design` (MIT) absorbed as a spec → `.nf.svg` builder
+  rather than ported as HTML. Two layout grammars ship — `flow` (explicit node
+  positions; the builder owns box sizing from measured text, orthogonal
+  connector routing with per-edge port fanning, masked arrow labels, zones,
+  legend, 4px-grid snap) and `loop` (the source's parametric ring: circular-arc
+  flow cut against station boxes, dashed radial write-backs, derived canvas) —
+  plus the source's complexity budgets as warnings and its §6 connector rules
+  as unit tests. The build surfaced five ThorVG gaps, each worked around and
+  documented in `docs/diagram.md`: `<marker>` is never drawn (arrowheads are
+  computed polygons), `rgba(...)` paints solid black (hex + `fill-opacity`),
+  `letter-spacing` and `text-anchor` are ignored (tracked and centred runs are
+  emitted per character/glyph at the calibrated advance), and `<pattern>` (the
+  dotted-paper variant) rasterizes to nothing. `text-anchor` mattered most: it
+  silently left-aligned every node label, overflowing boxes that had been sized
+  for centred text.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); in-scene video; Lottie markers
   surfaced in the CLI; remaining recipe ports (product-promo,
-  ui-microinteractions, diagram/technical, visual-effects).
+  ui-microinteractions, diagram types beyond flow/loop, visual-effects).
 
 `docs/` and `skills/` ship inside the pip wheel as `nanoframes/docs` and
 `nanoframes/skills`; `nanoframes` (no args, or `--help`) prints their installed locations.

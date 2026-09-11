@@ -11,6 +11,12 @@ text-to-lottie contributors) from the Lottie/Skottie world into the nanoframes
 declarative SVG timeline. Anything renderer-specific was re-expressed in
 nanoframes mechanics; the timing/taste/quality rules are shared.
 
+`diagram-design.md`, `diagram-flow.md` and `diagram-loop.md` adapt
+[cathrynlavery/diagram-design](https://github.com/cathrynlavery/diagram-design)
+(MIT license, © 2025 Cathryn Lavery) instead: the editorial design system and
+two layout grammars, re-expressed as specs for the `nanoframes diagram`
+generator rather than as browser HTML.
+
 ## Translation conventions (Lottie → nanoframes)
 
 | Lottie world | nanoframes world |

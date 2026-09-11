@@ -269,13 +269,6 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
         g.start, g.fade = b.slice(REVEAL_FADE)
         g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
                             **t.node_style(node.type)))
-        if node.tag:
-            style = t.node_style(node.type)
-            g.parts.append(Rect(x=x + txt.TAG_INSET_X, y=y + txt.TAG_INSET_Y,
-                                w=txt.TAG_W, h=txt.TAG_H, rx=2, fill="none",
-                                stroke=style["stroke"],
-                                stroke_opacity=min(1.0, style["stroke_opacity"] + 0.2),
-                                stroke_width=0.8, weight="chip"))
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, node.label, node.sub, node.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=node.focal)

@@ -26,6 +26,18 @@ text-to-lottie deliverable format) to MP4 offline through ThorVG's native
 Lottie loader. The agent skill ships a motion/design craft reference library
 (`skills/nanoframes/references/`, adapted from text-to-lottie, MIT).
 
+`nanoframes diagram <spec.json>` builds an **editorial diagram** — an
+architecture map, a process flow, an operating loop — into a composition from a
+small JSON spec: you place the nodes and write the words, the builder sizes the
+boxes from measured text, routes orthogonal connectors with rounded corners,
+fans attach points, masks arrow labels, draws arrowheads as polygons, and holds
+the design system's 4px grid and complexity budgets. The design system and
+layout grammars come from [diagram-design](https://github.com/cathrynlavery/diagram-design)
+(MIT); two grammars ship — explicit `flow` layout and the parametric `loop`
+ring (stations on a circle, circular-arc flow, dashed radial write-backs). With
+`"reveal": true` the diagram assembles itself along the timeline. See
+[docs/diagram.md](docs/diagram.md) and the runnable `examples/*.nf.json`.
+
 `--scale F` renders a **draft** at a fraction of the composition size. The
 canvas *and* every embedded `<image>` shrink together — ThorVG re-resamples each
 image source on every frame, so on a board-heavy clip the assets, not the canvas,
@@ -37,10 +49,10 @@ scale for delivery.
 ## Layout
 
 ```
-docs/             architecture + composition + lottie-import contracts
-examples/         `.nf.svg` compositions + lottie scenes
+docs/             architecture + composition + lottie-import + diagram contracts
+examples/         `.nf.svg` compositions, diagram specs + their built diagrams, lottie scenes
 skills/nanoframes/ SKILL.md + references/ — agent production loop + craft library
-nanoframes/       package (model, parser, timeline, bake, render, lint, cli, video, lottie)
+nanoframes/       package (model, parser, timeline, bake, render, lint, cli, video, lottie, diagram)
 tests/            unit + render + snapshot + CLI tests
 ```
 
@@ -50,8 +62,22 @@ tests/            unit + render + snapshot + CLI tests
 - [Composition](docs/composition.md) — the `.nf.svg` contract (timing attributes + animation timeline).
 - [Text capabilities](docs/text-capabilities.md) — measured chips/wrap/curve/fit, bundled CJK font, `text_handler` escape hatch.
 - [Lottie import](docs/lottie.md) — render Lottie JSON scenes to MP4 (`nanoframes lottie`).
+- [Diagram specs](docs/diagram.md) — build editorial diagrams from JSON (`nanoframes diagram`).
 
 `docs/` and `skills/` also ship inside the pip wheel (`nanoframes/docs`,
 `nanoframes/skills`); running `nanoframes` with no arguments — or
 `nanoframes --help` — prints where the docs and the agent skill live, repo
 checkout or installed package alike.
+
+## Diagrams
+
+```bash
+nanoframes diagram examples/architecture.nf.json -o architecture.nf.svg --check
+nanoframes render architecture.nf.svg --t 0 -o architecture.png
+nanoframes video  architecture.nf.svg -o architecture.mp4     # with "reveal": true
+```
+
+Two shipped specs to copy from: `examples/architecture.nf.json` (a zoned flow
+with a dashed async edge) and `examples/loop.nf.json` (a six-station operating
+loop with one focal station). Both build warning-free — the repo holds them to
+that with tests, so the examples and their `.nf.svg` outputs cannot drift.

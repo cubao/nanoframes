@@ -115,23 +115,17 @@ def _centred_markup(run: Text, measurer) -> str:
     return "".join(out)
 
 
-_ADVANCE_CACHE: dict = {}
-
-
 def _advance(run: Text, measurer) -> float:
     """The run's per-glyph advance, calibrated against the renderer.
 
     A single glyph's *ink* width is not its advance (right side bearings are
-    wide on round letters), so calibration measures a repeating string and
-    divides — exact for the mono faces this system uses, close enough for
-    proportional ones.
+    wide on round letters), so this measures a repeating string and divides —
+    exact for the mono faces this system uses, close enough for proportional
+    ones. Deliberately uncached here: the result depends on *which* measurer
+    asked (a fake one for tests, the ThorVG one for real), and the underlying
+    measurement is already cached by the measurer itself.
     """
-    key = (run.family, round(run.size, 3))
-    hit = _ADVANCE_CACHE.get(key)
-    if hit is None:
-        hit = txt.measure(measurer, "H" * 8, run.family, "400", run.size).width / 8.0
-        _ADVANCE_CACHE[key] = hit
-    return hit
+    return txt.measure(measurer, "H" * 8, run.family, "400", run.size).width / 8.0
 
 
 def _glyph_run(run: Text, content: str) -> Text:

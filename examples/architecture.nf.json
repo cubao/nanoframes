@@ -1,0 +1,21 @@
+{
+  "diagram": "flow",
+  "preset": "doc-wide",
+  "title": "Ingest path",
+  "subtitle": "Edge to store, one hop per arrow",
+  "nodes": [
+    {"id": "edge", "label": "Edge", "sub": "cdn:443", "tag": "EXT", "x": 80, "y": 220, "type": "external"},
+    {"id": "gw", "label": "API Gateway", "sub": "grpc:8443", "x": 320, "y": 220},
+    {"id": "orders", "label": "Orders", "sub": "orders-v2", "x": 560, "y": 220, "type": "focal"},
+    {"id": "db", "label": "Postgres", "sub": "orders", "x": 840, "y": 220, "type": "store"},
+    {"id": "lake", "label": "Object store", "sub": "s3://raw", "x": 560, "y": 400, "type": "store"}
+  ],
+  "zones": [{"id": "priv", "label": "Private zone", "nodes": ["gw", "orders", "db"]}],
+  "edges": [
+    {"from": "edge", "to": "gw", "label": "TLS"},
+    {"from": "gw", "to": "orders", "label": "gRPC"},
+    {"from": "orders", "to": "db", "label": "SQL"},
+    {"from": "orders", "to": "lake", "label": "async", "style": "dashed",
+     "from_port": "down", "to_port": "up"}
+  ]
+}
