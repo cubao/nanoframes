@@ -165,6 +165,14 @@ def _finish(scene: Scene, spec: Spec, minimum: tuple | None = None,
     min_h = (minimum or (0.0, 0.0))[1]
     scene.width = max(min_w, geo.q4(x1 + spec.margin))
     scene.height = max(min_h, geo.q4(y1 + spec.margin))
+    header = self_header(spec)
+    figure_top = y0 + dy
+    slack = min_h - (header + (y1 + dy - figure_top) + 2 * spec.margin)
+    if slack > 8 * spec.margin and figure_top >= header + spec.margin - 1:
+        # A preset (or taller explicit canvas) leaves vertical slack: centre the
+        # *figure* in the space below the title band rather than parking it at
+        # the top with one large void underneath. The header stays put.
+        scene_mod.translate(scene, 0.0, round(slack / 2.0, 1))
     if centre_on is not None:
         # A loop centres its *drawn* hub (the box snap can move it a pixel or
         # two off the ideal centre the geometry was built around) on the canvas.
@@ -182,6 +190,27 @@ def _finish(scene: Scene, spec: Spec, minimum: tuple | None = None,
             )
     scene.groups = [g for g in scene.groups if g.name != "background"]
     return scene
+
+
+def self_header(spec: Spec) -> float:
+    """Height of the title band the builder lays out above the figure.
+
+    Kept in sync with ``_Builder.header_height`` (it is a spec-level question,
+    and the centring step in ``_finish`` needs it without a builder instance).
+    """
+    if not spec.title and not spec.subtitle:
+        return 0.0
+    ramp = resolve_ramp(spec)
+    h = ramp["title"] + 12
+    if spec.subtitle:
+        h += 26
+    return h + 16
+
+
+def resolve_ramp(spec: Spec) -> dict:
+    from nanoframes.diagram.tokens import resolve
+
+    return resolve(spec.skin, spec.preset).ramp
 
 
 def _wants_legend(spec: Spec) -> bool:
