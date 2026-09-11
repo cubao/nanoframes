@@ -613,3 +613,24 @@ def test_warnings_helper_does_not_render():
     from nanoframes.diagram import warnings_for
 
     assert warnings_for(flow_spec(), measurer=FakeMeasurer()) == []
+
+
+def test_centred_runs_cover_their_measured_width(measure):
+    """A centred run's glyph span must equal its measured width.
+
+    ThorVG ignores `text-anchor`, so centred runs are emitted per glyph and their
+    advance is calibrated. Getting that calibration wrong (a Latin advance for a
+    full-width glyph) silently overlaps CJK; getting it wrong the other way
+    spreads Latin out. The measured ink and the emitted span have to agree.
+    """
+    from nanoframes.diagram.emit import _advance
+
+    for content, size in (("Learn", 12), ("感知", 12), ("Shared Memory", 12)):
+        span = 0.0
+        for glyph in content:
+            run = Text(x=200.0, y=100.0, content=glyph, size=size, fill="#000",
+                       family="Arial", anchor="middle", kind="label")
+            span += _advance(run, measure)
+        measured = measure.ink(content, "Arial", "400", size).w
+        assert abs(span - measured) <= 0.25 * size + 1.0, \
+            f"{content!r}: emitted span {span:.1f} vs measured {measured:.1f}"

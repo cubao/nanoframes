@@ -103,29 +103,36 @@ def _centred_markup(run: Text, measurer) -> str:
     Advances come from calibration minus each glyph's left side bearing (its ink
     offset), which keeps the drawn extent equal to the measured box.
     """
-    advance = (run.size * 0.62 + run.tracking) if run.tracking else _advance(run, measurer)
     glyphs = list(run.content)
-    lefts = [txt.measure(measurer, glyph, run.family, "400", run.size).left
-             for glyph in glyphs]
-    cursor = run.x - (advance * len(glyphs)) / 2.0
+    advances = [_advance(_glyph_run(run, glyph), measurer) + run.tracking
+                for glyph in glyphs]
+    cursor = run.x - sum(advances) / 2.0
     out = []
-    for glyph, left in zip(glyphs, lefts):
+    for glyph, advance in zip(glyphs, advances):
+        left = txt.measure(measurer, glyph, run.family, "400", run.size).left
         out.append(_run_markup(_glyph_run(run, glyph), cursor - left, "start"))
         cursor += advance
     return "".join(out)
 
 
 def _advance(run: Text, measurer) -> float:
-    """The run's per-glyph advance, calibrated against the renderer.
+    """One glyph's advance, calibrated against the renderer.
 
-    A single glyph's *ink* width is not its advance (right side bearings are
-    wide on round letters), so this measures a repeating string and divides —
-    exact for the mono faces this system uses, close enough for proportional
-    ones. Deliberately uncached here: the result depends on *which* measurer
-    asked (a fake one for tests, the ThorVG one for real), and the underlying
-    measurement is already cached by the measurer itself.
+    A single glyph's *ink* width is not its advance (right side bearings are wide
+    on round letters), so this measures a repeating string and divides. A Latin
+    ``H`` advance is ~0.5em while a CJK glyph's is a full 1em — the same string
+    division handles both, which is why this asks per glyph rather than assuming
+    one advance for the whole run.
     """
-    return txt.measure(measurer, "H" * 8, run.family, "400", run.size).width / 8.0
+    glyph = run.content.lower() if run.content.isupper() else run.content
+    if glyph.isspace():
+        # The engine collapses runs of whitespace (and the bundling means the
+        # space can measure empty), so derive it by difference instead.
+        flat = txt.measure(measurer, "HH", run.family, "400", run.size).width
+        spaced = txt.measure(measurer, "H H", run.family, "400", run.size).width
+        return max(0.0, spaced - flat) or run.size * (0.602 if glyph else 1.0)
+    probe = glyph * 8
+    return txt.measure(measurer, probe, run.family, "400", run.size).width / 8.0
 
 
 def _glyph_run(run: Text, content: str) -> Text:
