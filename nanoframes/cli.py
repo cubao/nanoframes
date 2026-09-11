@@ -11,6 +11,7 @@ Commands
   measure     <comp>            report renderer-exact glyph widths for text elements
   fonts       list/add/verify/install   CJK font toolbox
   lottie      <file.json>       render a Lottie JSON scene offline to MP4
+  diagram     <spec.json>       build a .nf.svg composition from a diagram spec
   walkthrough [-o DIR]          generate the one-take walkthrough
 """
 
@@ -23,7 +24,7 @@ import sys
 
 from nanoframes import __version__
 from nanoframes.cache import FrameCache
-from nanoframes.lint import has_errors, lint_path
+from nanoframes.lint import has_errors, lint_path, lint_string
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import frame_is_blank, measurer, render_frame
 from nanoframes.video import render_video
@@ -178,6 +179,14 @@ def build_parser() -> argparse.ArgumentParser:
                          " to keep alpha in --keep-frames PNGs); default: white")
     sp.add_argument("--threads", type=int, default=4)
     sp.set_defaults(handler=cmd_lottie)
+
+    sp = sub.add_parser("diagram", help="build a .nf.svg from a diagram spec (JSON)")
+    sp.add_argument("spec", help="path to a diagram spec JSON (nodes/edges or loop stations)")
+    sp.add_argument("-o", "--out", default=None,
+                    help="output composition path (default <spec>.nf.svg)")
+    sp.add_argument("--check", action="store_true",
+                    help="build, then lint the composition; exit 1 on lint errors")
+    sp.set_defaults(handler=cmd_diagram)
 
     sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
     sp.add_argument("-o", "--out", default="build/walkthrough", help="output dir")
@@ -483,6 +492,55 @@ def cmd_lottie(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_diagram(args: argparse.Namespace) -> int:
+    """Build a diagram spec into a composition (and optionally lint it)."""
+    from nanoframes.diagram import build_scene, load_spec, render
+    from nanoframes.diagram.spec import SpecError
+
+    if not os.path.exists(args.spec):
+        print(f"nanoframes: no such file: {args.spec}", file=sys.stderr)
+        return 2
+    try:
+        spec = load_spec(args.spec)
+    except SpecError as exc:
+        for problem in exc.problems:
+            print(f"[error] {problem}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        return 2
+
+    m = measurer()
+    try:
+        scene = build_scene(spec, measurer=m)
+    except ValueError as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        return 1
+    out = args.out or os.path.splitext(args.spec)[0] + ".nf.svg"
+    name = os.path.splitext(os.path.basename(out))[0]
+    svg = render(scene, composition_id=name, measurer=m)
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(svg)
+
+    for warning in scene.warnings:
+        print(f"[warning] {warning}")
+    findings = lint_string(svg, measurer=m)
+    if args.check and has_errors(findings):
+        for f in findings:
+            print(str(f))
+        print("nanoframes: refusing to write a composition with lint errors", file=sys.stderr)
+        return 1
+    print(f"wrote {out} ({scene.width:g}x{scene.height:g},"
+          f" {len(scene.groups)} groups, duration {scene.duration:g}s)")
+    if not scene.warnings:
+        print("  no spec warnings (budget, grid, clipping)")
+    print(f"  nanoframes render {out} --t 0 -o shot.png")
+    if scene.duration > 1.0:
+        print(f"  nanoframes video {out} -o out.mp4   # reveal animation")
+    return 0
+
+
 def cmd_walkthrough(args: argparse.Namespace) -> int:
     return walkthrough.main(["-o", args.out] + (["--no-audio"] if args.no_audio else []))
 
@@ -525,6 +583,7 @@ def _resource_lines() -> list[str]:
         f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
         f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
         f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
+        f"  diagram spec ............ {os.path.join(docs, 'diagram.md')}",
         f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
     ]
 
