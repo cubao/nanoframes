@@ -43,7 +43,7 @@ One JSON object; the two kinds share a header.
 |---|---|---|
 | `diagram` | `flow`, `loop` | required |
 | `skin` | `light` (default), `dark`, `terminal` | the source's token skins |
-| `preset` | `doc-inline`, `doc-wide`, `slide-16x9`, `slide-4x3`, `social-og`, `social-square`, `print-a4-landscape`, `print-letter-landscape`, `fit` | canvas floor + type ramp |
+| `preset` | `doc-inline`, `doc-wide`, `slide-16x9`, `slide-4x3`, `social-og`, `social-square`, `print-a4-landscape`, `print-letter-landscape`, `fit` | canvas floor + type ramp; `fit` means the canvas is derived from content |
 | `canvas` | `{"width": 1280, "height": 720}` | explicit canvas; overrides the preset, still a *minimum* |
 | `title` / `subtitle` | strings | serif title, sans subtitle, drawn last (nothing covers them) |
 | `legend` | `true` / `false` | default: auto — shown when 2+ node types are used |
