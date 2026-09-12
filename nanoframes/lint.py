@@ -32,28 +32,47 @@ AUTO = object()
 class Finding:
     severity: str  # "error" | "warning"
     message: str
+    code: str = ""  # stable machine identifier, e.g. "geometry.never_on_canvas"
+    element: str | None = None  # what the finding is about, when it names one
+    t: float | None = None  # the time it applies to, when it is time-specific
 
     def __str__(self) -> str:
         return f"[{self.severity}] {self.message}"
 
+    def to_dict(self) -> dict:
+        """Machine-readable form (``check --json``).
+
+        ``code`` is the stable field: an agent branches on it, never on the
+        prose of ``message``, which is free to change.
+        """
+        out: dict = {"severity": self.severity, "code": self.code, "message": self.message}
+        if self.element:
+            out["element"] = self.element
+        if self.t is not None:
+            out["t"] = self.t
+        return out
+
 
 def _check_canvas(comp: Composition, findings: list[Finding]) -> None:
     if not comp.width > 0 or not comp.height > 0:
-        findings.append(Finding("error", "canvas must have positive width and height"))
+        findings.append(Finding("error", "canvas must have positive width and height",
+                                code="canvas.invalid"))
     if comp.fps <= 0:
-        findings.append(Finding("error", "fps must be positive"))
+        findings.append(Finding("error", "fps must be positive", code="canvas.fps"))
     if comp.duration <= 0:
-        findings.append(Finding("error", "duration must be positive"))
+        findings.append(Finding("error", "duration must be positive", code="canvas.duration"))
 
 
 def _check_animations(comp: Composition, findings: list[Finding]) -> None:
     for anim in comp.animations:
         if not anim.target:
-            findings.append(Finding("error", "animation has an empty target selector"))
+            findings.append(Finding("error", "animation has an empty target selector",
+                                    code="animation.empty_target"))
             continue
         if not any(el.matches(anim.target) for el in comp.elements):
             findings.append(
-                Finding("error", f"animation target {anim.target!r} matches no elements")
+                Finding("error", f"animation target {anim.target!r} matches no elements",
+                        code="animation.target_unmatched", element=anim.target)
             )
         for kf in anim.keyframes:
             if kf.t < 0 or kf.t > comp.duration + 1e-9:
@@ -61,6 +80,7 @@ def _check_animations(comp: Composition, findings: list[Finding]) -> None:
                     Finding(
                         "warning",
                         f"{anim.target}: keyframe t={kf.t} outside duration {comp.duration}",
+                        code="animation.keyframe_out_of_range", element=anim.target, t=kf.t,
                     )
                 )
         forms = {_transform_shape(kf.props.get("transform")) for kf in anim.keyframes}
@@ -71,6 +91,7 @@ def _check_animations(comp: Composition, findings: list[Finding]) -> None:
                 f"{anim.target}: transform is written in more than one shape across keyframes"
                 f" ({', '.join(sorted(forms))}); the interpolator can only blend matching"
                 " shapes and holds the earlier value otherwise",
+                code="animation.transform_shape_mixed", element=anim.target,
             ))
 
 
@@ -104,7 +125,9 @@ def _check_transform_values(comp: Composition, findings: list[Finding]) -> None:
             if not isinstance(tf, dict):
                 continue
             for problem in _transform_problems(tf):
-                findings.append(Finding("error", f"{anim.target} (t={kf.t:g}): {problem}"))
+                findings.append(Finding("error", f"{anim.target} (t={kf.t:g}): {problem}",
+                                        code="transform.value_invalid", element=anim.target,
+                                        t=kf.t))
 
 
 def _transform_problems(tf: dict) -> list[str]:
@@ -143,6 +166,7 @@ def _check_clips(comp: Composition, findings: list[Finding]) -> None:
                     "warning",
                     f"element {el.element_id or el.tag!r}: clip [{el.clip_start}, {clip_end}]"
                     f" exceeds composition duration {comp.duration}",
+                    code="clip.exceeds_duration", element=el.element_id or el.tag,
                 )
             )
         if el.fade_in + el.fade_out > (el.clip_duration or comp.duration):
@@ -150,6 +174,7 @@ def _check_clips(comp: Composition, findings: list[Finding]) -> None:
                 Finding(
                     "warning",
                     f"element {el.element_id or el.tag!r}: fade in+out exceeds clip duration",
+                    code="clip.fade_exceeds", element=el.element_id or el.tag,
                 )
             )
 
@@ -177,6 +202,7 @@ def _check_assets(doc: Document, findings: list[Finding]) -> None:
                     "warning",
                     f"element {node.get('id') or '<image>'}: asset not found: {ref}"
                     " (renders as an empty layer)",
+                    code="asset.missing", element=node.get("id") or "<image>",
                 )
             )
 
@@ -299,6 +325,7 @@ def _check_rotate_pivots(doc: Document, measurer, findings: list[Finding]) -> No
                     f" the origin (0,0) — {distance:.0f}px from this element's center"
                     f' at ({cx:.0f},{cy:.0f}); add "center": "auto" to follow the element'
                     f" (or \"center\": [cx, cy] / an inline [deg, cx, cy] for rotate).",
+                    code="transform.no_pivot", element=bounds.label(node),
                 ))
                 break
 
@@ -362,6 +389,7 @@ def _check_visibility(doc: Document, measurer, findings: list[Finding]) -> None:
             f" canvas (box [{box.x0:.0f},{box.y0:.0f},{box.x1:.0f},{box.y1:.0f}] in"
             f" root coordinates) — it draws nothing in any frame;"
             f" run `nanoframes debug` to see per-frame boxes.",
+            code="geometry.never_on_canvas", element=labels[path],
         ))
 
 

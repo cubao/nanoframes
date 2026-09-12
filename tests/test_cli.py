@@ -99,6 +99,62 @@ def test_check_accepts_present_image_asset(tmp_path):
     assert "not found" not in out
 
 
+def test_check_json_carries_stable_codes(tmp_path):
+    """`check --json` is the machine-readable loop: findings need a stable code."""
+    import json
+
+    bad = tmp_path / "bad.nf.svg"
+    bad.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="100" '
+        'data-duration="1">'
+        '<rect id="real" width="10" height="10" fill="#000"/>'
+        '<script type="application/nanoframes+json"><![CDATA['
+        '{"animations":[{"target":"#nope","keyframes":[{"t":0,"opacity":0}]}]}'
+        ']]></script></svg>'
+    )
+    code, out = run(["check", str(bad), "--json"])
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False and payload["errors"] >= 1
+    finding = next(f for f in payload["findings"] if f["code"] == "animation.target_unmatched")
+    assert finding["element"] == "#nope"
+    assert finding["message"]
+
+
+def test_check_json_ok_on_a_clean_composition():
+    import json
+
+    code, out = run(["check", TITLE, "--json"])
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True and payload["errors"] == 0
+    assert isinstance(payload["findings"], list)
+
+
+def test_debug_json_reports_frame_and_scan():
+    import json
+
+    code, out = run(["debug", TITLE, "--t", "1.0", "--json"])
+    assert code == 0
+    payload = json.loads(out)
+    frame = payload["frame"]
+    assert frame["t"] == 1.0
+    assert frame["width"] > 0 and frame["height"] > 0
+    assert frame["elements"], "no elements reported"
+    assert "status" in frame["elements"][0] and "painted" in frame["elements"][0]
+    assert payload["scan"]["sampled"] >= 2
+
+
+def test_debug_json_loop_seam_and_no_scan():
+    import json
+
+    code, out = run(["debug", TITLE, "--t", "0", "--loop", "--no-scan", "--json"])
+    assert code == 0
+    payload = json.loads(out)
+    assert "scan" not in payload
+    assert "closed" in payload["loop_seam"]
+
+
 def test_render_single_frame(tmp_path):
     dst = str(tmp_path / "frame.png")
     code, out = run(["render", TITLE, "--t", "2.0", "-o", dst])

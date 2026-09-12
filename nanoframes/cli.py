@@ -18,6 +18,7 @@ Commands
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -125,6 +126,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("check", help="lint the composition contract")
     sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("--json", action="store_true",
+                    help="emit findings as JSON (stable 'code' per finding) instead of lines")
     sp.set_defaults(handler=cmd_check)
 
     sp = sub.add_parser("debug", help="show where each element's geometry lands")
@@ -134,6 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
     sp.add_argument("--loop", action="store_true",
                     help="also compare the first and last frame (loop seam)")
+    sp.add_argument("--json", action="store_true",
+                    help="emit the report as JSON instead of the text layout")
     sp.set_defaults(handler=cmd_debug)
 
     sp = sub.add_parser("render", help="render a frame or the full clip to PNG")
@@ -368,9 +373,17 @@ def cmd_fonts_install(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     """Lint the contract (geometry checks measure text, so ThorVG may load)."""
     findings = lint_path(args.composition)
+    errors = sum(1 for f in findings if f.severity == "error")
+    if args.json:
+        print(json.dumps({
+            "ok": errors == 0,
+            "errors": errors,
+            "warnings": len(findings) - errors,
+            "findings": [f.to_dict() for f in findings],
+        }, ensure_ascii=False))
+        return 1 if errors else 0
     for f in findings:
         print(str(f))
-    errors = sum(1 for f in findings if f.severity == "error")
     if errors:
         print(f"nanoframes: {errors} error(s)")
         return 1
@@ -385,6 +398,19 @@ def cmd_debug(args: argparse.Namespace) -> int:
     doc = _load(args.composition)
     m = measurer()
     report = diagnose.frame_report(doc, args.t, measurer=m)
+    scan = None if args.no_scan else diagnose.scan_clip(
+        doc, measurer=m, samples=max(2, args.samples))
+    seam = diagnose.loop_seam(doc) if args.loop else None
+
+    if args.json:
+        payload: dict = {"frame": report.to_dict()}
+        if scan is not None:
+            payload["scan"] = scan.to_dict()
+        if seam is not None:
+            payload["loop_seam"] = seam.to_dict()
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+
     print(f"frame {report.frame_index}  t={report.t:g}s  canvas {report.width}x{report.height}")
     if report.coverage is not None:
         print(f"  alpha coverage: {report.coverage * 100:.1f}% of the canvas")
@@ -397,8 +423,7 @@ def cmd_debug(args: argparse.Namespace) -> int:
               f" — an animated translate that leaves the frame, or a rotate with no pivot"
               f" (`nanoframes check` names those)")
 
-    if not args.no_scan:
-        scan = diagnose.scan_clip(doc, measurer=m, samples=max(2, args.samples))
+    if scan is not None:
         print(f"clip scan: {scan.sampled} of {scan.frame_count} frames sampled")
         for entry in scan.reported():
             counts = (f"painted in {entry.painted_frames}/{scan.sampled} sampled frames,"
@@ -412,8 +437,7 @@ def cmd_debug(args: argparse.Namespace) -> int:
         if not scan.never_visible and not any(e.first_off_at is not None for e in scan.elements):
             print("  every element lands on the canvas throughout")
 
-    if args.loop:
-        seam = diagnose.loop_seam(doc)
+    if seam is not None:
         verdict = "closed (identical)" if seam.closed else "OPEN"
         print(f"loop seam: frame 0 (t={seam.first_t:g}) vs last frame (t={seam.last_t:g}):"
               f" {seam.differing_fraction * 100:.2f}% of pixels differ,"

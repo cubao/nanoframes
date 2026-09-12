@@ -49,9 +49,30 @@ class ElementBox:
             note += "  <-- draws nothing here"
         return f"{format_box(self.box):<30}{self.status}{note}"
 
+    def to_dict(self) -> dict:
+        """One element's placement, machine-readable (``debug --json``)."""
+        return {
+            "path": list(self.path),
+            "depth": self.depth,
+            "label": self.label,
+            "box": _box_list(self.box),
+            "status": self.status,
+            "painted": self.painted,
+            "complete": self.complete,
+            "named": self.named,
+            "blank": self.blank,
+        }
+
 
 def format_box(box: bounds.Box) -> str:
     return f"[{box.x0:.0f},{box.y0:.0f} .. {box.x1:.0f},{box.y1:.0f}]"
+
+
+def _box_list(box: bounds.Box | None) -> list[float] | None:
+    """A box as ``[x0, y0, x1, y1]`` for the JSON report (``None`` when unmeasured)."""
+    if box is None:
+        return None
+    return [round(box.x0, 2), round(box.y0, 2), round(box.x1, 2), round(box.y1, 2)]
 
 
 @dataclass
@@ -66,6 +87,17 @@ class FrameReport:
     @property
     def blanks(self) -> list[ElementBox]:
         return [e for e in self.elements if e.blank]
+
+    def to_dict(self) -> dict:
+        return {
+            "t": self.t,
+            "width": self.width,
+            "height": self.height,
+            "frame_index": self.frame_index,
+            "coverage": self.coverage,
+            "elements": [e.to_dict() for e in self.elements],
+            "blanks": [e.label for e in self.blanks],
+        }
 
 
 @dataclass
@@ -89,6 +121,20 @@ class ElementFrames:
         """Worth a line in the report: authored element, or a geometry problem."""
         return self.named or self.never_visible or self.first_off_at is not None
 
+    def to_dict(self) -> dict:
+        out = {
+            "path": list(self.path),
+            "label": self.label,
+            "painted_frames": self.painted_frames,
+            "on_canvas_frames": self.on_canvas_frames,
+            "complete": self.complete,
+            "named": self.named,
+            "never_visible": self.never_visible,
+        }
+        if self.first_off_at is not None:
+            out["first_off_at"] = self.first_off_at
+        return out
+
 
 @dataclass
 class ClipScan:
@@ -108,6 +154,15 @@ class ClipScan:
         """Elements that earn a line: authored ones, plus anything misbehaving."""
         return [e for e in self.elements if e.interesting]
 
+    def to_dict(self) -> dict:
+        return {
+            "sampled": self.sampled,
+            "frame_count": self.frame_count,
+            "times": self.times,
+            "elements": [e.to_dict() for e in self.reported()],
+            "never_visible": [e.label for e in self.never_visible],
+        }
+
 
 @dataclass
 class SeamReport:
@@ -121,6 +176,15 @@ class SeamReport:
     @property
     def closed(self) -> bool:
         return self.differing_fraction == 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "first_t": self.first_t,
+            "last_t": self.last_t,
+            "differing_fraction": self.differing_fraction,
+            "max_channel_delta": self.max_channel_delta,
+            "closed": self.closed,
+        }
 
 
 def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True) -> FrameReport:
