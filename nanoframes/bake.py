@@ -9,12 +9,13 @@ rasters pure geometry.
 from __future__ import annotations
 
 import copy
+import os
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
+from nanoframes import refs
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document
-from nanoframes.refs import IMAGE_REF_ATTRS, REMOTE_SCHEMES
 from nanoframes.timeline import effective_opacity, evaluate
 from nanoframes.xmlutil import SVG_NAMESPACE, find_parent, float_attr, local_name
 
@@ -260,14 +261,9 @@ def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
 
 
 def _dereference_images(root: ET.Element, base_dir: str) -> None:
-    import os
-
-    for node in root.iter():
-        if local_name(node.tag) != "image":
-            continue
-        for attr in IMAGE_REF_ATTRS:
+    for node in refs.iter_images(root):
+        for attr in refs.IMAGE_REF_ATTRS:
             ref = node.get(attr)
-            if not ref or ref.startswith((*REMOTE_SCHEMES, "/")):
+            if not ref or not refs.is_local(ref) or os.path.isabs(ref):
                 continue
-            joined = os.path.normpath(os.path.join(base_dir, ref))
-            node.set(attr, joined)
+            node.set(attr, os.path.normpath(os.path.join(base_dir, ref)))

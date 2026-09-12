@@ -12,6 +12,7 @@ import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
+from nanoframes import refs
 from nanoframes.model import SCRIPT_TYPE, Animation, Composition, Element, Keyframe
 from nanoframes.xmlutil import local_name
 
@@ -28,13 +29,33 @@ class Document:
     root: ET.Element = field(repr=False)
     base_dir: str | None = field(default=None, repr=False)  # dir of source, for relative assets
     source_key: str = field(default="", repr=False)
+    _media_key: str | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def media_key(self) -> str:
+        """Digest of the local media this document draws from (lazily computed).
+
+        Cached for the document's lifetime: the digest reads every referenced
+        file, and a render loop asks for the identity once per frame.
+        """
+        if self._media_key is None:
+            self._media_key = refs.media_fingerprint(self.root, self.base_dir)
+        return self._media_key
 
     @property
     def identity(self) -> str:
-        """A stable identifier unique to this composition's source content."""
-        if self.source_key:
-            return self.source_key
-        return _hash_text(ET.tostring(self.root, encoding="unicode"))
+        """A stable identifier unique to everything this composition renders.
+
+        The composition's own bytes *and* the content of the local assets it
+        references — a frame is a pure function of both, so editing either has
+        to miss the frame cache. Documents with no local media keep the plain
+        source hash, so the key of an asset-free composition is unchanged.
+        """
+        base = self.source_key or _hash_text(ET.tostring(self.root, encoding="unicode"))
+        media = self.media_key
+        if not media:
+            return base
+        return hashlib.sha256(f"{base}:{media}".encode("utf-8")).hexdigest()
 
 
 def _to_float(value: str, name: str) -> float:

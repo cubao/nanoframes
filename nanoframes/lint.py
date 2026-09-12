@@ -14,10 +14,9 @@ import math
 import os
 from dataclasses import dataclass
 
-from nanoframes import bake, bounds, timeline
+from nanoframes import bake, bounds, refs, timeline
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document, ParseError, parse_file, parse_string
-from nanoframes.refs import IMAGE_REF_ATTRS, REMOTE_SCHEMES
 from nanoframes.xmlutil import local_name
 
 # Cap on the frames a geometry sample walks: a long composition is sampled
@@ -166,23 +165,20 @@ def _check_assets(doc: Document, findings: list[Finding]) -> None:
     if doc.base_dir is None:
         return
     seen: set[str] = set()
-    for node in doc.root.iter():
-        if local_name(node.tag) != "image":
+    for node in refs.iter_images(doc.root):
+        ref = refs.image_ref(node)
+        if not refs.is_local(ref) or ref in seen:
             continue
-        for attr in IMAGE_REF_ATTRS:
-            ref = node.get(attr)
-            if not ref or ref.startswith(REMOTE_SCHEMES) or ref in seen:
-                continue
-            seen.add(ref)
-            path = ref if os.path.isabs(ref) else os.path.join(doc.base_dir, ref)
-            if not os.path.exists(os.path.normpath(path)):
-                findings.append(
-                    Finding(
-                        "warning",
-                        f"element {node.get('id') or '<image>'}: asset not found: {ref}"
-                        " (renders as an empty layer)",
-                    )
+        seen.add(ref)
+        path = ref if os.path.isabs(ref) else os.path.join(doc.base_dir, ref)
+        if not os.path.exists(os.path.normpath(path)):
+            findings.append(
+                Finding(
+                    "warning",
+                    f"element {node.get('id') or '<image>'}: asset not found: {ref}"
+                    " (renders as an empty layer)",
                 )
+            )
 
 
 def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:

@@ -51,6 +51,34 @@ def test_cache_key_changes_with_content(tmp_path):
     assert cache.frame_key(doc3.identity, 2.0, 480, 240) != k1
 
 
+def test_cache_key_follows_asset_content(tmp_path):
+    """An edited ``<image>`` under an unchanged href must miss the cache.
+
+    The composition bytes are identical here, so only the media fingerprint can
+    move the key. Before it existed, swapping a referenced PNG served the frames
+    that drew the old one.
+    """
+    from PIL import Image
+
+    asset = tmp_path / "dot.png"
+    Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(asset)
+    comp = tmp_path / "c.nf.svg"
+    comp.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="100"'
+        ' data-fps="30" data-duration="1.0">'
+        '<image href="dot.png" width="100" height="100"/></svg>',
+        encoding="utf-8",
+    )
+    cache = FrameCache(str(tmp_path / "cache"))
+    first = render_frame(parse_file(str(comp)), t=0.0, cache=cache)
+
+    Image.new("RGBA", (4, 4), (0, 0, 255, 255)).save(asset)
+    doc2 = parse_file(str(comp))
+    assert doc2.identity != parse_file(str(comp)).source_key  # media is folded in
+    second = render_frame(doc2, t=0.0, cache=cache)
+    assert first.tobytes() != second.tobytes(), "served a frame for the old asset"
+
+
 def test_no_cache_renders_independently(tmp_path):
     doc = parse_file(TITLE)
     a = render_frame(doc, t=2.0)
