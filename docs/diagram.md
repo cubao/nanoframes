@@ -8,7 +8,8 @@ diagram is a still PNG, a draft, or a revealing clip with the same toolchain.
 ```bash
 nanoframes diagram spec.json -o diagram.nf.svg      # build a composition
 nanoframes diagram spec.json --check                # build, then lint the result
-nanoframes render diagram.nf.svg --t 0 -o shot.png  # a still
+nanoframes render diagram.nf.svg --t 0 -o shot.png        # a still (1:1)
+nanoframes render diagram.nf.svg --t 0 --dpi 2 -o shot@2x.png   # delivery resolution
 nanoframes video  diagram.nf.svg -o out.mp4         # if the spec set "reveal"
 ```
 
@@ -49,6 +50,7 @@ One JSON object; the two kinds share a header.
 | `legend` | `true` / `false` | default: auto — shown when 2+ node types are used |
 | `margin` | number, default `40` | page margin (source uses 64 for `social-og`) |
 | `fps` | number, default `30` | the composition's fps |
+| `dpi` | number | delivery resolution hint: the printed next-steps render at this `--dpi` (default 2) |
 | `duration` | seconds | default: computed from the reveal |
 | `reveal` | `true` / `false` | stagger every element in with the timeline |
 

@@ -75,6 +75,21 @@ def _add_scale(sp: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_dpi(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "--dpi", type=float, default=1.0, metavar="F",
+        help="delivery resolution: rasterize at F x the pixel density (e.g. 2)",
+    )
+
+
+def _dpi_of(args: argparse.Namespace) -> float:
+    dpi = getattr(args, "dpi", 1.0)
+    if dpi <= 0:
+        print(f"nanoframes: --dpi must be positive, got {dpi}", file=sys.stderr)
+        raise SystemExit(2)
+    return dpi
+
+
 def _scale_of(args: argparse.Namespace) -> float:
     scale = getattr(args, "scale", 1.0)
     if scale <= 0:
@@ -128,6 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("-o", "--out", default="out", help="output directory or file path")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
     _add_scale(sp)
+    _add_dpi(sp)
     sp.set_defaults(handler=cmd_render)
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
@@ -137,6 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, required=True, help="time in seconds to preview")
     sp.add_argument("--threads", type=int, default=4)
     _add_scale(sp)
+    _add_dpi(sp)
     sp.set_defaults(handler=cmd_preview)
 
     sp = sub.add_parser("video", help="render the whole clip to an MP4 via ffmpeg")
@@ -144,6 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("-o", "--out", default="out.mp4", help="output MP4 path")
     sp.add_argument("--fps", type=int, default=None, help="override composition fps")
     _add_scale(sp)
+    _add_dpi(sp)
     sp.add_argument("--threads", type=int, default=4)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
@@ -414,7 +432,8 @@ def cmd_render(args: argparse.Namespace) -> int:
     if args.t is not None:
         # single frame -> write PNG to args.out (treat as file or dir/<name>_t.png)
         dst = _frame_dest(doc, args.out, args.t)
-        render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache, scale=scale)
+        render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache,
+                     scale=scale, dpi=_dpi_of(args))
         print(f"rendered {dst}")
         return 0
 
@@ -427,7 +446,7 @@ def cmd_render(args: argparse.Namespace) -> int:
         t = i * step
         dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
         img = render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache,
-                           scale=scale, warn_blank=False)
+                           scale=scale, dpi=_dpi_of(args), warn_blank=False)
         if frame_is_blank(img):
             blank.append(t)
     print(f"rendered {comp.frame_count} frames to {out_dir}/ ({prefix}.*.png)")
@@ -449,7 +468,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
     doc = _load(args.composition)
     dst = "/tmp/nanoframes_preview.png"
     render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=_make_cache(args),
-                 scale=_scale_of(args))
+                 scale=_scale_of(args), dpi=_dpi_of(args))
     if sys.platform == "darwin":
         subprocess.run(["open", dst], check=True)
     elif sys.platform == "linux":
@@ -468,7 +487,8 @@ def cmd_video(args: argparse.Namespace) -> int:
               "(run `nanoframes check`)", file=sys.stderr)
         return 1
     render_video(doc, args.out, fps=args.fps, scale=_scale_of(args), threads=args.threads,
-                 keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio)
+                 keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio,
+                 dpi=_dpi_of(args))
     print(f"wrote {args.out}")
     return 0
 
@@ -535,10 +555,19 @@ def cmd_diagram(args: argparse.Namespace) -> int:
           f" {len(scene.groups)} groups, duration {scene.duration:g}s)")
     if not scene.warnings:
         print("  no spec warnings (budget, grid, clipping)")
-    print(f"  nanoframes render {out} --t 0 -o shot.png")
+    dpi = getattr(spec, "dpi", None) or 2
+    print(f"  nanoframes render {out} --t 0 -o shot.png"
+          f"            # {scene.width:g}x{scene.height:g}")
+    print(f"  nanoframes render {out} --t 0 --dpi {dpi:g} -o shot@{dpi:g}x.png"
+          f"   # {geo_size(scene.width, dpi):g}x{geo_size(scene.height, dpi):g}")
     if scene.duration > 1.0:
         print(f"  nanoframes video {out} -o out.mp4   # reveal animation")
     return 0
+
+
+def geo_size(value: float, dpi: float) -> int:
+    """The raster size a dimension renders at for a given ``--dpi``."""
+    return max(2, int(round(value * dpi)) // 2 * 2)
 
 
 def cmd_walkthrough(args: argparse.Namespace) -> int:

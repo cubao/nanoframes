@@ -179,7 +179,8 @@ nanoframes check <comp>.nf.svg          # lint; exit 1 on errors
 nanoframes debug <comp>.nf.svg --t 2    # where each element's geometry lands per frame
 nanoframes debug <comp>.nf.svg --loop   # + first/last frame diff (loop seam)
 nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
-nanoframes render <comp>.nf.svg --t 2 -o shot.png
+nanoframes render <comp>.nf.svg --t 2 -o shot.png            # 1:1
+nanoframes render <comp>.nf.svg --t 2 --dpi 2 -o shot@2x.png  # 2x pixel density
 nanoframes render <comp>.nf.svg -o out/        # full batch of frames
 nanoframes video  <comp>.nf.svg -o out.mp4     # ffmpeg MP4
 nanoframes video  <comp>.nf.svg -o out.mp4 --scale 0.5       # draft: half-size, ~4x faster

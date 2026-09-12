@@ -229,26 +229,18 @@ def text_box(run, measurer) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def tracked_parts(x: float, y: float, content: str, size: float, fill: str,
-                  family: str, tracking_px: float, anchor: str,
-                  kind: str, mask: bool = False, opacity: float = 1.0) -> list:
-    """One ``Text`` per character, advancing by ``size * 0.62 + tracking``.
+def tracked_run(x: float, y: float, content: str, size: float, fill: str,
+                family: str, tracking_px: float, anchor: str,
+                kind: str, mask: bool = False, opacity: float = 1.0):
+    """One tracked ``Text`` run (zone eyebrows, type tags).
 
-    Mono faces have a 0.62em advance (Sarasa Mono SC: 0.6em), so the per-char
-    step is the font's own advance plus the tracking a browser would add.
-    ``anchor`` positions the whole run (``middle`` centers it on ``x``).
+    ``tracking_px`` is the px a browser would add per character; the emitter
+    folds it into the run's width. It stays a single ``<text>`` so the run
+    cannot drift or overlap — the estimate is what the layout is *shown* to be,
+    not what the glyphs are individually placed at.
     """
     from nanoframes.diagram.scene import Text
 
-    content = content.upper()
-    step = size * 0.62 + tracking_px
-    total = step * len(content)
-    if anchor == "middle":
-        start = x - total / 2.0 + step / 2.0
-    elif anchor == "end":
-        start = x - total + step / 2.0
-    else:
-        start = x + step / 2.0
-    return [Text(x=round(start + i * step, 2), y=y, content=ch, size=size, fill=fill,
-                 family=family, anchor="middle", kind=kind, mask=mask, opacity=opacity)
-            for i, ch in enumerate(content)]
+    return Text(x=x, y=y, content=content.upper(), size=size, fill=fill,
+                family=family, anchor=anchor, kind=kind, tracking=tracking_px,
+                mask=mask, opacity=opacity)

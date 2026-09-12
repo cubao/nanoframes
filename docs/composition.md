@@ -246,6 +246,7 @@ nanoframes debug my-video.nf.svg --t 2.0        # where each element lands, fram
 nanoframes debug my-video.nf.svg --loop         # + compare the loop's seam frames
 nanoframes measure my-video.nf.svg  # report renderer-exact text widths
 nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
+nanoframes render my-video.nf.svg --t 2.0 --dpi 2  # same frame, 2x pixel density
 nanoframes preview my-video.nf.svg --t 2.0         # render + open
 nanoframes render my-video.nf.svg -o frames        # full batch
 nanoframes video my-video.nf.svg -o out.mp4        # MP4 via ffmpeg

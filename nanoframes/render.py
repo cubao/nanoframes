@@ -145,7 +145,7 @@ def blank_frame_warning(img, t: float) -> str | None:
 
 def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4,
                  cache: "FrameCache | None" = None,
-                 text_handler=None, scale: float = 1.0,
+                 text_handler=None, scale: float = 1.0, dpi: float = 1.0,
                  warn_blank: bool = True) -> "object":
     """Render one frame of a composition at time ``t``.
 
@@ -163,12 +163,17 @@ def render_frame(doc: Document, t: float, out_path: str | None = None, threads: 
     tree's image sources are swapped, and restored on the next ``scale >= 1``
     render of the same ``doc``.
 
+    ``dpi`` multiplies the *raster* — the layout, fonts and stroke widths are
+    re-rasterized at that pixel density, so ``--dpi 2`` yields a 2x-resolution
+    file of exactly the same drawing (unlike ``scale``, which shrinks the
+    canvas and the assets for a fast draft). The two compose.
+
     ``warn_blank`` prints a stderr diagnosis for a fully transparent frame;
     batch and video renders turn it off and report the count once instead.
     """
     if text_handler is not None:
         cache = None
-    width, height = draft_size(doc.composition.width, doc.composition.height, scale)
+    width, height = draft_size(doc.composition.width, doc.composition.height, scale * dpi)
     if cache is not None:
         hit = cache.get(doc.identity, t, width, height)
         if hit is not None:

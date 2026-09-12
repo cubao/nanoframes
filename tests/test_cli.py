@@ -167,3 +167,22 @@ def test_video_muxes_audio(tmp_path):
                     "-of", "default=noprint_wrappers=1", out],
                    capture_output=True, text=True).stdout
     assert "aac" in info
+
+def test_render_dpi_multiplies_the_raster(tmp_path):
+    """`--dpi` re-rasterizes the same drawing at a higher pixel density."""
+    from PIL import Image
+
+    one = tmp_path / "one.png"
+    two = tmp_path / "two.png"
+    assert run(["render", TITLE, "--t", "0", "-o", str(one)])[0] == 0
+    assert run(["render", TITLE, "--t", "0", "--dpi", "2", "-o", str(two)])[0] == 0
+    assert Image.open(two).size == tuple(v * 2 for v in Image.open(one).size)
+
+
+def test_render_dpi_rejects_nonpositive():
+    import contextlib
+
+    with pytest.raises(SystemExit) as exc:
+        with contextlib.redirect_stderr(open(os.devnull, "w")):
+            run(["render", TITLE, "--t", "0", "--dpi", "0"])
+    assert exc.value.code == 2

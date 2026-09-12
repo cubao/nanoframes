@@ -590,15 +590,17 @@ def test_text_width_budget_matches_measured_metrics(measure):
     assert w % 4 == 0 and h >= 48
 
 
-def test_tracked_runs_are_emitted_per_character(measure):
+def test_tracked_runs_stay_one_element(measure):
+    """Tracked text is a single <text> whose width carries the tracking."""
     from nanoframes.diagram import text as txt
 
-    parts = txt.tracked_parts(100.0, 20.0, "region", 8, "#4f5d75", "'Sarasa Mono SC', monospace",
-                              1.12, anchor="middle", kind="eyebrow")
-    assert [p.content for p in parts] == list("REGION")
-    xs = [p.x for p in parts]
-    assert xs == sorted(xs)
-    assert xs[1] - xs[0] == pytest.approx(8 * 0.62 + 1.12, abs=0.01)
+    run = txt.tracked_run(100.0, 20.0, "region", 8, "#4f5d75",
+                          "'Sarasa Mono SC', monospace", 1.12, anchor="middle",
+                          kind="eyebrow")
+    assert run.content == "REGION" and run.tracking == 1.12
+    plain = txt.visual_width(measure, "REGION", run.family, "400", 8, 0.0, 0.0)
+    tracked = txt.visual_width(measure, "REGION", run.family, "400", 8, 0.0, 1.12)
+    assert tracked > plain
 
 
 def test_unsupported_browser_idioms_never_reach_the_output(measure):
@@ -617,25 +619,25 @@ def test_warnings_helper_does_not_render():
     assert warnings_for(flow_spec(), measurer=FakeMeasurer()) == []
 
 
-def test_centred_runs_cover_their_measured_width(measure):
-    """A centred run's glyph span must equal its measured width.
+def test_a_centred_run_is_one_element_centred_on_its_anchor(measure):
+    """No per-glyph emission: one <text>, placed so its ink centres on the anchor.
 
-    ThorVG ignores `text-anchor`, so centred runs are emitted per glyph and their
-    advance is calibrated. Getting that calibration wrong (a Latin advance for a
-    full-width glyph) silently overlaps CJK; getting it wrong the other way
-    spreads Latin out. The measured ink and the emitted span have to agree.
+    ThorVG ignores `text-anchor` and left-aligns every run, so the emitter
+    computes the compensating x from the measured ink. Getting that wrong (or
+    splitting the run per glyph) is how CJK overlapped and Latin spread out.
     """
-    from nanoframes.diagram.emit import _advance
+    from nanoframes.diagram.emit import _text_markup
 
-    for content, size in (("Learn", 12), ("感知", 12), ("Shared Memory", 12)):
-        span = 0.0
-        for glyph in content:
-            run = Text(x=200.0, y=100.0, content=glyph, size=size, fill="#000",
-                       family="Arial", anchor="middle", kind="label")
-            span += _advance(run, measure)
-        measured = measure.ink(content, "Arial", "400", size).w
-        assert abs(span - measured) <= 0.25 * size + 1.0, \
-            f"{content!r}: emitted span {span:.1f} vs measured {measured:.1f}"
+    for content in ("Learn", "感知", "Shared Memory"):
+        run = Text(x=200.0, y=100.0, content=content, size=12, fill="#000",
+                   family="Arial", anchor="middle", kind="label")
+        markup = _text_markup(run, measure)
+        assert markup.count("<text") == 1, f"{content!r} must be one <text>"
+        x = float(re.search(r'\bx="([-\d.]+)"', markup).group(1))
+        ink = measure.ink(content, "Arial", "400", 12)
+        centre = x - ink.left_dx + ink.w / 2.0
+        assert abs(centre - 200.0) < 1.0, f"{content!r} centres at {centre:.1f}"
+        assert f">{content}<" in markup
 
 
 # ---------------------------------------------------------------------------

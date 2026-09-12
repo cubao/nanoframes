@@ -534,9 +534,9 @@ def _zone_group(b: _Builder, spec: Spec, node, boxes: dict):
     mask_w = run_w + 8
     g.parts.append(Rect(x=x + 12, y=y + 4, w=round(mask_w, 1), h=12, rx=2,
                         fill=t.paper, fill_opacity=1.0, weight="chip"))
-    g.parts += txt.tracked_parts(x + 12 + mask_w / 2.0, y + 13, label,
-                                 t.ramp["tag"], t.muted, FONT_MONO, tracking,
-                                 anchor="middle", kind="eyebrow")
+    g.parts.append(txt.tracked_run(x + 12 + mask_w / 2.0, y + 13, label,
+                                   t.ramp["tag"], t.muted, FONT_MONO, tracking,
+                                   anchor="middle", kind="eyebrow"))
     return g
 
 

@@ -254,6 +254,17 @@ MP4 export, and an agent-facing skill.
   that ecosystem (`yang0/handraw-style`'s 261 numbered art directions) is
   referenced for choosing a *look*, not ported: it addresses image generation,
   not SVG.
+- **0.1.10 (2026-09)** — two corrections from using the diagram generator for
+  real. Text placement stopped being per-glyph: ThorVG ignores `text-anchor`
+  *and* resolves every family to the one loaded face, so a run's drawn width is
+  its measured ink — one `<text>` at `x - ink/2 + left_bearing` is exact, where
+  the per-glyph workaround could (and did) drift, overlap CJK, or lose the
+  space glyph. And delivery resolution became a first-class control:
+  `--dpi F` (on `render`/`preview`/`video`) re-rasterizes the same drawing at
+  F x the pixel density — the frames were always re-rasterized (a 1px line
+  lands on 8 real pixels at 8x), there was simply no way to ask for it, so a
+  1280x720 preset read as "low resolution" on a retina screen. Diagram specs
+  may carry a `dpi` hint, and `nanoframes diagram` prints the 2x command.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); in-scene video; Lottie markers
   surfaced in the CLI; remaining recipe ports (product-promo,

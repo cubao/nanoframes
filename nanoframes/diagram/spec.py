@@ -102,6 +102,7 @@ class Spec:
     title: str = ""
     subtitle: str = ""
     fps: int = 30
+    dpi: float | None = None
     duration: float | None = None
     reveal: bool = False
     legend: bool | None = None      # None = auto (show when 2+ visual kinds exist)
@@ -140,6 +141,13 @@ def parse_spec(data: dict) -> Spec:
         problems.append(f'"fps" must be positive (got {fps!r})')
     else:
         spec.fps = int(fps)
+    dpi = data.get("dpi")
+    if dpi is None:
+        pass
+    elif isinstance(dpi, bool) or not isinstance(dpi, (int, float)) or dpi <= 0:
+        problems.append(f'"dpi" must be a positive number (got {dpi!r})')
+    else:
+        spec.dpi = float(dpi)
     duration = data.get("duration")
     if duration is not None and not (isinstance(duration, (int, float)) and duration > 0):
         problems.append(f'"duration" must be positive seconds (got {duration!r})')

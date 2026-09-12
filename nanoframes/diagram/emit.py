@@ -84,61 +84,34 @@ def _run_markup(run: Text, x: float, anchor: str) -> str:
 
 
 def _text_markup(run: Text, measurer) -> str:
-    """One run's markup.
+    """One run's markup, with the position ThorVG actually honours.
 
-    ThorVG ignores ``text-anchor``: this build left-aligns *every* run at its
-    ``x``, whatever the attribute says. A centred run is therefore emitted as
-    one ``<text>`` per glyph, each placed by its measured advance — the same
-    trick tracked text needs, and the anchor the node-box system is built on
-    (boxes are sized to centred labels, so left-aligned text overflows them).
+    ThorVG ignores ``text-anchor``: every run is left-aligned at its ``x``. It
+    also resolves *every* family to the one loaded face, which is monospaced in
+    this engine — so a run's drawn width is its measured ink width, and a
+    "centred" run is exactly one ``<text>`` at
+    ``x - ink_w/2 + left_bearing``. (Earlier versions emitted one ``<text>`` per
+    glyph to work around the ignored anchor; a single element is exact *and*
+    cannot drift, overlap, or lose its spacing.)
+
+    ``tracking`` widens the run: the advance a browser would add per character
+    is folded into the width, and the offset is derived from the same number, so
+    the run stays centred on its anchor.
     """
-    if run.anchor == "middle" and measurer is not None and len(run.content) > 1:
-        return _centred_markup(run, measurer)
-    return _run_markup(run, run.x, run.anchor)
-
-
-def _centred_markup(run: Text, measurer) -> str:
-    """Per-glyph placement so the run is visually centred on ``run.x``.
-
-    Advances come from calibration minus each glyph's left side bearing (its ink
-    offset), which keeps the drawn extent equal to the measured box.
-    """
-    glyphs = list(run.content)
-    advances = [_advance(_glyph_run(run, glyph), measurer) + run.tracking
-                for glyph in glyphs]
-    cursor = run.x - sum(advances) / 2.0
-    out = []
-    for glyph, advance in zip(glyphs, advances):
-        left = txt.measure(measurer, glyph, run.family, "400", run.size).left
-        out.append(_run_markup(_glyph_run(run, glyph), cursor - left, "start"))
-        cursor += advance
-    return "".join(out)
-
-
-def _advance(run: Text, measurer) -> float:
-    """One glyph's advance, calibrated against the renderer.
-
-    A single glyph's *ink* width is not its advance (right side bearings are wide
-    on round letters), so this measures a repeating string and divides. A Latin
-    ``H`` advance is ~0.5em while a CJK glyph's is a full 1em — the same string
-    division handles both, which is why this asks per glyph rather than assuming
-    one advance for the whole run.
-    """
-    glyph = run.content.lower() if run.content.isupper() else run.content
-    if glyph.isspace():
-        # The engine collapses runs of whitespace (and the bundling means the
-        # space can measure empty), so derive it by difference instead.
-        flat = txt.measure(measurer, "HH", run.family, "400", run.size).width
-        spaced = txt.measure(measurer, "H H", run.family, "400", run.size).width
-        return max(0.0, spaced - flat) or run.size * (0.602 if glyph else 1.0)
-    probe = glyph * 8
-    return txt.measure(measurer, probe, run.family, "400", run.size).width / 8.0
-
-
-def _glyph_run(run: Text, content: str) -> Text:
-    return Text(x=run.x, y=run.y, content=content, size=run.size, fill=run.fill,
-                family=run.family, anchor="start", kind=run.kind, tracking=run.tracking,
-                mask=False, opacity=run.opacity)
+    if measurer is None or (run.anchor == "start" and not run.tracking):
+        return _run_markup(run, run.x, run.anchor)
+    ink = txt.measure(measurer, run.content, run.family, "400", run.size)
+    width = ink.width
+    if run.tracking:
+        width = txt.visual_width(measurer, run.content, run.family, "400", run.size,
+                                 0.0, run.tracking)
+    if run.anchor == "middle":
+        x = run.x - width / 2.0 + ink.left
+    elif run.anchor == "end":
+        x = run.x - width + ink.left
+    else:
+        x = run.x
+    return _run_markup(run, x, "start")
 
 
 def _group_markup(group: Group, reveal: bool, measurer, paper: str,

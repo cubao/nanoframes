@@ -60,12 +60,14 @@ def render_video(
     keep_frames: str | None = None,
     cache=None,
     audio: str | None = None,
+    dpi: float = 1.0,
 ) -> str:
     """Render all frames of ``doc`` into ``out_path`` (an MP4).
 
     ``fps`` defaults to the composition's fps. ``scale`` renders a draft at that
-    fraction of the composition size (see ``nanoframes.scale``); the MP4 comes
-    out at the scaled size. If ``keep_frames`` is set, the PNG sequence is left
+    fraction of the composition size (see ``nanoframes.scale``); ``dpi``
+    rasterizes at that pixel density instead, so the same drawing is delivered
+    at a higher resolution. If ``keep_frames`` is set, the PNG sequence is left
     in that directory instead of a temp dir.
     """
     comp = doc.composition
@@ -86,7 +88,7 @@ def render_video(
         blank: list[float] = []
         for i in range(comp.frame_count):
             t = i * step
-            img = render_frame(doc, t, threads=threads, cache=cache, scale=scale,
+            img = render_frame(doc, t, threads=threads, cache=cache, scale=scale, dpi=dpi,
                                warn_blank=False)
             dst = os.path.join(frame_dir, f"{prefix}.{i:05d}.png")
             if keep_frames:
