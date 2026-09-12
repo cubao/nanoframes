@@ -149,24 +149,34 @@ def _expand_wrap(parent, node, content, style, measurer, bg_color, max_width) ->
 
 
 def _wrap(content, style, max_width, measurer) -> list[tuple[str, InkMetrics]]:
-    tokens = _tokens(content)
-    lines: list[tuple[str, InkMetrics]] = []
-    cur: list[str] = []
-    for tok in tokens:
-        trial = (" ".join(cur + [tok]) if cur else tok)
-        m = measurer.ink(trial, style["family"], style["weight"], style["size"],
-                         style["letter_spacing"])
-        w = m.right_dx - m.left_dx + 1
-        if cur and w > max_width:
-            lines.append(_meas(" ".join(cur), style, measurer))
-            cur = [tok]
-        else:
-            cur.append(tok)
+    items, seps = _tokens(content)
+    items, seps = _explode(items, seps, max_width, style, measurer)
+    measure = _line_measure(style, measurer)
+
+    lines: list[str] = []
+    cur: list[int] = []
+    for j in range(len(items)):
+        if cur and measure(_join(items, seps, cur + [j])) > max_width:
+            # 追い出し: rather than leave an offender that may not begin a line
+            # (行頭禁則) at the head of the next one, or a character that may not
+            # end one (行末禁則) at the tail of this one, send the previous unit
+            # down with it — but only when the pair actually fits, or the box
+            # would lose to the rule it is supposed to obey.
+            if (_break_blocked(items, cur, j) and len(cur) > 1
+                    and measure(_join(items, seps, cur[-1:] + [j])) <= max_width):
+                moved = [cur.pop(), j]
+                lines.append(_join(items, seps, cur))
+                cur = moved
+                continue
+            lines.append(_join(items, seps, cur))
+            cur = [j]
+            continue
+        cur.append(j)
     if cur:
-        lines.append(_meas(" ".join(cur), style, measurer))
+        lines.append(_join(items, seps, cur))
     if not lines:
-        lines.append(_meas(content, style, measurer))
-    return lines
+        lines.append(content)
+    return [_meas(text, style, measurer) for text in lines]
 
 
 def _meas(text, style, measurer) -> tuple[str, InkMetrics]:
@@ -182,24 +192,113 @@ def _block_box(lines, style_y: float, step: float) -> InkMetrics:
     return InkMetrics(0.0, w, top - style_y, bottom - style_y, w, bottom - top)
 
 
-def _tokens(text: str) -> list[str]:
+# Characters that may not begin a line (行頭禁則). A wrapped CJK paragraph whose
+# second line opens on 。or ，is the tell that it was broken by arithmetic alone.
+_NO_START = set(",.;:!?)]}%、。，．！？：；）］｝〕〉》」』】〙〗〞”’»›・ー…‥")
+# Their mirror: characters that may not end a line (行末禁則).
+_NO_END = set("([{（［｛〔〈《「『【〘〖〝“‘«‹")
+
+
+def _break_blocked(items: list[str], cur: list[int], j: int) -> bool:
+    """Is breaking before ``items[j]`` forbidden by the 禁則 sets?"""
+    previous = items[cur[-1]]
+    return bool(items[j]) and (items[j][0] in _NO_START or previous[-1] in _NO_END)
+
+
+def _tokens(text: str) -> tuple[list[str], list[str]]:
+    """Split ``text`` into line-break units, plus the whitespace before each.
+
+    CJK ideographs and fullwidth forms are units on their own: there is no space
+    to break on, so every boundary between them is a legal break. A Latin run
+    stays whole. Whitespace is never a unit — it is recorded as the separator of
+    the unit that follows, so a separator that lands on a break is dropped
+    instead of drawn. Keeping the two apart is what stops CJK being re-joined
+    with spaces: joining the units with ``" "`` put a space between every pair
+    of ideographs, so a wrapped Chinese line rendered as 确 定 性.
+    """
     import unicodedata as u
-    out, buf = [], []
+
+    items: list[str] = []
+    seps: list[str] = []
+    buf: list[str] = []
+    gap = ""
+
+    def flush() -> None:
+        if buf:
+            items.append("".join(buf))
+            seps.append(gap)
+            buf.clear()
+
     for ch in text:
-        if u.east_asian_width(ch) in ("W", "F"):
-            if buf:
-                out.append("".join(buf))
-                buf = []
-            out.append(ch)
-        elif ch.isspace():
-            if buf:
-                out.append("".join(buf))
-                buf = []
+        if ch.isspace():
+            flush()
+            gap = " "
+        elif u.east_asian_width(ch) in ("W", "F"):
+            flush()
+            items.append(ch)
+            seps.append(gap)
+            gap = ""
         else:
             buf.append(ch)
-    if buf:
-        out.append("".join(buf))
-    return out or [text]
+    flush()
+    if not items:
+        return [text], [""]
+    return items, seps
+
+
+def _join(items: list[str], seps: list[str], idx: list[int]) -> str:
+    """Text of the units ``idx`` as one line; the separator before the first is
+    dropped, because it is the one that landed on the break."""
+    out = [items[idx[0]]]
+    for k in idx[1:]:
+        out.append(seps[k])
+        out.append(items[k])
+    return "".join(out)
+
+
+def _line_measure(style: dict, measurer):
+    """Cached ink-width measurement of a candidate line.
+
+    The widths are compared against the box, so ink — not the pen advance — is
+    the right quantity: trailing side bearing that draws nothing cannot overflow
+    a box. Every candidate is measured as the joined string because pair
+    adjustments live between glyphs; a sum of unit widths is a different number.
+    """
+    cache: dict[str, float] = {}
+
+    def measure(text: str) -> float:
+        hit = cache.get(text)
+        if hit is None:
+            m = measurer.ink(text, style["family"], style["weight"], style["size"],
+                             style["letter_spacing"])
+            hit = m.right_dx - m.left_dx + 1
+            cache[text] = hit
+        return hit
+
+    return measure
+
+
+def _explode(items: list[str], seps: list[str], max_width: float, style: dict,
+             measurer) -> tuple[list[str], list[str]]:
+    """Split any unit wider than the box into per-character units.
+
+    Without this a single long word ("screenshot" at 38px in a 200px box) has no
+    legal break inside it and is placed whole, silently wider than the box it
+    was told to fit. A box narrower than one glyph still cannot be satisfied;
+    that corner puts the glyph on a line of its own and lets the box lose.
+    """
+    measure = _line_measure(style, measurer)
+    out_items: list[str] = []
+    out_seps: list[str] = []
+    for item, sep in zip(items, seps):
+        if len(item) > 1 and measure(item) > max_width:
+            for k, ch in enumerate(item):
+                out_items.append(ch)
+                out_seps.append(sep if k == 0 else "")
+        else:
+            out_items.append(item)
+            out_seps.append(sep)
+    return out_items, out_seps
 
 
 # ---------------------------------------------------------------------------

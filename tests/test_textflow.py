@@ -58,6 +58,110 @@ def test_wrap_splits_into_stacked_lines():
     assert all(ys[i + 1] > ys[i] for i in range(len(ys) - 1))
 
 
+# --- CJK wrapping -----------------------------------------------------------
+
+CJK_FAMILY = "Sarasa Mono SC"
+CJK_TEXT = "确定性视频渲染需要在另一台机器上保持一致"
+
+
+def _cjk_style(size=20.0):
+    return {"family": CJK_FAMILY, "weight": "normal", "size": size,
+            "letter_spacing": 0.0}
+
+
+def _wrap_texts(content, max_width, size=20.0):
+    from nanoframes.textflow import _wrap
+    return [t for t, _ in _wrap(content, _cjk_style(size), max_width, Measurer())]
+
+
+def test_cjk_wrap_does_not_insert_spaces():
+    """Whitespace is a separator between units, never a unit.
+
+    The first version of the breaker re-joined its units with ``" "``. Latin
+    units are words so that read correctly, but CJK units are single ideographs,
+    so a wrapped Chinese line came out as 确 定 性 视 — a space between every
+    pair of glyphs. No test wrapped CJK, so nothing caught it.
+    """
+    lines = _wrap_texts(CJK_TEXT, 120)
+    assert len(lines) > 1, "expected the text to wrap at 120px"
+    assert "".join(lines) == CJK_TEXT  # nothing dropped, nothing added
+    assert all(" " not in line for line in lines)
+
+
+def test_cjk_wrap_keeps_latin_words_whole():
+    """A space that survives to a line is still a space; words are never split.
+
+    Joining the lines back is lossy for whitespace alone — the separator that
+    lands on a break is dropped, which is what a break is. Everything else has
+    to survive.
+    """
+    lines = _wrap_texts("混合 mixed 文本 wrap test", 110)
+    joined = "".join(lines)
+    assert joined.replace(" ", "") == "混合mixed文本wraptest"
+    assert all(word in joined for word in ("mixed", "wrap", "test"))
+    assert any(" " in line for line in lines)
+    assert "混 合" not in joined  # no space invented between ideographs
+
+
+def test_every_wrapped_line_fits_its_box():
+    """The one invariant the breaker has: no line wider than the box."""
+    m = Measurer()
+    for max_width in (60.0, 80.0, 120.0, 200.0):
+        for line in _wrap_texts(CJK_TEXT, max_width):
+            ink = m.ink(line, CJK_FAMILY, "normal", 20.0, 0.0)
+            assert ink.right_dx - ink.left_dx + 1 <= max_width, (max_width, line)
+
+
+def test_kinsoku_no_line_starts_with_a_closing_character():
+    """行頭禁則: 追い出し sends the previous unit down with the offender.
+
+    At 80px (four 20px ideographs) the break falls immediately before ``,``,
+    which may not open a line, so the line before it gives up its last unit.
+    """
+    lines = _wrap_texts("一二三四，五六七八", 80)
+    assert lines == ["一二三", "四，五六", "七八"]
+    from nanoframes.textflow import _NO_START
+    assert all(line[0] not in _NO_START for line in lines if line)
+
+
+def test_kinsoku_no_line_ends_with_an_opening_character():
+    """行末禁則: the mirror rule, for brackets that may not end a line."""
+    lines = _wrap_texts("一二三（四五六）七八", 80)
+    from nanoframes.textflow import _NO_END
+    assert all(line[-1] not in _NO_END for line in lines if line)
+
+
+def test_a_word_wider_than_the_box_is_broken_not_overflowed():
+    """With no break inside it, a unit is split by character.
+
+    Before this, an over-long word was placed whole on a line of its own —
+    silently wider than the box it was told to fit. A box narrower than a
+    single glyph still cannot be satisfied; this is the case above it.
+    """
+    style = {"family": "Arial", "weight": "normal", "size": 20.0,
+             "letter_spacing": 0.0}
+    from nanoframes.textflow import _wrap
+    m = Measurer()
+    lines = [t for t, _ in _wrap("the screenshot jumps", style, 120, m)]
+    assert len(lines) > 2
+    for line in lines:
+        ink = m.ink(line, "Arial", "normal", 20.0, 0.0)
+        assert ink.right_dx - ink.left_dx + 1 <= 120, line
+
+
+def test_cjk_wrap_through_bake_emits_no_spaces():
+    """End to end: the emitted SVG carries the same defect the unit test names."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" data-width="400" '
+           'data-height="200"><rect width="400" height="200" fill="#000"/>'
+           f'<text id="w" x="20" y="60" font-family="{CJK_FAMILY}" font-size="20" '
+           f'fill="#fff" data-wrap="120">{CJK_TEXT}</text></svg>')
+    tree = ET.fromstring(bake.bake_svg(parse_string(svg), 0.0, measurer=Measurer()))
+    lines = [e.text or "" for e in _texts(tree) if e.get("id", "").startswith("w")]
+    assert len(lines) > 1
+    assert "".join(lines) == CJK_TEXT
+    assert all(" " not in line for line in lines)
+
+
 def test_curve_emits_rotated_per_char():
     tree = ET.fromstring(bake.bake_svg(parse_string(EXAMPLE), 0.5, measurer=Measurer()))
     chars = [e for e in _texts(tree) if "rotate(" in (e.get("transform") or "")]

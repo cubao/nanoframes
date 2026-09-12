@@ -200,6 +200,14 @@ chips / wrapped lines / curved text always line up with the rendered glyphs.
 | `data-curve-d="PATH"` | place each char along a sampled SVG path `d` | — |
 | `data-curve-circle="cx,cy,r[,startDeg]"` | place each char along a circle | — |
 
+`data-wrap` breaks on spaces for Latin and between ideographs for CJK, and it
+applies the Japanese line-break rules (禁則処理): a line never opens on a closing
+punctuation mark (`。，、）` …) and never ends on an opening one (`（「` …), the
+previous unit being sent down with the offender when the pair still fits. A
+unit wider than the box on its own — a long unbroken word — is split by
+character rather than placed whole, since overflowing the box silently is worse
+than a mid-word break. Line advance is `1.2 × font-size`.
+
 When auto-layout is used without a `Measurer` (e.g. a bare `bake_svg` call) it
 is a no-op, so plain compositions bake exactly as before. See
 `docs/text-capabilities.md` for the full audit and caveats.
