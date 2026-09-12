@@ -1,6 +1,10 @@
 """Tests for the fast re-render cache."""
 
 import os
+import shutil
+import time
+
+import pytest
 
 from nanoframes.cache import FrameCache
 from nanoframes.parse import parse_file, parse_string
@@ -54,38 +58,93 @@ def test_no_cache_renders_independently(tmp_path):
     assert a.tobytes() == b.tobytes()
 
 
-def test_cache_trims_to_its_entry_cap(tmp_path):
-    """The key is content-hashed, so edits orphan frames; the cap bounds them."""
+def _frames(cache, n, size=(4, 4)):
+    """Put ``n`` distinct frames through the cache."""
     from PIL import Image
 
-    from nanoframes.cache import FrameCache
-
-    cache = FrameCache(str(tmp_path / "c"), max_entries=5)
-    img = Image.new("RGBA", (4, 4), (0, 0, 0, 255))
-    for i in range(9):
+    img = Image.new("RGBA", size, (0, 0, 0, 255))
+    for i in range(n):
         cache.put(f"source-{i}", 0.0, img)
-    # Trimming runs every N writes (a scan per frame would be silly); assert the
-    # policy itself, then the automatic trigger through the real write path.
-    assert cache.trim() == 4
-    entries, _ = cache.stats()
-    assert entries <= 5, f"cache kept {entries} entries past its cap"
-    # The newest keys survive: the frames a current composition can still ask for.
-    assert any(cache.get(f"source-{i}", 0.0, 4, 4) is not None for i in (7, 8))
 
-    # …and the automatic path trims too, once enough writes have accumulated.
-    auto = FrameCache(str(tmp_path / "auto"), max_entries=5)
-    for i in range(70):
-        auto.put(f"src-{i}", 0.0, img)
-    assert auto.stats()[0] < 70, "automatic trim never ran"
+
+def test_cache_trims_to_its_byte_cap(tmp_path):
+    """The key is content-hashed, so edits orphan frames; the cap bounds them."""
+    cache = FrameCache(str(tmp_path / "c"), max_bytes=10 * 1024)
+    _frames(cache, 12)                      # each 4x4 PNG is ~100 bytes
+    cache.trim(max_bytes=500)               # an explicit, easily-checked cap
+    frames, size = cache.stats()
+    assert size <= 500, f"cache kept {size} bytes past its cap"
+    assert frames < 12
+    # The newest entries survive: the frames a current composition can still ask for.
+    assert any(cache.get(f"source-{i}", 0.0, 4, 4) is not None for i in (11, 10))
+
+
+def test_cache_trim_runs_automatically_on_write(tmp_path):
+    cache = FrameCache(str(tmp_path / "auto"), max_bytes=800)
+    _frames(cache, 70)
+    assert cache.stats()[0] < 70, "the write-path sweep never trimmed"
+
+
+def test_cache_entries_expire(tmp_path):
+    """Per-key TTL: an entry past its expiry is a miss, and is swept."""
+    cache = FrameCache(str(tmp_path / "c"), ttl=0.05)
+    _frames(cache, 1)
+    assert cache.get("source-0", 0.0, 4, 4) is not None
+    time.sleep(0.08)
+    assert cache.get("source-0", 0.0, 4, 4) is None   # filtered out on read
+    assert cache.sweep() == 1                         # and purged on the next pass
+    assert cache.stats()[0] == 0
+
+    permanent = FrameCache(str(tmp_path / "p"), ttl=None)
+    _frames(permanent, 1)
+    assert permanent.get("source-0", 0.0, 4, 4) is not None
+
+
+def test_cache_adopts_payloads_without_an_index(tmp_path):
+    """The payloads are the source of truth: a lost index is rebuilt from them.
+
+    This is also the v1 migration path — the pre-index layout wrote a flat
+    ``<cache_dir>/<hash>.png``, and opening that directory adopts whatever is
+    there instead of throwing the frames away.
+    """
+    root = tmp_path / "c"
+    cache = FrameCache(str(root))
+    _frames(cache, 3)
+    assert cache.stats()[0] == 3
+    # Simulate a lost index (or a directory from before the index existed) by
+    # deleting every non-payload file: the payloads are the source of truth.
+    cache.close()
+    for name in os.listdir(root):
+        if not name.endswith(".png") and name != "files":
+            path = os.path.join(root, name)
+            os.unlink(path) if os.path.isfile(path) else shutil.rmtree(path)
+    reopened = FrameCache(str(root))
+    frames, size = reopened.stats()
+    assert frames == 3 and size > 0, "payloads were not adopted"
+    assert reopened.get("source-1", 0.0, 4, 4) is not None
+
+
+def test_cache_drops_rows_whose_payload_vanished(tmp_path):
+    cache = FrameCache(str(tmp_path / "c"))
+    _frames(cache, 2)
+    os.unlink(cache.frame_path("source-0", 0.0, 4, 4))
+    assert cache.get("source-0", 0.0, 4, 4) is None     # miss, not a crash
+    assert cache.stats()[0] == 1                        # dead row dropped
+    adopted, dropped = cache.reconcile()
+    assert (adopted, dropped) == (0, 0)                 # index agrees with disk
 
 
 def test_cache_clear_reports_and_removes(tmp_path):
-    from PIL import Image
-
-    from nanoframes.cache import FrameCache
-
-    cache = FrameCache(str(tmp_path / "c"), max_entries=0)
-    cache.put("s", 0.0, Image.new("RGBA", (4, 4)))
+    cache = FrameCache(str(tmp_path / "c"))
+    _frames(cache, 1)
     assert cache.stats()[0] == 1
-    cache.clear()
+    assert cache.clear() == 1
     assert cache.stats() == (0, 0)
+    assert not os.path.exists(cache.cache_dir)
+
+
+def test_cache_rejects_nonsense_limits(tmp_path):
+    with pytest.raises(ValueError):
+        FrameCache(str(tmp_path / "a"), max_bytes=0)
+    with pytest.raises(ValueError):
+        FrameCache(str(tmp_path / "b"), ttl=-1)

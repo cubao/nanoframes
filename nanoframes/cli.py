@@ -208,6 +208,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("cache", help="show or clear the fast re-render cache")
     sp.add_argument("--clear", action="store_true",
                     help="delete the cache directory (safe: it only holds rendered frames)")
+    sp.add_argument("--trim", action="store_true",
+                    help="evict oldest frames until the cache is back under its size cap")
     sp.set_defaults(handler=cmd_cache)
 
     sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
@@ -571,22 +573,30 @@ def cmd_diagram(args: argparse.Namespace) -> int:
 
 
 def cmd_cache(args: argparse.Namespace) -> int:
-    """Report the cache's size, or clear it.
+    """Report the cache, clear it, or trim it to its cap.
 
     The cache is keyed by source content, so every edit to a composition
-    orphans its previous frames; the entries are only ever re-rendered on a
-    miss and always reproducible, which is what makes clearing safe.
+    orphans its previous frames; they are also always reproducible, which is
+    what makes clearing safe rather than destructive.
     """
     cache = FrameCache(DEFAULT_CACHE)
     if args.clear:
-        entries, size = cache.stats()
+        frames, size = cache.stats()
         cache.clear()
-        print(f"cleared {DEFAULT_CACHE}/ ({entries} frames, {size / 1e6:.0f} MB)")
+        print(f"cleared {DEFAULT_CACHE}/ ({frames} frames, {size / 1e6:.0f} MB)")
         return 0
-    entries, size = cache.stats()
-    print(f"{DEFAULT_CACHE}/: {entries} frames, {size / 1e6:.0f} MB"
-          f" (trimmed past {cache.max_entries} entries on write)")
-    print("  nanoframes cache --clear    # delete it; frames re-render on demand")
+    frames, size = cache.stats()
+    cap = cache.max_bytes / 1e6
+    ttl = "never" if cache.ttl is None else f"{cache.ttl / 86400:.0f} days"
+    print(f"{DEFAULT_CACHE}/: {frames} frames, {size / 1e6:.0f} MB"
+          f" of {cap:.0f} MB (entries expire after {ttl})")
+    if args.trim:
+        removed = cache.trim()
+        print(f"trimmed {removed} frame(s); now {cache.stats()[1] / 1e6:.0f} MB")
+    else:
+        print("  nanoframes cache --clear    # delete it; frames re-render on demand")
+        print("  nanoframes cache --trim     # evict oldest frames down to the cap")
+    cache.close()
     return 0
 
 

@@ -97,6 +97,28 @@ each element's box, how many frames it is actually visible in, and the pixel dif
 seam. Text boxes come from the same renderer-exact `Measurer` the layout passes use, so a
 reported box is the box that gets drawn.
 
+### Frame cache
+
+A frame is a pure function of (source bytes, time, canvas size), so it is cached
+on disk under a hash of exactly those — the full source bytes are folded in, so
+any edit invalidates the whole clip's frames and the canvas size is in the key,
+so draft and delivery frames coexist.
+
+`nanoframes.cache.FrameCache` stores each frame as a plain PNG
+(`files/<aa>/<hash>.png`) and keeps its bookkeeping in a
+[diskcache](https://github.com/grantjenks/python-diskcache) SQLite index — that
+gives per-entry TTL, capacity culling and cross-process locking, and the module
+only owns the part diskcache does not: *"this key's value is this file"*. What
+the index cannot do is become the truth: the payload directory is, so a missing
+or foreign index is rebuilt from it on open, which is also how a cache written
+by an earlier flat layout migrates without user action.
+
+The cache maintains itself (a week's TTL, a byte cap, a sweep of crashed
+in-flight writes) and never fails a render: a contended index read is a miss, a
+contended write is skipped, and a payload deleted behind the index is
+re-rendered. `nanoframes cache` reports it; `--clear` and `--trim` are the
+manual levers.
+
 ### Draft rendering (`--scale`)
 
 Per-frame cost is dominated by what a frame *contains*, not by how large it is drawn: ThorVG
@@ -254,6 +276,19 @@ MP4 export, and an agent-facing skill.
   that ecosystem (`yang0/handraw-style`'s 261 numbered art directions) is
   referenced for choosing a *look*, not ported: it addresses image generation,
   not SVG.
+- **0.1.11 (2026-09)** — the frame cache was rebuilt on
+  [diskcache](https://github.com/grantjenks/python-diskcache) (`nanoframes
+  cache` now reports frames, bytes and TTL, with `--clear`/`--trim`). The
+  design is the one from `bagless.utils.cached_files`: one plain file per key,
+  per-key TTL, a byte capacity cap with opportunistic eviction, atomic
+  placement, multi-process safety — absorbed rather than vendored, so the
+  payload stays a PNG any tool can open and the index stays disposable. The
+  payload directory is the source of truth: an index that is missing, stale or
+  from the previous flat layout is rebuilt from it on open, which is how this
+  checkout's existing 3995-frame cache migrated with no user action. Adding two
+  dependencies (`diskcache`, `loguru`) was an explicit call; diskcache is
+  stdlib-only itself and does the locking/TTL/culling that a hand-rolled index
+  cannot do safely.
 - **0.1.10 (2026-09)** — two corrections from using the diagram generator for
   real. Text placement stopped being per-glyph: ThorVG ignores `text-anchor`
   *and* resolves every family to the one loaded face, so a run's drawn width is

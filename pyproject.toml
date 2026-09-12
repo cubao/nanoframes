@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanoframes"
-version = "0.1.10"
+version = "0.1.11"
 description = "SVG-first, browserless, deterministic frame rendering built on ThorVG. Offline hyperframes-style animated compositions for fast AI-agent iteration."
 readme = "README.md"
 # Floor is 3.9 — set by the engine binding, not us: thorvg-python has used
@@ -26,6 +26,12 @@ dependencies = [
     "thorvg-python>=1.1.3",
     "pillow",
     "numpy",  # renderer-exact text measurement (ink bbox from raster pixels)
+    # Frame cache: per-key TTL, capacity culling and cross-process locking come
+    # from diskcache's SQLite index (stdlib-only itself); loguru gives the cache
+    # diagnostics a sink the *application* controls (the library removes the
+    # default stderr one).
+    "diskcache>=5.6",
+    "loguru>=0.7",
 ]
 
 [project.optional-dependencies]
