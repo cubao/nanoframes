@@ -111,11 +111,6 @@ def path_d(points: list, r: float = CORNER_R) -> str:
     return d + f" L {_fmt(last[0])},{_fmt(last[1])}"
 
 
-def polyline_length(points: list) -> float:
-    return sum(math.hypot(points[i + 1][0] - points[i][0], points[i + 1][1] - points[i][1])
-               for i in range(len(points) - 1))
-
-
 def point_at(points: list, distance: float) -> tuple:
     """Point at ``distance`` along the polyline."""
     walked = 0.0

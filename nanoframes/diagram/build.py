@@ -84,13 +84,8 @@ class _Builder:
         return out
 
     def header_height(self) -> float:
-        if not self.spec.title and not self.spec.subtitle:
-            return 0.0
-        t = self.tokens
-        h = t.ramp["title"] + 12
-        if self.spec.subtitle:
-            h += 26
-        return h + 16  # breathing room between the header block and the figure
+        """Height of the title band laid out above the figure (see `header_height`)."""
+        return header_height(self.spec)
 
     def legend(self, width: float, items: list):
         """Horizontal legend strip at the bottom (never floating inside the art).
@@ -166,7 +161,7 @@ def _finish(scene: Scene, spec: Spec, minimum: tuple | None = None,
     min_h = (minimum or (0.0, 0.0))[1]
     scene.width = max(min_w, geo.q4(x1 + spec.margin))
     scene.height = max(min_h, geo.q4(y1 + spec.margin))
-    header = self_header(spec)
+    header = header_height(spec)
     figure_top = y0 + dy
     slack = min_h - (header + (y1 + dy - figure_top) + 2 * spec.margin)
     if slack > 8 * spec.margin and figure_top >= header + spec.margin - 1:
@@ -193,11 +188,11 @@ def _finish(scene: Scene, spec: Spec, minimum: tuple | None = None,
     return scene
 
 
-def self_header(spec: Spec) -> float:
-    """Height of the title band the builder lays out above the figure.
+def header_height(spec: Spec) -> float:
+    """Height of the title band laid out above the figure.
 
-    Kept in sync with ``_Builder.header_height`` (it is a spec-level question,
-    and the centring step in ``_finish`` needs it without a builder instance).
+    A spec-level question, so both the builder and `_finish`'s centring step ask
+    this one function instead of keeping two copies of the arithmetic in sync.
     """
     if not spec.title and not spec.subtitle:
         return 0.0

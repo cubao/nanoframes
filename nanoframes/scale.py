@@ -27,15 +27,13 @@ import os
 import tempfile
 
 from nanoframes.parse import Document
+from nanoframes.refs import IMAGE_REF_ATTRS, REMOTE_SCHEMES
 from nanoframes.xmlutil import local_name
 
 # Set to the authored path on the first prescale pass, so a later pass at a
 # different scale still resizes the true source rather than a reduced copy.
 _SOURCE_ATTR = "data-src"
 
-# Same attribute set bake's image dereferencing understands.
-_HREF_ATTRS = ("href", "{http://www.w3.org/1999/xlink}href", "src")
-_NON_LOCAL = ("http:", "https:", "data:")
 
 
 def draft_size(width: int, height: int, scale: float) -> tuple[int, int]:
@@ -67,16 +65,16 @@ def prescale_images(doc: Document, scale: float) -> int:
             continue
         authored = node.get(_SOURCE_ATTR)
         if authored is not None and scale >= 1.0:
-            for attr in [a for a in _HREF_ATTRS if node.get(a) is not None] or ["href"]:
+            for attr in [a for a in IMAGE_REF_ATTRS if node.get(a) is not None] or ["href"]:
                 node.set(attr, authored)
             del node.attrib[_SOURCE_ATTR]
             done += 1
             continue
         if scale >= 1.0:
             continue
-        for attr in _HREF_ATTRS:
+        for attr in IMAGE_REF_ATTRS:
             ref = authored or node.get(attr)
-            if not ref or ref.startswith(_NON_LOCAL):
+            if not ref or ref.startswith(REMOTE_SCHEMES):
                 continue
             src = _resolve(ref, doc.base_dir)
             if src is None:

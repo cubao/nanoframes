@@ -104,22 +104,13 @@ class Tokens:
     link: str
     ramp: dict
 
-    # -- role helpers ---------------------------------------------------------
     @property
-    def rule_ink(self) -> tuple[str, float]:
-        """Hairline border color: ``rule`` at the source's 12% opacity."""
-        return self.rule, 0.12
-
-    @property
-    def rule_soft(self) -> tuple[str, float]:
-        return self.rule, 0.20
-
-    @property
-    def zone_fill(self) -> tuple[str, float]:
+    def zone_fill(self) -> tuple:
+        """Zone plate: a 2% ink wash, per the source's grouping convention."""
         return self.ink, 0.02
 
     @property
-    def zone_stroke(self) -> tuple[str, float]:
+    def zone_stroke(self) -> tuple:
         return self.ink, 0.10
 
     def node_style(self, ntype: str) -> dict:

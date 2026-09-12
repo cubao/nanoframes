@@ -159,11 +159,6 @@ def family_name(path: str) -> tuple[str, str]:
     return os.path.splitext(os.path.basename(path))[0], ""
 
 
-def _looks_cjk(family: str) -> bool:
-    fl = family.lower()
-    return any(h in fl for h in _CJK_HINTS)
-
-
 def _looks_mono(family: str) -> bool:
     fl = family.lower()
     return any(h in fl for h in _MONO_HINTS)

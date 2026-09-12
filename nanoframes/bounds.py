@@ -167,10 +167,6 @@ class Bounds:
             return Bounds(self.box, self.complete and other.complete)
         return Bounds(self.box.union(other.box), self.complete and other.complete)
 
-    @property
-    def usable(self) -> bool:
-        return self.box is not None and self.complete
-
 
 # ---------------------------------------------------------------------------
 # Geometry
@@ -331,40 +327,6 @@ def painted_bounds(node, measurer=None) -> Bounds:
     return Bounds(inner.box.transform(matrix), inner.complete)
 
 
-def root_bounds(root, node, measurer=None) -> Bounds:
-    """Geometry of ``node`` in the root's user space (every ancestor transform applied)."""
-    ancestors = _ancestor_chain(root, node)
-    if ancestors is None:
-        return Bounds(complete=False)
-    bounds = subtree_bounds(node, measurer)
-    if bounds.box is None:
-        return bounds
-    box = bounds.box
-    for ancestor in ancestors:
-        try:
-            box = box.transform(parse_transform(ancestor.get("transform")))
-        except TransformError:
-            return Bounds(complete=False)
-    return Bounds(box, bounds.complete)
-
-
-def _ancestor_chain(root, node) -> list | None:
-    """Nodes from the root down to (excluding) ``node``; None if not a descendant."""
-    path: list = []
-    return path if _find_path(root, node, path) else None
-
-
-def _find_path(current, target, path: list) -> bool:
-    if current is target:
-        return True
-    for child in current:
-        path.append(child)
-        if _find_path(child, target, path):
-            return True
-        path.pop()
-    return False
-
-
 def canvas_box(width: float, height: float) -> Box:
     return Box(0.0, 0.0, float(width), float(height))
 
@@ -387,17 +349,6 @@ def iter_renderable(root, ancestors: Matrix = IDENTITY, path: tuple = ()):
         except TransformError:
             continue
         yield from iter_renderable(child, inner, here)
-
-
-def node_at(root, path: tuple):
-    """The node at a child-index path, or None if the tree differs there."""
-    node = root
-    for index in path:
-        children = list(node)
-        if index >= len(children):
-            return None
-        node = children[index]
-    return node
 
 
 def label(node) -> str:

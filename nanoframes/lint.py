@@ -17,10 +17,8 @@ from dataclasses import dataclass
 from nanoframes import bake, bounds, timeline
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document, ParseError, parse_file, parse_string
+from nanoframes.refs import IMAGE_REF_ATTRS, REMOTE_SCHEMES
 from nanoframes.xmlutil import local_name
-
-_IMAGE_REFS = ("href", "{http://www.w3.org/1999/xlink}href", "src")
-_NON_LOCAL = ("http:", "https:", "data:")
 
 # Cap on the frames a geometry sample walks: a long composition is sampled
 # evenly rather than visited frame by frame (the traps being hunted persist
@@ -171,9 +169,9 @@ def _check_assets(doc: Document, findings: list[Finding]) -> None:
     for node in doc.root.iter():
         if local_name(node.tag) != "image":
             continue
-        for attr in _IMAGE_REFS:
+        for attr in IMAGE_REF_ATTRS:
             ref = node.get(attr)
-            if not ref or ref.startswith(_NON_LOCAL) or ref in seen:
+            if not ref or ref.startswith(REMOTE_SCHEMES) or ref in seen:
                 continue
             seen.add(ref)
             path = ref if os.path.isabs(ref) else os.path.join(doc.base_dir, ref)
@@ -259,10 +257,6 @@ def default_measurer():
         return _MEASURER[0]
     except Exception:  # noqa: BLE001 - measurement is optional for linting
         return None
-
-
-def _renderable(node) -> bool:
-    return local_name(node.tag) not in bounds.NON_RENDERING_TAGS
 
 
 def _has_text(doc: Document) -> bool:

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document
+from nanoframes.refs import IMAGE_REF_ATTRS, REMOTE_SCHEMES
 from nanoframes.timeline import effective_opacity, evaluate
 from nanoframes.xmlutil import SVG_NAMESPACE, find_parent, float_attr, local_name
 
@@ -264,9 +265,9 @@ def _dereference_images(root: ET.Element, base_dir: str) -> None:
     for node in root.iter():
         if local_name(node.tag) != "image":
             continue
-        for attr in ("href", "{http://www.w3.org/1999/xlink}href", "src"):
+        for attr in IMAGE_REF_ATTRS:
             ref = node.get(attr)
-            if not ref or ref.startswith(("http:", "https:", "data:", "/")):
+            if not ref or ref.startswith((*REMOTE_SCHEMES, "/")):
                 continue
             joined = os.path.normpath(os.path.join(base_dir, ref))
             node.set(attr, joined)
