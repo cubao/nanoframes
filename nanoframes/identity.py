@@ -143,7 +143,7 @@ def toolchain_fingerprint() -> str:
     global _TOOLCHAIN
     if _TOOLCHAIN is None:
         digest = hashlib.sha256()
-        digest.update(f"thorvg-python={_dist_version('thorvg-python')}".encode("utf-8"))
+        digest.update(f"thorvg-python={dist_version('thorvg-python')}".encode("utf-8"))
         digest.update(_SEP.encode("ascii"))
         from nanoframes import __version__
 
@@ -154,7 +154,7 @@ def toolchain_fingerprint() -> str:
     return _TOOLCHAIN
 
 
-def _dist_version(name: str) -> str:
+def dist_version(name: str) -> str:
     """Installed version of a distribution, or a marker when it is not one.
 
     A source checkout with no distribution metadata is a real state (``pip

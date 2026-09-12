@@ -65,6 +65,13 @@ Diagnostics are machine-readable: every finding carries a stable `code`, and
 `nanoframes check --json` / `debug --json` emit the structured form an agent
 branches on instead of parsing prose.
 
+`nanoframes debug --pixels` answers the one question a box cannot: it hides each
+named element in turn, re-renders the same frame, and reports the elements whose
+removal changes no pixel — the ones on the canvas by every arithmetic reading
+that a later sibling painted over. And `nanoframes doctor` checks the machine
+before the composition (thorvg-python, ffmpeg, ffprobe, fonts, disk), naming the
+fix for each unmet precondition.
+
 ## Layout
 
 ```

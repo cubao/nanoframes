@@ -232,6 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_diagram)
 
+    sp = sub.add_parser("doctor", help="check this machine can render, and what fixes it")
+    sp.add_argument("--json", action="store_true",
+                    help="emit the report as JSON (always exits 0; the verdict is `ok`)")
+    sp.set_defaults(handler=cmd_doctor)
+
     sp = sub.add_parser("cache", help="show or clear the fast re-render cache")
     sp.add_argument("--clear", action="store_true",
                     help="delete the cache directory (safe: it only holds rendered frames)")
@@ -633,6 +638,35 @@ def cmd_diagram(args: argparse.Namespace) -> int:
     if scene.duration > 1.0:
         print(f"  nanoframes video {out} -o out.mp4   # reveal animation")
     return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Report every precondition a render needs, with the fix for each failure.
+
+    `--json` exits 0 whatever the verdict — a non-zero exit makes a shell
+    pipeline discard the payload the caller asked for, and the verdict is
+    already in `ok`. Human mode exits 1 when something is wrong, because that is
+    what a person reading a terminal expects.
+    """
+    from nanoframes import doctor
+
+    report = doctor.report(DEFAULT_CACHE)
+    if args.json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False))
+        return 0
+
+    for check in report.checks:
+        mark = "ok  " if check.ok else "FAIL"
+        print(f"{mark} {check.name:<8} {check.detail}")
+        if check.fix:
+            print(f"     fix: {check.fix}")
+    if report.ok:
+        print("\nEvery precondition is satisfied; `check`, `render` and `video` can run.")
+        return 0
+    names = ", ".join(c.name for c in report.failed)
+    print(f"\n{len(report.failed)} precondition(s) unmet: {names}.")
+    print("The fixes are listed above; nothing here needs a browser.")
+    return 1
 
 
 def cmd_cache(args: argparse.Namespace) -> int:

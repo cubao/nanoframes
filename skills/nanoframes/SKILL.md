@@ -19,6 +19,10 @@ muxed to MP4 with ffmpeg. Because there is no browser, iteration is ~6ms/frame.
 
 For any "make me a video / animated card / motion graphic" request:
 
+0. **Doctor** — `nanoframes doctor` says whether this machine can render at all
+   (thorvg-python, ffmpeg, ffprobe, fonts, disk), and every failing check names
+   the command that fixes it. Run it once, or when a failure makes no sense.
+   `--json` always exits 0 and puts the verdict in `ok`; human mode exits 1.
 1. **Plan** — canvas size, duration, fps, beats. Decide what moves (translate /
    scale / rotate), fades, and what stays static.
 2. **Write** a `.nf.svg` composition (see contract below). Start from
