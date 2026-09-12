@@ -52,3 +52,40 @@ def test_no_cache_renders_independently(tmp_path):
     a = render_frame(doc, t=2.0)
     b = render_frame(doc, t=2.0)
     assert a.tobytes() == b.tobytes()
+
+
+def test_cache_trims_to_its_entry_cap(tmp_path):
+    """The key is content-hashed, so edits orphan frames; the cap bounds them."""
+    from PIL import Image
+
+    from nanoframes.cache import FrameCache
+
+    cache = FrameCache(str(tmp_path / "c"), max_entries=5)
+    img = Image.new("RGBA", (4, 4), (0, 0, 0, 255))
+    for i in range(9):
+        cache.put(f"source-{i}", 0.0, img)
+    # Trimming runs every N writes (a scan per frame would be silly); assert the
+    # policy itself, then the automatic trigger through the real write path.
+    assert cache.trim() == 4
+    entries, _ = cache.stats()
+    assert entries <= 5, f"cache kept {entries} entries past its cap"
+    # The newest keys survive: the frames a current composition can still ask for.
+    assert any(cache.get(f"source-{i}", 0.0, 4, 4) is not None for i in (7, 8))
+
+    # …and the automatic path trims too, once enough writes have accumulated.
+    auto = FrameCache(str(tmp_path / "auto"), max_entries=5)
+    for i in range(70):
+        auto.put(f"src-{i}", 0.0, img)
+    assert auto.stats()[0] < 70, "automatic trim never ran"
+
+
+def test_cache_clear_reports_and_removes(tmp_path):
+    from PIL import Image
+
+    from nanoframes.cache import FrameCache
+
+    cache = FrameCache(str(tmp_path / "c"), max_entries=0)
+    cache.put("s", 0.0, Image.new("RGBA", (4, 4)))
+    assert cache.stats()[0] == 1
+    cache.clear()
+    assert cache.stats() == (0, 0)

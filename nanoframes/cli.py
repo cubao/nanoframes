@@ -205,6 +205,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_diagram)
 
+    sp = sub.add_parser("cache", help="show or clear the fast re-render cache")
+    sp.add_argument("--clear", action="store_true",
+                    help="delete the cache directory (safe: it only holds rendered frames)")
+    sp.set_defaults(handler=cmd_cache)
+
     sp = sub.add_parser("walkthrough", help="generate the self-contained one-take walkthrough")
     sp.add_argument("-o", "--out", default="build/walkthrough", help="output dir")
     sp.add_argument("--no-audio", action="store_true", help="skip audio synthesis/mux")
@@ -562,6 +567,26 @@ def cmd_diagram(args: argparse.Namespace) -> int:
           f"   # {geo_size(scene.width, dpi):g}x{geo_size(scene.height, dpi):g}")
     if scene.duration > 1.0:
         print(f"  nanoframes video {out} -o out.mp4   # reveal animation")
+    return 0
+
+
+def cmd_cache(args: argparse.Namespace) -> int:
+    """Report the cache's size, or clear it.
+
+    The cache is keyed by source content, so every edit to a composition
+    orphans its previous frames; the entries are only ever re-rendered on a
+    miss and always reproducible, which is what makes clearing safe.
+    """
+    cache = FrameCache(DEFAULT_CACHE)
+    if args.clear:
+        entries, size = cache.stats()
+        cache.clear()
+        print(f"cleared {DEFAULT_CACHE}/ ({entries} frames, {size / 1e6:.0f} MB)")
+        return 0
+    entries, size = cache.stats()
+    print(f"{DEFAULT_CACHE}/: {entries} frames, {size / 1e6:.0f} MB"
+          f" (trimmed past {cache.max_entries} entries on write)")
+    print("  nanoframes cache --clear    # delete it; frames re-render on demand")
     return 0
 
 
