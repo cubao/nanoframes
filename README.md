@@ -81,8 +81,9 @@ and do not fail on their own; `--strict` counts them.
 
 `nanoframes debug --pixels` answers the one question a box cannot: it hides each
 named element in turn, re-renders the same frame, and reports the elements whose
-removal changes no pixel — the ones on the canvas by every arithmetic reading
-that a later sibling painted over. And `nanoframes doctor` checks the machine
+removal changes no pixel — the ones on the canvas by every arithmetic reading and
+contributing nothing to the picture. It names a cause only where the geometry can
+support one: a pixel test cannot tell an occlusion from a fade to zero. And `nanoframes doctor` checks the machine
 before the composition (thorvg-python, ffmpeg, ffprobe, fonts, disk), naming the
 fix for each unmet precondition.
 

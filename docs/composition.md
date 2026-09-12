@@ -136,13 +136,21 @@ frames.
 
 A box landing on the canvas is not proof that anything of the element reached
 the picture — a later sibling can paint over it, and every arithmetic reading
-still says `on-canvas`. `nanoframes debug <comp> --pixels` answers that
-question by **hiding each named element in turn and re-rendering the same
-frame**: an element whose removal changes no pixel is buried, and the report
+still says `on-canvas`. `nanoframes debug <comp> --pixels` answers that question
+by **hiding each named element in turn and re-rendering the same frame**: an
+element whose removal changes no pixel contributes nothing here, and the report
 says so. It costs one render per element, so it is opt-in. Naming an element
 (`id="…"`) is how it opts into being reported — a background rectangle is
-covered by anything full-bleed drawn after it, and saying so every time would
-train the reader to ignore the line.
+covered by anything full-bleed drawn after it, and a line that fires on that
+every time is a line the reader learns to ignore.
+
+The report names a **cause only where the geometry can support one**. A pixel
+test cannot tell a sibling painting over a node from a fade that has it at zero:
+both leave the same evidence. Opacity is separately measurable, so a node that
+is fully transparent here is reported as exactly that; otherwise the report lists
+candidates — a later sibling, or an ancestor's clip or mask — rather than picking
+one. `debug --json` carries the same distinction under `frame.invisible` (the
+labels) and `frame.why` (the reason, where there is one).
 
 ## Seamless loops
 

@@ -98,7 +98,7 @@ def test_a_report_reading_is_a_warning_not_a_failure():
     assert payload["errors"] == []
     assert payload["warnings"] == 1
     assert code == 0, "reported, not failed"
-    assert payload["debug"]["frame"]["covered"] == ["#caption"]
+    assert payload["debug"]["frame"]["invisible"] == ["#caption"]
 
 
 def test_strict_makes_a_warning_count():
@@ -111,7 +111,7 @@ def test_strict_makes_a_warning_count():
 def test_pixels_is_off_by_default_so_a_warning_is_not_claimed_unexamined():
     """Nothing probed means nothing claimed — not a zero."""
     _, payload = verify.run(parse_string(BURIED))
-    assert payload["debug"]["frame"]["covered"] == []
+    assert payload["debug"]["frame"]["invisible"] == []
     assert payload["examined"]["pixels_probed"] is False
 
 
@@ -172,7 +172,7 @@ def test_cli_verify_reports_a_missing_file_as_a_usage_error(tmp_path):
     assert exc.value.code == 2
 
 
-def test_cli_verify_strict_names_a_buried_element(tmp_path):
+def test_cli_verify_strict_names_an_element_that_contributes_nothing(tmp_path):
     code, text = _run_text(["verify", _src(tmp_path, BURIED), "--pixels", "--strict"])
     assert code == 1
-    assert "1 buried" in text
+    assert "1 invisible" in text

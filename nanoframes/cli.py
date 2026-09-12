@@ -154,7 +154,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
     sp.add_argument("--pixels", action="store_true",
                     help="probe whether hiding each element changes the frame"
-                         " (one extra render per element; finds buried elements)")
+                         " (one extra render per element; finds elements that are on"
+                         " the canvas but contribute no pixel)")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
     sp.add_argument("--loop", action="store_true",
                     help="also compare the first and last frame (loop seam)")
@@ -474,11 +475,13 @@ def cmd_debug(args: argparse.Namespace) -> int:
         print(f"  ^ {blank.label} paints nothing at this time: its geometry misses the canvas"
               f" — an animated translate that leaves the frame, or a rotate with no pivot"
               f" (`nanoframes check` names those)")
-    if args.pixels and report.covered:
-        for buried in report.covered:
-            print(f"  ~ {buried.label} is on the canvas but buried: hiding it would change"
-                  f" nothing, so nothing of it reaches the picture. Something drawn after it"
-                  f" covers it — move it later in document order.")
+    if args.pixels and report.invisible:
+        for hidden in report.invisible:
+            print(f"  ~ {hidden.label} is on the canvas but contributes no pixel here:"
+                  f" {hidden.why or 'no pixel of it survives'}.")
+        print("    (hiding it would change nothing, so nothing of it reaches the picture."
+              " The probe reports what it saw; the reason is named only where the"
+              " geometry can tell one.)")
         print(f"  {len(report.elements)} element(s) probed by hiding each in turn"
               f" and re-rendering this frame.")
 

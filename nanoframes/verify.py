@@ -57,7 +57,7 @@ def _count_warnings(payload: dict) -> int:
     total = int(payload.get("warnings", 0) or 0)
     frame = payload.get("frame")
     if isinstance(frame, dict):
-        for key in ("blanks", "covered"):
+        for key in ("blanks", "invisible"):
             value = frame.get(key)
             if isinstance(value, list):
                 total += len(value)
@@ -148,7 +148,7 @@ def describe_debug(section: dict) -> str:
     """What the reading found, in the reader's words rather than the keys'."""
     parts = []
     for label, value in (("blank", section["frame"].get("blanks")),
-                         ("buried", section["frame"].get("covered")),
+                         ("invisible", section["frame"].get("invisible")),
                          ("never visible", section.get("scan", {}).get("never_visible"))):
         if value:
             parts.append(f"{len(value)} {label}")

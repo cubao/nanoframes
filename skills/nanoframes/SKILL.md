@@ -232,7 +232,9 @@ is on-canvas, and (with the clip scan) whether it is ever visible. A frame that
 draws nothing renders as a valid, fully transparent PNG, so this is the command
 that turns a blank output into a named culprit. Add `--pixels` when an element
 is on-canvas by every reading and still not in the picture: it hides each named
-element in turn and re-renders, naming the ones a later sibling painted over.
+element in turn and re-renders, naming the ones that contribute no pixel. It
+reports the fact, and names a cause only where the geometry supports one — a
+pixel test cannot tell an occlusion from a fade to zero.
 
 **Before reporting a composition as good, `nanoframes verify <comp>`** runs
 `doctor`, `check` and `debug` into one `--json` envelope: one `ok`, one exit

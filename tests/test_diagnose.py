@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from nanoframes import diagnose, timeline
+from nanoframes import bake, bounds, diagnose, timeline
 from nanoframes.cli import main
 from nanoframes.lint import lint_string
 from nanoframes.parse import parse_string
@@ -198,10 +198,10 @@ def test_probe_finds_an_element_covered_by_a_later_sibling():
     report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     by_label = {e.label: e for e in report.elements}
     assert by_label["#caption"].contributes is False
-    assert by_label["#caption"].covered
+    assert by_label["#caption"].invisible
     assert by_label["#curtain"].contributes is True
-    assert not by_label["#curtain"].covered
-    assert [e.label for e in report.covered] == ["#caption"]
+    assert not by_label["#curtain"].invisible
+    assert [e.label for e in report.invisible] == ["#caption"]
 
 
 def test_probe_does_not_claim_anything_about_elements_it_did_not_probe():
@@ -215,14 +215,58 @@ def test_probe_does_not_claim_anything_about_elements_it_did_not_probe():
     assert by_label["#later"].contributes is None
 
 
-def test_probe_only_reports_buried_elements_the_author_named():
+def test_probe_only_reports_invisible_elements_the_author_named():
     """A check that fires on a background rectangle every time gets ignored."""
     doc = parse_string(comp(BURIED))
     report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     unnamed_buried = [e for e in report.elements
                       if e.contributes is False and not e.has_id]
-    assert unnamed_buried, "the fixture's background is genuinely covered"
-    assert all(not e.covered for e in unnamed_buried)
+    assert unnamed_buried, "the fixture's background genuinely contributes nothing"
+    assert all(not e.invisible for e in unnamed_buried)
+
+
+def test_a_faded_out_element_is_not_reported_as_occluded():
+    """The reason has to be the one the arithmetic can support.
+
+    Found by running the installed package's own `init` template: at t=0 its
+    title is faded to opacity 0, and the probe correctly measured that hiding it
+    changes no pixel — then reported it as buried by a later sibling, which the
+    pixel test cannot see. A fade and an occlusion leave identical evidence, so
+    only opacity (separately measurable) may be named.
+    """
+    svg = ('<rect width="400" height="200" fill="#101820"/>'
+           '<text id="faded" x="20" y="100" font-family="Arial" font-size="28"'
+           ' fill="#ffffff" data-start="0.0" data-duration="1.0" data-fade="0.5">FADED</text>')
+    doc = parse_string(comp(svg))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert by_label["#faded"].contributes is False
+    assert by_label["#faded"].invisible
+    assert "transparent" in by_label["#faded"].why
+    assert "sibling" not in by_label["#faded"].why
+
+
+def test_an_occluded_element_lists_candidates_rather_than_a_single_cause():
+    """A pixel test cannot tell an occlusion from a clip, so it does not claim to."""
+    doc = parse_string(comp(BURIED))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    why = {e.label: e.why for e in report.elements}["#caption"]
+    assert "no pixel of it survives" in why
+    assert "a later sibling" in why and "clip or mask" in why
+
+
+def test_effective_opacity_multiplies_down_the_path():
+    """A parent's fade and the node's own multiply; neither alone is the answer."""
+    svg = ('<rect width="400" height="200" fill="#000"/>'
+           '<g opacity="0.5"><text id="t" x="10" y="50" font-family="Arial"'
+           ' font-size="20" fill="#fff" opacity="0.5">x</text></g>')
+    doc = parse_string(comp(svg))
+    root = bake.bake_tree(doc, 0.0, measurer=render_measurer())
+    found = [(path, node) for path, node, _ in bounds.iter_renderable(root)
+             if bounds.label(node) == "#t"]
+    assert found, "the text node should be in the baked tree"
+    path, _ = found[0]
+    assert diagnose.effective_opacity(root, path) == pytest.approx(0.25)
 
 
 def test_probe_leaves_the_tree_as_it_found_it():
@@ -230,11 +274,11 @@ def test_probe_leaves_the_tree_as_it_found_it():
     doc = parse_string(comp(BURIED))
     first = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     second = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
-    assert ([e.label for e in first.covered] == [e.label for e in second.covered]
+    assert ([e.label for e in first.invisible] == [e.label for e in second.invisible]
             == ["#caption"])
 
 
-def test_cli_debug_pixels_reports_the_buried_element(tmp_path):
+def test_cli_debug_pixels_reports_the_invisible_element(tmp_path):
     src = tmp_path / "buried.nf.svg"
     src.write_text(comp(BURIED), encoding="utf-8")
     out = io.StringIO()
@@ -242,7 +286,7 @@ def test_cli_debug_pixels_reports_the_buried_element(tmp_path):
         code = main(["debug", str(src), "--pixels", "--no-scan"])
     assert code == 0
     text = out.getvalue()
-    assert "buried" in text and "#caption" in text
+    assert "contributes no pixel" in text and "#caption" in text
 
 
 def test_cli_debug_pixels_json_carries_the_verdict(tmp_path):
@@ -252,7 +296,7 @@ def test_cli_debug_pixels_json_carries_the_verdict(tmp_path):
     with contextlib.redirect_stdout(out):
         main(["debug", str(src), "--pixels", "--no-scan", "--json"])
     payload = json.loads(out.getvalue())
-    assert payload["frame"]["covered"] == ["#caption"]
+    assert payload["frame"]["invisible"] == ["#caption"]
     assert payload["identity"]["components"]["source"]
     for element in payload["frame"]["elements"]:
         assert "contributes" in element

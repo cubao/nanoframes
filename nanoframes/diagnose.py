@@ -9,11 +9,14 @@ for the pixel-level questions (how much of the frame is covered, how far apart a
 loop's two seam frames are). ``--pixels`` adds one raster pass *per element*, to
 answer the question arithmetic cannot: whether anything of it survived to the
 picture once everything else had drawn. That is the only reading that catches an
-element painted over by a later sibling, which passes every box-based check.
+element painted over by a later sibling, which passes every box-based check — and
+it reports the *fact* rather than a cause it cannot see: a pixel test cannot tell
+an occlusion from a fade, so only a cause the arithmetic can measure is named.
 """
 
 from __future__ import annotations
 
+import contextlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -33,11 +36,12 @@ class ElementBox:
     label: str
     box: bounds.Box | None
     status: str  # on-canvas | clipped | off-canvas | unmeasured
-    painted: bool  # this frame actually draws from it (clip window + opacity)
+    painted: bool  # this frame draws from it (inside its clip window, measurable)
     complete: bool = True
     named: bool = False  # has an id, or sits at the top level
-    has_id: bool = False  # author gave it an id — what `covered` reports on
+    has_id: bool = False  # author gave it an id — what `invisible` reports on
     contributes: bool | None = None  # None unless pixels were probed
+    why: str = ""  # the cause, only where the arithmetic supports one
 
     @property
     def blank(self) -> bool:
@@ -45,15 +49,21 @@ class ElementBox:
         return self.painted and self.complete and self.status == "off-canvas"
 
     @property
-    def covered(self) -> bool:
-        """On the canvas by its box, and contributing nothing to the picture.
+    def invisible(self) -> bool:
+        """On the canvas by its box, and contributing no pixel to the picture.
 
-        The failure no arithmetic can find: something drawn later covered it.
-        Only meaningful once ``contributes`` has been probed, and reported only
-        for elements the author **named** — a background rectangle is buried by
-        anything full-bleed drawn after it, and saying so every time would train
-        the reader to ignore the line. Naming an element is how it opts into
-        being checked.
+        The failure no box can find: on the canvas by every measure, and nothing
+        of it in the frame. Only meaningful once ``contributes`` has been probed,
+        and reported only for elements the author **named** — a background
+        rectangle is covered by anything full-bleed drawn after it, and a line
+        that fires on that every time is a line the reader learns to ignore.
+        Naming an element is how it opts into being checked.
+
+        What this does NOT claim is *why*. A pixel test can see that nothing
+        survived; it cannot tell a later sibling painting over the node from a
+        fade that has it at zero, because both leave the same evidence. ``why``
+        carries the one cause the arithmetic can support, and stays empty when
+        there is none.
         """
         return (self.has_id and self.contributes is False
                 and self.status in ("on-canvas", "clipped"))
@@ -66,8 +76,9 @@ class ElementBox:
         note = "" if self.complete else "  (partly unmeasured)"
         if self.status == "off-canvas":
             note += "  <-- draws nothing here"
-        if self.covered:
-            note += "  <-- on the canvas, but buried: nothing of it reaches the picture"
+        if self.invisible:
+            note += f"  <-- on the canvas, contributing no pixel ({self.why})" \
+                if self.why else "  <-- on the canvas, contributing no pixel"
         elif self.contributes:
             note += "  (reaches the picture)"
         return f"{format_box(self.box):<30}{self.status}{note}"
@@ -85,7 +96,8 @@ class ElementBox:
             "named": self.named,
             "has_id": self.has_id,
             "blank": self.blank,
-            "covered": self.covered,
+            "invisible": self.invisible,
+            "why": self.why,
             "contributes": self.contributes,
         }
 
@@ -115,12 +127,12 @@ class FrameReport:
         return [e for e in self.elements if e.blank]
 
     @property
-    def covered(self) -> list[ElementBox]:
+    def invisible(self) -> list[ElementBox]:
         """Elements whose geometry is on the canvas and whose pixels are not.
 
         Empty unless ``pixels`` was probed.
         """
-        return [e for e in self.elements if e.covered]
+        return [e for e in self.elements if e.invisible]
 
     def to_dict(self) -> dict:
         return {
@@ -131,7 +143,8 @@ class FrameReport:
             "coverage": self.coverage,
             "elements": [e.to_dict() for e in self.elements],
             "blanks": [e.label for e in self.blanks],
-            "covered": [e.label for e in self.covered],
+            "invisible": [e.label for e in self.invisible],
+            "why": {e.label: e.why for e in self.invisible if e.why},
         }
 
 
@@ -302,6 +315,8 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
             else:
                 node.set("display", previous)
         record.contributes = differing > 0.0
+        if not record.contributes:
+            record.why = _invisibility_reason(root, record.path)
 
 
 def assemble(report: "FrameReport", scan: "ClipScan | None" = None,
@@ -335,6 +350,49 @@ def debug_payload(doc: Document, t: float, *, measurer=None, samples: int = SCAN
     scanned = scan_clip(doc, measurer=measurer, samples=max(2, samples)) if scan else None
     seam = loop_seam(doc) if loop else None
     return assemble(report, scan=scanned, seam=seam, doc=doc)
+
+
+# Below this, an element draws nothing anyone can see, and the probe's answer is
+# explained by the fade rather than by anything drawn later.
+_TRANSPARENT_EPSILON = 1e-3
+
+_INVISIBLE_REASONS = ("a later sibling drawing over it",
+                      "an ancestor's clip or mask excluding its pixels")
+
+
+def effective_opacity(root, path) -> float:
+    """The product of ``opacity`` down a baked path: what this node draws at.
+
+    `bounds.placed` answers *where* a node would draw and not how strongly: a
+    node at opacity 0 still measures, so the probe has to ask this separately to
+    avoid blaming a sibling for a fade.
+    """
+    value = 1.0
+    node = root
+    for index in path:
+        children = list(node)
+        if index >= len(children):
+            return value
+        node = children[index]
+        raw = node.get("opacity")
+        if raw is None:
+            continue
+        with contextlib.suppress(ValueError):
+            value *= float(raw)
+    return value
+
+
+def _invisibility_reason(root, path) -> str:
+    """The cause the arithmetic can support — and nothing more.
+
+    A pixel test sees that no pixel survived. It cannot see *why*: a node painted
+    over by a later sibling and a node faded to zero leave identical evidence.
+    Opacity is the one cause that is separately measurable, so it is the one that
+    gets named; otherwise the report lists the candidates rather than picking one.
+    """
+    if effective_opacity(root, path) <= _TRANSPARENT_EPSILON:
+        return "fully transparent at this time (a fade or an opacity of 0)"
+    return "no pixel of it survives — " + ", or ".join(_INVISIBLE_REASONS)
 
 
 def frame_distance(a, b) -> tuple[float, int]:

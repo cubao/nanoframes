@@ -357,8 +357,11 @@ def placed(node, ancestors: Matrix, measurer=None) -> tuple:
     The single place that turns a baked node into "where would it draw?", shared
     by `nanoframes debug`'s frame report and clip scan and by `check`'s
     visibility pass. Returns ``(painted, box, complete)``: ``painted`` is False
-    when bake hid the node (``display="none"``, or folded-to-zero opacity), which
-    is different from the node being unmeasurable.
+    when bake hid the node (``display="none"``, which is how a clip window that
+    excludes this time is materialized) or when nothing about it can be measured.
+    It is **not** about opacity: a node at ``opacity="0"`` still measures, which
+    is why `diagnose.effective_opacity` exists and why the contribution probe
+    asks opacity separately before blaming a sibling for a fade.
     """
     measured = painted_bounds(node, measurer)
     if measured.box is None:
