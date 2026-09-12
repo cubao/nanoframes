@@ -11,7 +11,7 @@ import pytest
 from nanoframes import bake, bounds, diagnose, timeline
 from nanoframes.cli import main
 from nanoframes.lint import lint_string
-from nanoframes.parse import parse_string
+from nanoframes.parse import parse_file, parse_string
 from nanoframes.render import measurer as render_measurer
 from nanoframes.render import render_frame
 
@@ -204,15 +204,21 @@ def test_probe_finds_an_element_covered_by_a_later_sibling():
     assert [e.label for e in report.invisible] == ["#caption"]
 
 
-def test_probe_does_not_claim_anything_about_elements_it_did_not_probe():
-    """A hidden or unmeasured element has no contribution to report."""
+def test_a_genuinely_hidden_element_contributes_nothing_and_is_not_flagged():
+    """Every node is probed, including the ones bake marked hidden.
+
+    That is not redundant work: probing them is how a node the renderer draws
+    *anyway* is found (see the test above). A shape whose clip window really does
+    hide it comes back as contributing nothing, and is not flagged.
+    """
     doc = parse_string(comp('<rect id="bg" width="400" height="200" fill="#fff"/>'
                             '<rect id="later" x="0" y="0" width="10" height="10" fill="#f00"'
                             ' data-start="1.0" data-duration="1.0"/>'))
     report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     by_label = {e.label: e for e in report.elements}
     assert not by_label["#later"].painted
-    assert by_label["#later"].contributes is None
+    assert by_label["#later"].contributes is False
+    assert not by_label["#later"].hidden_but_drawn
 
 
 def test_probe_only_reports_invisible_elements_the_author_named():
@@ -225,18 +231,21 @@ def test_probe_only_reports_invisible_elements_the_author_named():
     assert all(not e.invisible for e in unnamed_buried)
 
 
-def test_a_faded_out_element_is_not_reported_as_occluded():
+def test_a_zero_opacity_element_is_reported_as_transparent_not_occluded():
     """The reason has to be the one the arithmetic can support.
 
-    Found by running the installed package's own `init` template: at t=0 its
-    title is faded to opacity 0, and the probe correctly measured that hiding it
-    changes no pixel — then reported it as buried by a later sibling, which the
-    pixel test cannot see. A fade and an occlusion leave identical evidence, so
-    only opacity (separately measurable) may be named.
+    Found by running the installed package's own `init` template: the probe
+    measured that hiding an element changed no pixel, then reported it as buried
+    by a later sibling — which a pixel test cannot see. A fade and an occlusion
+    leave identical evidence, so only opacity (separately measurable) is named.
+
+    A shape is the case where opacity really does hide: this ThorVG build honours
+    it on `<rect>` and ignores it on `<text>`, so a faded *text* element is not
+    invisible at all and is covered by the test above.
     """
     svg = ('<rect width="400" height="200" fill="#101820"/>'
-           '<text id="faded" x="20" y="100" font-family="Arial" font-size="28"'
-           ' fill="#ffffff" data-start="0.0" data-duration="1.0" data-fade="0.5">FADED</text>')
+           '<rect id="faded" x="20" y="80" width="100" height="40" fill="#ffffff"'
+           ' data-start="0.0" data-duration="1.0" data-fade="0.5"/>')
     doc = parse_string(comp(svg))
     report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     by_label = {e.label: e for e in report.elements}
@@ -253,6 +262,67 @@ def test_an_occluded_element_lists_candidates_rather_than_a_single_cause():
     why = {e.label: e.why for e in report.elements}["#caption"]
     assert "no pixel of it survives" in why
     assert "a later sibling" in why and "clip or mask" in why
+
+
+def test_the_probe_detects_text_the_renderer_draws_while_hidden():
+    """The detection this feature exists for, on the bug it found in the product.
+
+    bake materializes a clip window as ``display="none"``. ThorVG honours that on
+    shapes and groups and **ignores it on `<text>`**, so a text element outside
+    its window draws anyway — and every arithmetic reading, including `lint`'s
+    visibility pass, believes the attribute. Only the pixels can see it.
+    """
+    # A text element whose window starts later, and a rect in the same state: the
+    # rect is genuinely hidden, the text is not.
+    svg = ('<rect id="bar" x="0" y="0" width="40" height="40" fill="#0f0"'
+           ' data-start="1.0" data-duration="1.0"/>'
+           '<text id="late" x="10" y="60" font-family="Arial" font-size="24"'
+           ' fill="#ffffff" data-start="1.0" data-duration="1.0">LATE</text>')
+    doc = parse_string(comp(svg))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert by_label["#late"].painted is False, "bake marked it hidden"
+    assert by_label["#late"].contributes is True, "and it is drawn anyway"
+    assert by_label["#late"].hidden_but_drawn
+    assert not by_label["#bar"].hidden_but_drawn, "a rect is genuinely hidden"
+    assert [e.label for e in report.hidden_but_drawn] == ["#late"]
+
+
+def test_the_probe_detects_an_image_drawn_while_hidden(tmp_path):
+    """The gap is not only `<text>`: `<image>` ignores the same two attributes.
+
+    Found by sweeping `verify` over `examples/`: `master-demo`'s two orbs are
+    `<image>` elements with a `data-start` window, and the probe flagged both.
+    """
+    from PIL import Image as PILImage
+
+    asset = tmp_path / "dot.png"
+    PILImage.new("RGBA", (24, 24), (255, 0, 0, 255)).save(asset)
+    svg = ('<rect width="200" height="200" fill="#101820"/>'
+           f'<image id="orb" href="{asset}" x="20" y="20" width="60" height="60"'
+           ' data-start="1.0" data-duration="1.0"/>')
+    path = tmp_path / "c.nf.svg"
+    path.write_text(comp(svg), encoding="utf-8")
+    doc = parse_file(str(path))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert by_label["#orb"].painted is False
+    assert by_label["#orb"].hidden_but_drawn, "an <image> window does not hide it either"
+
+
+def test_a_visible_element_contributes_and_is_not_called_invisible():
+    """The false positive the first hiding mechanism produced, kept as a test.
+
+    Hiding by attribute is ignored on `<text>`, so every visible text element
+    measured as contributing nothing — the opposite of the check's purpose.
+    """
+    doc = parse_string(comp('<rect width="400" height="200" fill="#101820"/>'
+                            '<text id="t" x="20" y="100" font-family="Arial"'
+                            ' font-size="28" fill="#ffffff">VISIBLE</text>'))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert by_label["#t"].contributes is True
+    assert not by_label["#t"].invisible
 
 
 def test_effective_opacity_multiplies_down_the_path():

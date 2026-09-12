@@ -57,7 +57,7 @@ def _count_warnings(payload: dict) -> int:
     total = int(payload.get("warnings", 0) or 0)
     frame = payload.get("frame")
     if isinstance(frame, dict):
-        for key in ("blanks", "invisible"):
+        for key in ("blanks", "invisible", "hidden_but_drawn"):
             value = frame.get(key)
             if isinstance(value, list):
                 total += len(value)
@@ -68,13 +68,16 @@ def _count_warnings(payload: dict) -> int:
 
 
 def run(doc, *, t: float = 0.0, samples: int = diagnose.SCAN_SAMPLES,
-        pixels: bool = False, threads: int = 4, strict: bool = False,
+        pixels: bool = True, threads: int = 4, strict: bool = False,
         cache_dir: str = DEFAULT_CACHE, measurer=None) -> tuple[int, dict]:
     """Run every gate over an already-parsed composition.
 
-    ``pixels`` is passed through to `debug`: it is the only reading that finds an
-    element a later sibling painted over, and a composition that declares
-    nothing to check still has one.
+    ``pixels`` is passed through to `debug` and defaults to on. It costs one
+    render per reported element at a single frame — bounded by the element count,
+    not the frame count — and it is the only reading that finds an element
+    contributing no pixel. A gate that left out its most informative check by
+    default would be weaker than it advertises, and an agent that runs only
+    `verify` would never see it.
     """
     if measurer is None:
         from nanoframes.render import measurer as default_measurer

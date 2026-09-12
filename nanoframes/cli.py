@@ -253,8 +253,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.add_argument("--t", type=float, default=0.0, help="frame the debug section examines")
     sp.add_argument("--samples", type=int, default=24, help="frames the clip scan sweeps")
-    sp.add_argument("--pixels", action="store_true",
-                    help="also probe whether hiding each element changes the frame")
+    sp.add_argument("--no-pixels", action="store_true",
+                    help="skip the contribution probe (on by default: it is the only"
+                         " check that finds an element contributing no pixel)")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
     sp.add_argument("--strict", action="store_true",
                     help="count reported warnings towards the exit code")
@@ -475,6 +476,14 @@ def cmd_debug(args: argparse.Namespace) -> int:
         print(f"  ^ {blank.label} paints nothing at this time: its geometry misses the canvas"
               f" — an animated translate that leaves the frame, or a rotate with no pivot"
               f" (`nanoframes check` names those)")
+    if args.pixels and report.hidden_but_drawn:
+        for drawn in report.hidden_but_drawn:
+            print(f"  ! {drawn.label} is hidden at this time and drawn anyway: bake"
+                  f" marked it hidden and the rasterizer ignored that, so its clip"
+                  f" window and fade have no effect on it.")
+        print("    (This ThorVG build honours display/opacity on shapes and groups and"
+              " ignores both on <text> and <image>, so wrap one in a <g> to fade or"
+              " window it. See docs/composition.md.)")
     if args.pixels and report.invisible:
         for hidden in report.invisible:
             print(f"  ~ {hidden.label} is on the canvas but contributes no pixel here:"
@@ -745,7 +754,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     doc = _load(args.composition)
     code, payload = verify.run(doc, t=args.t, samples=max(2, args.samples),
-                               pixels=args.pixels, threads=args.threads,
+                               pixels=not args.no_pixels, threads=args.threads,
                                strict=args.strict, cache_dir=DEFAULT_CACHE)
     if args.json:
         envelope.emit_json(payload)

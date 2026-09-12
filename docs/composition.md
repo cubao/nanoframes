@@ -204,10 +204,25 @@ SVG meaning but only within that subset.
   blame.
 - **`visibility` is ignored.** Probed, not assumed: `visibility="hidden"` and
   `visibility="collapse"` leave the element in the picture. `display="none"` is
-  what hides, and it is honoured. `check` warns when it sees either value
-  (`render.inert_attribute`), because the alternative is a wrong frame with no
-  error. `opacity="0"` also works, but leaves the element in the tree to be
-  composited.
+  what hides, and it is honoured — on shapes and groups. `check` warns when it
+  sees either value (`render.inert_attribute`), because the alternative is a
+  wrong frame with no error.
+- **`display` and `opacity` are ignored on `<text>` and `<image>`.** Probed by
+  ink count, not by frame comparison (identical frames with and without an
+  attribute mean the attribute did nothing, which is easy to misread): `<text
+  display="none">`, `<text opacity="0">`, `<image display="none">` and `<image
+  opacity="0">` all draw exactly as if the attribute were absent. `<rect>`,
+  `<circle>`, `<path>` and `<g>` honour both.
+  Wrap the element in a `<g>` and the attributes work.
+  This is the one gap with consequences that are easy to miss, because those two
+  attributes are how the motion model is expressed: bake materializes a clip
+  window as `display="none"` and `data-fade` as `opacity`. **So a fade or a
+  `data-start`/`data-duration` window on a text or image element currently has no
+  effect** — it is drawn at full strength from t=0 and stays drawn to the end.
+  `nanoframes debug --pixels` reports this as `hidden_but_drawn`, and it is the
+  only reading that can see it: every arithmetic pass, including `lint`'s
+  visibility check, believes the attribute. Multi-line text is unaffected —
+  `data-wrap` already wraps its lines in a `<g>`.
 
 ## Text auto-layout (`data-*` on `<text>`)
 

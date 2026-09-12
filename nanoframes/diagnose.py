@@ -49,6 +49,16 @@ class ElementBox:
         return self.painted and self.complete and self.status == "off-canvas"
 
     @property
+    def hidden_but_drawn(self) -> bool:
+        """Bake hid it and the rasterizer drew it anyway.
+
+        A renderer that ignores the hiding attribute makes the whole arithmetic
+        model wrong for that node: the clip window, the fade, and everything
+        `lint` concluded from them. Only the pixels can see it.
+        """
+        return self.has_id and not self.painted and self.contributes is True
+
+    @property
     def invisible(self) -> bool:
         """On the canvas by its box, and contributing no pixel to the picture.
 
@@ -97,6 +107,7 @@ class ElementBox:
             "has_id": self.has_id,
             "blank": self.blank,
             "invisible": self.invisible,
+            "hidden_but_drawn": self.hidden_but_drawn,
             "why": self.why,
             "contributes": self.contributes,
         }
@@ -134,6 +145,11 @@ class FrameReport:
         """
         return [e for e in self.elements if e.invisible]
 
+    @property
+    def hidden_but_drawn(self) -> list[ElementBox]:
+        """Elements bake hid that the rasterizer drew anyway (see ElementBox)."""
+        return [e for e in self.elements if e.hidden_but_drawn]
+
     def to_dict(self) -> dict:
         return {
             "t": self.t,
@@ -144,6 +160,7 @@ class FrameReport:
             "elements": [e.to_dict() for e in self.elements],
             "blanks": [e.label for e in self.blanks],
             "invisible": [e.label for e in self.invisible],
+            "hidden_but_drawn": [e.label for e in self.hidden_but_drawn],
             "why": {e.label: e.why for e in self.invisible if e.why},
         }
 
@@ -287,9 +304,14 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
     test can only see a node against some backdrop, and the isolated backdrop is
     not the one the composition has.
 
-    ``display="none"`` is the hide that works — probed, not assumed.
-    ``visibility="hidden"`` is silently ignored by this ThorVG build, and
-    ``opacity="0"`` works but leaves the node in the tree to be composited.
+    The node is **removed from the tree** rather than hidden with an attribute.
+    Probed, ThorVG honours ``display="none"`` and ``opacity="0"`` on shapes and
+    groups and **ignores both on `<text>`**: the text renders anyway. Hiding by
+    attribute therefore reported every visible text element as contributing
+    nothing — a false positive on the element type this check most exists for
+    (a buried caption is a caption), arriving with no symptom. Detaching the node
+    is unambiguous and works for every type; the tree is restored by re-inserting
+    at the same index, before anything else can observe it.
     """
     from nanoframes.render import render_svg
 
@@ -299,21 +321,17 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
 
     baseline = draw()
     for record, node in probed:
-        # Only "not painted" is a reason to skip: a node its clip window or a
-        # zero opacity kept out of the frame cannot contribute, and needs no
-        # render to say so. An unmeasured box is NOT a reason — the pixel answer
-        # does not depend on the box, only the claim about where it landed does.
-        if not record.painted:
-            continue
-        previous = node.get("display")
-        node.set("display", "none")
+        # Every node is probed, including the ones bake marked hidden. That is
+        # not wasted work: it is how a node the renderer draws *anyway* is found.
+        # `display="none"` is how bake materializes a clip window, and ThorVG
+        # ignores it on `<text>` — so a text element outside its window still
+        # draws, which is invisible to every arithmetic reading and to any check
+        # that trusts the attribute.
+        parent, index = _detach(root, record.path)
         try:
             differing, _ = frame_distance(baseline, draw())
         finally:
-            if previous is None:
-                node.attrib.pop("display", None)
-            else:
-                node.set("display", previous)
+            parent.insert(index, node)
         record.contributes = differing > 0.0
         if not record.contributes:
             record.why = _invisibility_reason(root, record.path)
@@ -350,6 +368,19 @@ def debug_payload(doc: Document, t: float, *, measurer=None, samples: int = SCAN
     scanned = scan_clip(doc, measurer=measurer, samples=max(2, samples)) if scan else None
     seam = loop_seam(doc) if loop else None
     return assemble(report, scan=scanned, seam=seam, doc=doc)
+
+
+def _detach(root, path):
+    """Take one node out of the baked tree; return what re-inserting it needs.
+
+    ``path`` is the child-index chain from ``root`` (what `bounds.iter_renderable`
+    yields), which also gives the parent and the index to restore at.
+    """
+    parent = root
+    for index in path[:-1]:
+        parent = list(parent)[index]
+    parent.remove(list(parent)[path[-1]])
+    return parent, path[-1]
 
 
 # Below this, an element draws nothing anyone can see, and the probe's answer is

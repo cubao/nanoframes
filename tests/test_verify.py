@@ -55,6 +55,7 @@ def _run_text(argv):
 # --- the envelope -----------------------------------------------------------
 
 def test_a_clean_composition_passes_with_no_errors_or_warnings():
+    # CLEAN has one named element, and it is visible, so the probe finds nothing.
     code, payload = verify.run(parse_string(CLEAN))
     assert code == 0 and payload["ok"] is True
     assert payload["errors"] == [] and payload["warnings"] == 0
@@ -82,7 +83,7 @@ def test_the_debug_section_is_the_debug_payload_verbatim():
     from nanoframes.render import measurer
 
     expected = diagnose.debug_payload(doc, 0.25, measurer=measurer(), samples=SCAN_SAMPLES,
-                                      pixels=False, threads=4, scan=True, loop=False)
+                                      pixels=True, threads=4, scan=True, loop=False)
     assert payload["debug"] == expected
 
 
@@ -108,16 +109,27 @@ def test_strict_makes_a_warning_count():
     assert payload["strict"] is True
 
 
-def test_pixels_is_off_by_default_so_a_warning_is_not_claimed_unexamined():
-    """Nothing probed means nothing claimed — not a zero."""
+def test_the_gate_probes_pixels_by_default():
+    """A gate that omits its most informative check is weaker than it advertises.
+
+    An agent that runs only `verify` would otherwise never see an element that
+    contributes no pixel: it is the one finding no box measure produces.
+    """
     _, payload = verify.run(parse_string(BURIED))
+    assert payload["debug"]["frame"]["invisible"] == ["#caption"]
+    assert payload["examined"]["pixels_probed"] is True
+
+
+def test_opting_out_claims_nothing_rather_than_claiming_zero():
+    """Nothing probed means nothing claimed — not a zero."""
+    _, payload = verify.run(parse_string(BURIED), pixels=False)
     assert payload["debug"]["frame"]["invisible"] == []
     assert payload["examined"]["pixels_probed"] is False
 
 
 def test_the_envelope_names_what_the_debug_section_examined():
     _, payload = verify.run(parse_string(CLEAN), t=0.5, samples=7)
-    assert payload["examined"] == {"t": 0.5, "scan_samples": 7, "pixels_probed": False}
+    assert payload["examined"] == {"t": 0.5, "scan_samples": 7, "pixels_probed": True}
 
 
 def test_a_section_that_raises_is_recorded_not_propagated(monkeypatch):
@@ -173,6 +185,6 @@ def test_cli_verify_reports_a_missing_file_as_a_usage_error(tmp_path):
 
 
 def test_cli_verify_strict_names_an_element_that_contributes_nothing(tmp_path):
-    code, text = _run_text(["verify", _src(tmp_path, BURIED), "--pixels", "--strict"])
+    code, text = _run_text(["verify", _src(tmp_path, BURIED), "--strict"])
     assert code == 1
     assert "1 invisible" in text
