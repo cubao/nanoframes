@@ -24,7 +24,7 @@ import sys
 
 from nanoframes import __version__, envelope, walkthrough
 from nanoframes.cache import DEFAULT_CACHE, FrameCache
-from nanoframes.envelope import EXIT_FAIL, EXIT_OK
+from nanoframes.envelope import EXIT_FAIL, EXIT_OK, EXIT_USAGE
 from nanoframes.lint import has_errors, lint_path, lint_string
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import frame_is_blank, measurer, render_frame
@@ -230,6 +230,23 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--check", action="store_true",
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_diagram)
+
+    sp = sub.add_parser("digest", help="per-frame digest: record it, or check it against a ledger")
+    sp.add_argument("composition", nargs="?", help="path to a .nf.svg composition")
+    sp.add_argument("--all", action="store_true",
+                    help="sweep every composition the --examples glob matches")
+    sp.add_argument("--examples", default="examples/*.nf.svg",
+                    help="the glob --all sweeps (default: examples/*.nf.svg)")
+    sp.add_argument("--samples", type=int, default=0,
+                    help="digest only this many sampled frames (default: every frame)")
+    sp.add_argument("--ledger", default=digest_default_ledger(),
+                    help="the ledger file to read, check or write")
+    sp.add_argument("--record", action="store_true", help="write the reading into the ledger")
+    sp.add_argument("--check", action="store_true",
+                    help="exit 1 when a digest differs from the ledger")
+    sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
+    sp.add_argument("--json", action="store_true", help="emit the reading as JSON")
+    sp.set_defaults(handler=cmd_digest)
 
     sp = sub.add_parser("verify", help="every gate over one composition: one envelope, one exit code")
     sp.add_argument("composition", help="path to a .nf.svg composition")
@@ -640,6 +657,78 @@ def cmd_diagram(args: argparse.Namespace) -> int:
     if scene.duration > 1.0:
         print(f"  nanoframes video {out} -o out.mp4   # reveal animation")
     return 0
+
+
+def digest_default_ledger() -> str:
+    """`tests/digests.json` at the checkout root, or beside the cwd outside one."""
+    from nanoframes import digest as digest_mod
+    from nanoframes.envelope import repo_root
+
+    root = repo_root()
+    return os.path.join(root, digest_mod.LEDGER) if root else digest_mod.LEDGER
+
+
+def cmd_digest(args: argparse.Namespace) -> int:
+    """Record or check a composition's per-frame digest against a ledger.
+
+    The value over a PNG baseline is the comparison's *reason*: the ledger holds
+    the identity each digest was taken under, so a changed number can say whether
+    the composition moved, the renderer moved, or the same declared inputs
+    produced different pixels.
+    """
+    from nanoframes import digest as digest_mod
+
+    targets = (digest_mod.sweep(args.examples) if args.all
+               else ([args.composition] if args.composition else None))
+    if not targets:
+        print("nanoframes digest: name a composition, or pass --all to sweep"
+              f" {args.examples}", file=sys.stderr)
+        return EXIT_USAGE
+
+    ledger = digest_mod.load(args.ledger)
+    root = os.getcwd()
+    results: dict = {}
+    worst = EXIT_OK
+    lines: list[str] = []
+    for path in targets:
+        try:
+            doc = parse_file(path)
+        except (OSError, ParseError) as exc:
+            print(f"nanoframes digest: {path}: {exc}", file=sys.stderr)
+            return EXIT_USAGE
+        reading = digest_mod.read(doc, samples=args.samples, threads=args.threads)
+        key = digest_mod.entry_key(path, root)
+        recorded = ledger["compositions"].get(key)
+        if args.record:
+            ledger["compositions"][key] = reading.to_dict()
+            results[key] = {"status": "recorded", **reading.to_dict()}
+            lines.append(f"recorded {key}: {reading.frames} frame(s) {reading.digest[:16]}"
+                         + (" (sampled)" if reading.sampled else ""))
+            continue
+        if recorded is None:
+            results[key] = {"status": "absent", **reading.to_dict()}
+            lines.append(f"{key}: {reading.digest[:16]} — not in {args.ledger}")
+            # Not a failure: a composition with no recorded digest is not wrong,
+            # it is unrecorded. `--check` says so rather than inventing a verdict.
+            continue
+        status, reasons = digest_mod.compare(recorded, reading)
+        results[key] = {"status": status, "reasons": reasons, **reading.to_dict()}
+        lines.append(f"{'ok   ' if status == 'match' else status.upper() + ' '} {key}"
+                     + ("" if status == "match" else ": " + "; ".join(reasons)))
+        if args.check and status != "match":
+            worst = EXIT_FAIL
+
+    if args.record:
+        digest_mod.save(args.ledger, ledger)
+
+    if args.json:
+        envelope.emit_json({"ok": worst == EXIT_OK, "ledger": args.ledger,
+                            "compositions": results})
+        return EXIT_OK
+    print("\n".join(lines))
+    if not args.check and not args.record:
+        print(f"\n(--check compares against {args.ledger}; --record updates it)")
+    return worst
 
 
 def cmd_verify(args: argparse.Namespace) -> int:

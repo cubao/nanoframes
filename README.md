@@ -65,6 +65,13 @@ Diagnostics are machine-readable: every finding carries a stable `code`, and
 `nanoframes check --json` / `debug --json` emit the structured form an agent
 branches on instead of parsing prose.
 
+Determinism is checked by more than the PNG baselines. `nanoframes digest`
+hashes every frame of a composition (before any encoder sees it) into a ledger,
+`tests/digests.json`, which records the digest *and the inputs it was taken
+under* — so `digest --all --check` can report `source changed` for an edit,
+`toolchain changed` for a renderer upgrade, and `regression` only when the same
+declared inputs produced different pixels. See [docs/determinism.md](docs/determinism.md).
+
 `nanoframes verify <comp>` is every gate at once — `doctor`, `check` and
 `debug` — into a single `--json` envelope with one `ok` and one exit code, where
 each section is the sub-command's own payload embedded verbatim (one producer per
@@ -97,6 +104,7 @@ tests/            unit + render + snapshot + CLI tests
 - [Text capabilities](docs/text-capabilities.md) — measured chips/wrap/curve/fit, bundled CJK font, `text_handler` escape hatch.
 - [Lottie import](docs/lottie.md) — render Lottie JSON scenes to MP4 (`nanoframes lottie`).
 - [Diagram specs](docs/diagram.md) — build editorial diagrams from JSON (`nanoframes diagram`).
+- [Determinism](docs/determinism.md) — what a frame is a function of, and the ledger that says which input moved.
 
 `docs/` and `skills/` also ship inside the pip wheel (`nanoframes/docs`,
 `nanoframes/skills`); running `nanoframes` with no arguments — or

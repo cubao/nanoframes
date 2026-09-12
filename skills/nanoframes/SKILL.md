@@ -210,6 +210,7 @@ nanoframes debug <comp>.nf.svg --t 2 --json   # structured frame report + clip s
 nanoframes debug <comp>.nf.svg --loop   # + first/last frame diff (loop seam)
 nanoframes debug <comp>.nf.svg --pixels # + hide each element to find buried ones
 nanoframes verify <comp>.nf.svg         # doctor+check+debug, one --json envelope
+nanoframes digest <comp>.nf.svg         # per-frame sha256 (see docs/determinism.md)
 nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png            # 1:1
 nanoframes render <comp>.nf.svg --t 2 --dpi 2 -o shot@2x.png  # 2x pixel density
