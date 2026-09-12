@@ -14,7 +14,7 @@ import math
 import os
 from dataclasses import dataclass
 
-from nanoframes import bake, bounds, refs, timeline
+from nanoframes import bake, bounds, media, refs, timeline
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document, ParseError, parse_file, parse_string
 from nanoframes.xmlutil import local_name
@@ -223,6 +223,7 @@ def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:
     _check_transform_values(doc.composition, findings)
     _check_clips(doc.composition, findings)
     _check_assets(doc, findings)
+    _check_image_fit(doc, findings)
     _check_palette(doc, findings)
     if has_errors(findings):
         # Bake would raise on the transform values just reported: stop before the
@@ -443,6 +444,25 @@ def _check_animation_windows(doc: Document, findings: list[Finding]) -> None:
                     code="animation.outside_visibility", element=anim.target,
                 ))
                 break
+
+
+def _check_image_fit(doc: Document, findings: list[Finding]) -> None:
+    """Warn about a ``data-fit`` value the renderer does not implement.
+
+    An unknown mode is silently ignored by ``media.apply_fit`` (the geometry is
+    left exactly as authored), which is the right runtime behaviour and a
+    confusing authoring experience — so `check` names the typo.
+    """
+    for node in refs.iter_images(doc.root):
+        raw = node.get("data-fit")
+        if raw is None or raw == "" or raw.strip().lower() in media.FIT_MODES:
+            continue
+        findings.append(Finding(
+            "warning",
+            f"element {node.get('id') or '<image>'}: unknown data-fit {raw!r}"
+            f" (expected one of {', '.join(media.FIT_MODES)}) — geometry left as authored",
+            code="image.bad_fit", element=node.get("id") or "<image>",
+        ))
 
 
 def _opt_float(raw: str | None):

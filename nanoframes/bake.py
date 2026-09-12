@@ -13,11 +13,17 @@ import os
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
-from nanoframes import refs
+from nanoframes import media, refs
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document
 from nanoframes.timeline import effective_opacity, evaluate
-from nanoframes.xmlutil import SVG_NAMESPACE, find_parent, float_attr, local_name
+from nanoframes.xmlutil import (
+    SVG_NAMESPACE,
+    XLINK_NAMESPACE,
+    find_parent,
+    float_attr,
+    local_name,
+)
 
 if TYPE_CHECKING:
     from nanoframes.measure import Measurer
@@ -25,6 +31,11 @@ if TYPE_CHECKING:
 # Serialize the SVG namespace unprefixed (`xmlns="..."`), which ThorVG's XML
 # parser requires to resolve tag names correctly.
 ET.register_namespace("", SVG_NAMESPACE)
+# ... and spell the xlink prefix out. ThorVG's picture loader matches a link by
+# its literal `xlink:href` (or `href`) name rather than by namespace URI, so
+# ElementTree's auto-generated `ns1:href` prefix draws nothing at all — an
+# author who writes `xlink:href` would get a silently empty frame.
+ET.register_namespace("xlink", XLINK_NAMESPACE)
 
 _FILL_STROKE_TAGS = {
     "path", "rect", "circle", "ellipse", "polygon", "polyline",
@@ -236,6 +247,10 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
     # the baked SVG from a temp file) can resolve assets against the source dir.
     if doc.base_dir:
         _dereference_images(root, doc.base_dir)
+
+    # Aspect-correct embedding: ThorVG stretches a picture to its declared box
+    # and ignores preserveAspectRatio, so `data-fit` computes the geometry.
+    media.apply_fit(root, doc.base_dir)
 
     # External text rendering: each <text data-raster> is offered to the
     # callback; PNG bytes replace the node by an <image>, None keeps the

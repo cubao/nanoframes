@@ -12,6 +12,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+XLINK_NAMESPACE = "http://www.w3.org/1999/xlink"
 
 
 def qname(local: str) -> str:

@@ -12,8 +12,10 @@ from __future__ import annotations
 import hashlib
 import os
 
+from nanoframes.xmlutil import XLINK_NAMESPACE
+
 # Every attribute an ``<image>`` may carry its source in.
-IMAGE_REF_ATTRS = ("href", "{http://www.w3.org/1999/xlink}href", "src")
+IMAGE_REF_ATTRS = ("href", f"{{{XLINK_NAMESPACE}}}href", "src")
 
 # Schemes a local pass must leave alone (absolute, remote or inlined).
 REMOTE_SCHEMES = ("http:", "https:", "data:")
