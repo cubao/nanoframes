@@ -219,15 +219,18 @@ def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:
     findings: list[Finding] = []
     _check_canvas(doc.composition, findings)
     _check_animations(doc.composition, findings)
+    _check_animation_windows(doc, findings)
     _check_transform_values(doc.composition, findings)
     _check_clips(doc.composition, findings)
     _check_assets(doc, findings)
+    _check_palette(doc, findings)
     if has_errors(findings):
         # Bake would raise on the transform values just reported: stop before the
         # geometry checks rather than crashing the whole lint pass.
         return findings
     _check_rotate_pivots(doc, measurer, findings)
     _check_visibility(doc, measurer, findings)
+    _check_safe_margin(doc, measurer, findings)
     return findings
 
 
@@ -346,6 +349,32 @@ def _as_element(node) -> Element:
                    classes=node.get("class", "").split())
 
 
+def _sampled_boxes(doc: Document, measurer) -> dict:
+    """Every element's placed geometry across the sampled frames.
+
+    Returns ``{path: {"label", "tag", "samples": [(box_or_None, complete)]}}`` —
+    one sample per sampled frame, the box ``None`` where the element is not
+    painted. One shared walk serves the visibility, safe-margin and any future
+    geometry check, so none of them pays for a second bake pass.
+    """
+    comp = doc.composition
+    entries: dict[tuple, dict] = {}
+    for t in timeline.sample_times(comp, cap=_MAX_SAMPLES):
+        for path, node, ancestors in bounds.iter_renderable(bake.bake_tree(doc, t, measurer=measurer)):
+            painted, box, complete = bounds.placed(node, ancestors, measurer)
+            entry = entries.get(path)
+            if entry is None:
+                # Label from the baked node: auto-layout can insert nodes, so a
+                # source-tree path is not guaranteed to name the same element.
+                entry = entries[path] = {
+                    "label": bounds.label(node),
+                    "tag": local_name(node.tag),
+                    "samples": [],
+                }
+            entry["samples"].append((box if painted else None, complete))
+    return entries
+
+
 def _check_visibility(doc: Document, measurer, findings: list[Finding]) -> None:
     """Warn about elements whose geometry never lands on the canvas.
 
@@ -357,18 +386,11 @@ def _check_visibility(doc: Document, measurer, findings: list[Finding]) -> None:
     """
     comp = doc.composition
     canvas = _slack(bounds.canvas_box(comp.width, comp.height))
-    samples: dict[tuple, list] = {}
-    labels: dict[tuple, str] = {}
-    for t in timeline.sample_times(comp, cap=_MAX_SAMPLES):
-        for path, node, ancestors in bounds.iter_renderable(bake.bake_tree(doc, t, measurer=measurer)):
-            painted, box, complete = bounds.placed(node, ancestors, measurer)
-            samples.setdefault(path, []).append((box if painted else None, complete))
-            # Label from the baked node: auto-layout can insert nodes, so a
-            # source-tree path is not guaranteed to name the same element.
-            labels.setdefault(path, bounds.label(node))
+    entries = _sampled_boxes(doc, measurer)
 
     offenders: dict[tuple, bounds.Box] = {}
-    for path, seen in samples.items():
+    for path, entry in entries.items():
+        seen = entry["samples"]
         placed_boxes = [box for box, _ in seen if box is not None]
         if not placed_boxes:
             continue  # hidden by its clip window in every sampled frame
@@ -385,12 +407,135 @@ def _check_visibility(doc: Document, measurer, findings: list[Finding]) -> None:
             continue
         findings.append(Finding(
             "warning",
-            f"{labels[path]}: geometry never lands on the {comp.width}x{comp.height}"
+            f"{entries[path]['label']}: geometry never lands on the {comp.width}x{comp.height}"
             f" canvas (box [{box.x0:.0f},{box.y0:.0f},{box.x1:.0f},{box.y1:.0f}] in"
             f" root coordinates) — it draws nothing in any frame;"
             f" run `nanoframes debug` to see per-frame boxes.",
-            code="geometry.never_on_canvas", element=labels[path],
+            code="geometry.never_on_canvas", element=entries[path]["label"],
         ))
+
+
+def _check_animation_windows(doc: Document, findings: list[Finding]) -> None:
+    """Warn when an animation runs entirely outside its element's visible window.
+
+    An element that appears after its animation finished — or is already gone
+    before it starts — renders the held keyframe value and never shows the
+    motion the author wrote. Pure model arithmetic: no bake, no render.
+    """
+    comp = doc.composition
+    for anim in comp.animations:
+        if not anim.keyframes:
+            continue
+        matched = [el for el in comp.elements if el.matches(anim.target)]
+        if not matched:
+            continue  # an unmatched target is already reported
+        times = [kf.t for kf in anim.keyframes]
+        first, last = min(times), max(times)
+        for el in matched:
+            start = el.clip_start
+            end = el.clip_start + (el.clip_duration or comp.duration)
+            if last < start - 1e-9 or first > end + 1e-9:
+                findings.append(Finding(
+                    "warning",
+                    f"{anim.target}: the animation runs over [{first:g}, {last:g}]s but"
+                    f" {el.element_id or el.tag!r} is only visible over [{start:g}, {end:g}]s"
+                    f" — the motion is never seen",
+                    code="animation.outside_visibility", element=anim.target,
+                ))
+                break
+
+
+def _opt_float(raw: str | None):
+    """A declared budget value, or ``None`` when it was not declared (or is junk)."""
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _check_safe_margin(doc: Document, measurer, findings: list[Finding]) -> None:
+    """Opt-in: text must stay inside ``data-safe-margin`` px of the canvas edge.
+
+    Restricted to text on purpose — a full-bleed background legitimately touches
+    every edge, so checking all geometry would fire on every composition and
+    mean nothing. Title-safe is a claim about where the *words* are.
+    """
+    comp = doc.composition
+    margin = _opt_float(doc.root.get("data-safe-margin"))
+    if margin is None or margin <= 0:
+        return
+    inner = bounds.Box(margin, margin, comp.width - margin, comp.height - margin)
+    for entry in _sampled_boxes(doc, measurer).values():
+        if entry["tag"] != "text":
+            continue
+        boxes = [box for box, complete in entry["samples"] if box is not None and complete]
+        outside = [b for b in boxes if not _inside(inner, b)]
+        if not outside:
+            continue
+        box = outside[0]
+        findings.append(Finding(
+            "warning",
+            f"{entry['label']}: text crosses the {margin:g}px safe margin"
+            f" (box [{box.x0:.0f},{box.y0:.0f},{box.x1:.0f},{box.y1:.0f}] vs the"
+            f" [{inner.x0:g},{inner.y0:g} .. {inner.x1:g},{inner.y1:g}] content area)",
+            code="layout.outside_safe_margin", element=entry["label"],
+        ))
+
+
+def _check_palette(doc: Document, findings: list[Finding]) -> None:
+    """Opt-in: bound the number of distinct paint colors (``data-palette-budget``).
+
+    Counts declared ``fill``/``stroke``/``stop-color`` values plus any fill/stroke
+    a keyframe animates to, ignoring ``none``/``currentColor``/``url(#...)``.
+    """
+    budget = _opt_float(doc.root.get("data-palette-budget"))
+    if budget is None or budget <= 0:
+        return
+    colors: set[str] = set()
+    for node in doc.root.iter():
+        for attr in _PAINT_ATTRS:
+            value = node.get(attr)
+            if value is None:
+                continue
+            normalized = _normalize_color(value)
+            if normalized:
+                colors.add(normalized)
+    for anim in doc.composition.animations:
+        for kf in anim.keyframes:
+            for prop in ("fill", "stroke"):
+                if prop in kf.props:
+                    normalized = _normalize_color(str(kf.props[prop]))
+                    if normalized:
+                        colors.add(normalized)
+    if len(colors) <= budget:
+        return
+    shown = ", ".join(sorted(colors)[:8]) + ("…" if len(colors) > 8 else "")
+    findings.append(Finding(
+        "warning",
+        f"palette budget {budget:g} exceeded: {len(colors)} distinct paint colors used"
+        f" ({shown})",
+        code="design.palette_over_budget",
+    ))
+
+
+_PAINT_ATTRS = ("fill", "stroke", "stop-color")
+_NON_COLORS = ("none", "currentcolor", "transparent", "inherit")
+
+
+def _normalize_color(value: object) -> str | None:
+    """A comparable color token, or ``None`` for non-colors and paint servers."""
+    text = str(value).strip().lower()
+    if not text or text in _NON_COLORS or text.startswith("url("):
+        return None
+    return text
+
+
+def _inside(outer: bounds.Box, box: bounds.Box) -> bool:
+    """Whether ``box`` fits within ``outer`` (with the shared sub-pixel slack)."""
+    return (box.x0 >= outer.x0 - _EDGE_SLACK and box.y0 >= outer.y0 - _EDGE_SLACK
+            and box.x1 <= outer.x1 + _EDGE_SLACK and box.y1 <= outer.y1 + _EDGE_SLACK)
 
 
 def _slack(canvas: bounds.Box) -> bounds.Box:
