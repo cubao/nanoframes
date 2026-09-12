@@ -422,6 +422,11 @@ def cmd_debug(args: argparse.Namespace) -> int:
 
     if args.json:
         payload: dict = {"frame": report.to_dict()}
+        # What this frame's identity is made of, so a digest that moved can say
+        # which input moved with it instead of sending the reader to bisect
+        # their own tree. See nanoframes.identity for what is in and out.
+        payload["identity"] = {"digest": doc.identity,
+                               "components": doc.identity_components()}
         if scan is not None:
             payload["scan"] = scan.to_dict()
         if seam is not None:

@@ -70,11 +70,12 @@ def test_cache_key_follows_asset_content(tmp_path):
         encoding="utf-8",
     )
     cache = FrameCache(str(tmp_path / "cache"))
-    first = render_frame(parse_file(str(comp)), t=0.0, cache=cache)
+    doc1 = parse_file(str(comp))
+    first = render_frame(doc1, t=0.0, cache=cache)
 
     Image.new("RGBA", (4, 4), (0, 0, 255, 255)).save(asset)
     doc2 = parse_file(str(comp))
-    assert doc2.identity != parse_file(str(comp)).source_key  # media is folded in
+    assert doc2.identity != doc1.identity, "the asset's content is folded in"
     second = render_frame(doc2, t=0.0, cache=cache)
     assert first.tobytes() != second.tobytes(), "served a frame for the old asset"
 

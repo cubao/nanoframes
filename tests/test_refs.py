@@ -27,11 +27,11 @@ def _comp(tmp_path, body="", name="comp.nf.svg"):
     return str(path)
 
 
-def test_no_images_has_no_fingerprint(tmp_path):
-    """An asset-free composition keeps the plain source hash as its identity."""
+def test_no_images_has_no_media_fingerprint(tmp_path):
+    """An asset-free composition fingerprints no media, and still has an identity."""
     doc = parse_file(_comp(tmp_path))
     assert doc.media_key == ""
-    assert doc.identity == doc.source_key
+    assert doc.identity
 
 
 def test_identity_tracks_asset_content(tmp_path):
@@ -57,7 +57,7 @@ def test_remote_and_inlined_refs_are_not_fingerprinted(tmp_path):
     for ref in ("https://example.com/a.png", "data:image/png;base64,AAAA"):
         doc = parse_file(_comp(tmp_path, IMAGE.format(href=ref)))
         assert doc.media_key == ""
-        assert doc.identity == doc.source_key
+        assert doc.identity
 
 
 def test_relative_refs_resolve_against_the_composition_dir(tmp_path):

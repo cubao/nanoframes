@@ -6,13 +6,12 @@ root to emit per-frame SVG without re-parsing.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
-from nanoframes import refs
+from nanoframes import identity, refs
 from nanoframes.model import SCRIPT_TYPE, Animation, Composition, Element, Keyframe
 from nanoframes.xmlutil import local_name
 
@@ -28,8 +27,8 @@ class Document:
     composition: Composition
     root: ET.Element = field(repr=False)
     base_dir: str | None = field(default=None, repr=False)  # dir of source, for relative assets
-    source_key: str = field(default="", repr=False)
     _media_key: str | None = field(default=None, repr=False, compare=False)
+    _identity: str | None = field(default=None, repr=False, compare=False)
 
     @property
     def media_key(self) -> str:
@@ -46,16 +45,19 @@ class Document:
     def identity(self) -> str:
         """A stable identifier unique to everything this composition renders.
 
-        The composition's own bytes *and* the content of the local assets it
-        references — a frame is a pure function of both, so editing either has
-        to miss the frame cache. Documents with no local media keep the plain
-        source hash, so the key of an asset-free composition is unchanged.
+        Derived from the render inputs, not from the source bytes: the
+        projection drops attributes only a check reads, and the fonts and
+        toolchain are folded in. Cached for the document's lifetime — the font
+        fingerprint alone reads 25 MB — and see `nanoframes.identity` for what
+        is deliberately in and out, and why.
         """
-        base = self.source_key or _hash_text(ET.tostring(self.root, encoding="unicode"))
-        media = self.media_key
-        if not media:
-            return base
-        return hashlib.sha256(f"{base}:{media}".encode("utf-8")).hexdigest()
+        if self._identity is None:
+            self._identity = identity.frame_identity(self.root, self.base_dir)
+        return self._identity
+
+    def identity_components(self) -> dict:
+        """The named inputs behind `identity`, for reporting which one moved."""
+        return identity.components(self.root, self.base_dir)
 
 
 def _to_float(value: str, name: str) -> float:
@@ -150,10 +152,6 @@ def _parse_root(root: ET.Element) -> tuple[int, int, int, float, str | None]:
     return width, height, fps, duration, root.get("data-composition-id")
 
 
-def _hash_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def parse_file(path: str) -> Document:
     raw = open(path, "rb").read().decode("utf-8")
     try:
@@ -162,7 +160,6 @@ def parse_file(path: str) -> Document:
         raise ParseError(f"could not parse XML in {path!r}: {exc}") from exc
     doc = _parse_tree(tree)
     doc.base_dir = os.path.dirname(os.path.abspath(path))
-    doc.source_key = _hash_text(raw)
     return doc
 
 
@@ -171,9 +168,7 @@ def parse_string(text: str) -> Document:
         root = ET.fromstring(text)
     except ET.ParseError as exc:
         raise ParseError(f"could not parse XML: {exc}") from exc
-    doc = _parse_tree(root)
-    doc.source_key = _hash_text(text)
-    return doc
+    return _parse_tree(root)
 
 
 def _parse_tree(root: ET.Element) -> Document:

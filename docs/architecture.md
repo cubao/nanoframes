@@ -183,11 +183,18 @@ media-heavy composition:
 
 Preparation runs on the owned document and application on the *baked copy*, so
 `Document.identity` — and with it the frame cache key — always describes the sources rather than
-any generated frame. `refs.media_fingerprint` folds the content of every referenced file into
-that identity, because a frame is a pure function of the composition *and its assets*: editing a
-picture under an unchanged path has to invalidate the frames that drew it. The limitation is
-stated rather than hidden: **media is a time-mapped rectangle of pixels** — no blending modes, no
-speed ramps, no multi-track audio. Contract: [media.md](media.md).
+any generated frame. That identity is a hash over four named inputs, and `nanoframes.identity`
+is the one place that says which and why: the **source**, but as a canonical projection rather
+than the raw bytes, so an attribute only `lint` reads (`data-safe-margin`,
+`data-palette-budget`) is not an input and neither is reindentation; the **media**, folding the
+content of every referenced file, because editing a picture under an unchanged path has to
+invalidate the frames that drew it; the **fonts**, because ThorVG shapes glyphs from the faces
+loaded on the engine and a swapped face moves every advance; and the **toolchain**, the
+`thorvg-python` version plus a digest of this package's own modules, because neither is visible
+in the composition's bytes and both decide the pixels. `nanoframes debug --json` reports the four
+components separately, so a digest that moved can say which input moved with it. The limitation
+is stated rather than hidden: **media is a time-mapped rectangle of pixels** — no blending modes,
+no speed ramps, no multi-track audio. Contract: [media.md](media.md).
 
 ## Scope decisions (what we drop from hyperframes)
 

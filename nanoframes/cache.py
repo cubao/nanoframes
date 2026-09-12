@@ -122,27 +122,29 @@ class FrameCache:
         self._index: Cache | None = None
 
     # -- keys -----------------------------------------------------------------
-    def frame_key(self, source_key: str, t: float, width: int, height: int) -> str:
+    def frame_key(self, identity: str, t: float, width: int, height: int) -> str:
         """Stable hash of everything a frame depends on.
 
-        The full source bytes are folded in, so *any* edit to the composition
-        invalidates every frame of it automatically.
+        ``identity`` is the document's render identity — source projection,
+        assets, fonts and toolchain — so any input that can move a pixel misses
+        every frame of the composition, and an input that cannot (a check-only
+        attribute) does not. See `nanoframes.identity`.
         """
-        return hashlib.sha256(f"{source_key}:{t:.6f}:{width}x{height}".encode()).hexdigest()
+        return hashlib.sha256(f"{identity}:{t:.6f}:{width}x{height}".encode()).hexdigest()
 
-    def frame_path(self, source_key: str, t: float, width: int, height: int) -> str:
+    def frame_path(self, identity: str, t: float, width: int, height: int) -> str:
         """Where this frame's PNG lives (whether or not it exists yet)."""
-        return self._path_for(self.frame_key(source_key, t, width, height))
+        return self._path_for(self.frame_key(identity, t, width, height))
 
     # -- get / put -------------------------------------------------------------
-    def get(self, source_key: str, t: float, width: int, height: int):
+    def get(self, identity: str, t: float, width: int, height: int):
         """The cached frame as a Pillow image, or ``None``.
 
         A payload deleted behind the index, or a PNG that no longer decodes, is
         dropped and reported as a miss: the frame is reproducible, so the repair
         is free.
         """
-        key = self.frame_key(source_key, t, width, height)
+        key = self.frame_key(identity, t, width, height)
         path = self._entry_path(key)
         if path is None:
             return None
@@ -153,9 +155,9 @@ class FrameCache:
             self._drop(key)
             return None
 
-    def put(self, source_key: str, t: float, image) -> None:
+    def put(self, identity: str, t: float, image) -> None:
         """Store one frame (a Pillow image). A cache write never fails a render."""
-        key = self.frame_key(source_key, t, *image.size)
+        key = self.frame_key(identity, t, *image.size)
         final = self._path_for(key)
         tmp = os.path.join(self.tmp_dir, uuid.uuid4().hex + ".part")
         try:

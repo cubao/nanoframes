@@ -80,6 +80,23 @@ def file_digest(path: str) -> str:
     return digest.hexdigest()
 
 
+def file_label(path: str, base_dir: str | None = None) -> str:
+    """How a file is named inside a fingerprint.
+
+    Relative to the composition where it can be: the same asset under a
+    different checkout is the same asset, and a digest that moves with the
+    operator's home directory is a fact about the operator, not the render.
+    An absolute ref outside ``base_dir`` has no shorter name and keeps its own.
+    """
+    if not base_dir:
+        return path
+    try:
+        rel = os.path.relpath(path, base_dir)
+    except ValueError:  # different drive on Windows
+        return path
+    return path if rel.startswith("..") else rel
+
+
 def media_fingerprint(root, base_dir: str | None) -> str:
     """Digest over the local media a composition references; ``""`` when it has none.
 
@@ -94,7 +111,7 @@ def media_fingerprint(root, base_dir: str | None) -> str:
         return ""
     digest = hashlib.sha256()
     for path in paths:
-        digest.update(path.encode("utf-8"))
+        digest.update(file_label(path, base_dir).encode("utf-8"))
         digest.update(b"\0")
         digest.update(file_digest(path).encode("ascii"))
         digest.update(b"\0")
