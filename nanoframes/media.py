@@ -3,7 +3,7 @@
 ThorVG ignores ``preserveAspectRatio`` and always stretches a picture to its
 declared ``width``/``height`` (probed — see docs/diagram.md's gap list for the
 same class of finding), so a non-square source in a square box comes out
-distorted. ``data-fit`` asks for the geometry a browser would have computed, and
+distorted. ``data-aspect`` asks for the geometry a browser would have computed, and
 this module computes it: ``contain`` letterboxes inside the box, ``cover`` fills
 it and clips the overflow.
 """
@@ -23,9 +23,9 @@ from functools import lru_cache
 from nanoframes import refs
 from nanoframes.xmlutil import find_parent, qname
 
-# Accepted ``data-fit`` values. ``stretch`` is ThorVG's own behaviour, so it is
+# Accepted ``data-aspect`` values. ``stretch`` is ThorVG's own behaviour, so it is
 # the default and a no-op.
-FIT_MODES = ("stretch", "contain", "cover")
+ASPECT_MODES = ("stretch", "contain", "cover")
 
 _CLIP_PREFIX = "nf-fit-"
 
@@ -77,7 +77,7 @@ def resolve_source(node, base_dir: str | None) -> str | None:
 def _declared_box(node) -> tuple | None:
     """The element's authored box ``(x, y, w, h)``, or ``None`` without one.
 
-    ``data-fit`` needs a box to fit into: an ``<image>`` with no declared
+    ``data-aspect`` needs a box to fit into: an ``<image>`` with no declared
     ``width``/``height`` is drawn at its intrinsic size and has nothing to fit.
     """
     try:
@@ -124,8 +124,8 @@ def _clip_to_box(root, node, clip_id: str, box) -> None:
     parent.insert(index, group)
 
 
-def apply_fit(root, base_dir: str | None) -> None:
-    """Rewrite every ``<image data-fit>`` to an aspect-correct box, in place.
+def apply_aspect(root, base_dir: str | None) -> None:
+    """Rewrite every ``<image data-aspect>`` to an aspect-correct box, in place.
 
     ``contain`` shrinks the picture to fit inside the authored box (letterbox);
     ``cover`` grows it to fill the box and clips the overflow to the box.
@@ -134,8 +134,8 @@ def apply_fit(root, base_dir: str | None) -> None:
     """
     ordinal = 0
     for node in list(refs.iter_images(root)):
-        mode = (node.get("data-fit") or "").strip().lower()
-        if mode not in FIT_MODES or mode == "stretch":
+        mode = (node.get("data-aspect") or "").strip().lower()
+        if mode not in ASPECT_MODES or mode == "stretch":
             continue
         box = _declared_box(node)
         source = resolve_source(node, base_dir)
@@ -163,7 +163,7 @@ def apply_fit(root, base_dir: str | None) -> None:
 def _fit_box(box, intrinsic_w: float, intrinsic_h: float, mode: str):
     """``(x, y, w, h)`` for an intrinsic size drawn into ``box`` under ``mode``.
 
-    Shared by ``apply_fit`` (a picture's pixel size) and nested-composition
+    Shared by ``apply_aspect`` (a picture's pixel size) and nested-composition
     inlining (a child composition's canvas), so both place things identically.
     """
     x, y, width, height = box
@@ -219,17 +219,17 @@ def probe_duration(path: str) -> float | None:
         return None
 
 
-def time_mapping(t: float, clip_start: float, anchor: float, speed: float,
+def time_mapping(t: float, clip_start: float, in_point: float, speed: float,
                  duration: float | None = None, loop: bool = False) -> float:
     """Composition time -> source-media time.
 
-    ``src_t = anchor + (t - clip_start) * speed``, then wrapped modulo the
+    ``src_t = in_point + (t - clip_start) * speed``, then wrapped modulo the
     source duration under ``data-loop`` or clamped into ``[0, duration]``
     otherwise (a still frame holds). A pure function of the frame time, like
     ``timeline.seek`` — which is what keeps the frame cache, the draft scale and
     ``debug`` working on video-backed compositions unchanged.
     """
-    src_t = anchor + (t - clip_start) * speed
+    src_t = in_point + (t - clip_start) * speed
     if duration and duration > 0:
         if loop:
             return src_t % duration
@@ -244,16 +244,16 @@ class MediaSpec:
     source: str
     clip_start: float
     duration: float
-    anchor: float = 0.0
+    in_point: float = 0.0
     speed: float = 1.0
     loop: bool = False
 
     def source_time(self, t: float, video_duration: float | None = None) -> float:
-        return time_mapping(t, self.clip_start, self.anchor, self.speed,
+        return time_mapping(t, self.clip_start, self.in_point, self.speed,
                             video_duration, self.loop)
 
 
-_MEDIA_NUMBER_ATTRS = ("data-anchor", "data-speed", "data-start", "data-duration")
+_MEDIA_NUMBER_ATTRS = ("data-in", "data-speed", "data-start", "data-duration")
 
 
 def _number(node, name: str, default: float) -> float:
@@ -293,7 +293,7 @@ def parse_media(node, base_dir: str | None, comp_duration: float) -> MediaSpec |
         source=source,
         clip_start=_number(node, "data-start", 0.0),
         duration=_number(node, "data-duration", comp_duration),
-        anchor=_number(node, "data-anchor", 0.0),
+        in_point=_number(node, "data-in", 0.0),
         speed=_number(node, "data-speed", 1.0),
         loop=_truthy(node.get("data-loop")),
     )
@@ -546,7 +546,7 @@ def _placement_transform(placed, child_comp) -> str:
 def _namespace_child_ids(group, index: int) -> None:
     """Keep a child's generated clip ids from colliding with the parent's.
 
-    ``apply_fit`` names clip paths ``nf-fit-<id>-<n>``; two documents can easily
+    ``apply_aspect`` names clip paths ``nf-fit-<id>-<n>``; two documents can easily
     produce the same name, and an inlined child shares the parent's id space.
     """
     token = f"c{index}-"
@@ -567,7 +567,7 @@ def inline_composition(root, node, child, t: float, comp_duration: float,
     of referenced: the child is baked at the time the parent's window maps to,
     and its baked children replace the node inside a group that scales the child
     canvas into the element's box. The child's own timeline therefore runs on the
-    mapped clock — ``data-anchor``/``data-speed``/``data-loop`` mean the same
+    mapped clock — ``data-in``/``data-speed``/``data-loop`` mean the same
     thing here as they do for a video.
     """
     from nanoframes.bake import bake_tree  # deferred: bake imports this module
@@ -583,13 +583,13 @@ def inline_composition(root, node, child, t: float, comp_duration: float,
     if box is None:
         box = (_number(node, "x", 0.0), _number(node, "y", 0.0),
                float(child_comp.width), float(child_comp.height))
-    mode = (node.get("data-fit") or "stretch").strip().lower()
+    mode = (node.get("data-aspect") or "stretch").strip().lower()
     placed = _fit_box(box, float(child_comp.width), float(child_comp.height), mode)
 
     child_t = time_mapping(
         t,
         _number(node, "data-start", 0.0),
-        _number(node, "data-anchor", 0.0),
+        _number(node, "data-in", 0.0),
         _number(node, "data-speed", 1.0),
         child_comp.duration,
         _truthy(node.get("data-loop")),

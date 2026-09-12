@@ -255,8 +255,8 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
         media_resolver.apply(root, t, comp.duration, doc.base_dir)
 
     # Aspect-correct embedding: ThorVG stretches a picture to its declared box
-    # and ignores preserveAspectRatio, so `data-fit` computes the geometry.
-    media.apply_fit(root, doc.base_dir)
+    # and ignores preserveAspectRatio, so `data-aspect` computes the geometry.
+    media.apply_aspect(root, doc.base_dir)
 
     # External text rendering: each <text data-raster> is offered to the
     # callback; PNG bytes replace the node by an <image>, None keeps the

@@ -701,6 +701,7 @@ def _resource_lines() -> list[str]:
     return [
         f"  composition contract ... {os.path.join(docs, 'composition.md')}",
         f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
+        f"  media (image/video/nested) {os.path.join(docs, 'media.md')}",
         f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
         f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
         f"  diagram spec ............ {os.path.join(docs, 'diagram.md')}",

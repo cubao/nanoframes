@@ -217,7 +217,7 @@ ThorVG font path (auto-layout `data-*` still applies in that case).
 | attr | meaning | default |
 |---|---|---|
 | `data-raster="KIND"` | opt in to the handler; `KIND` is passed through for dispatch | — |
-| `data-anchor` | which bbox corner/edge sits at `(x, y)`: `top-*` / `middle-*` / `bottom-*` × `-left` / `-center` / `-right` | `center` |
+| `data-in` | which bbox corner/edge sits at `(x, y)`: `top-*` / `middle-*` / `bottom-*` × `-left` / `-center` / `-right` | `center` |
 | `data-width` / `data-height` | target box px; PNG is uniformly contained (no distortion) | natural size |
 | `data-yaw` | degrees clockwise, rotating the image around the anchor point | `0` |
 

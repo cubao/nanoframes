@@ -32,11 +32,14 @@ output:
 composition.nf.svg  (SVG scene + embedded <script> JSON animation timeline)
         │  parse (stdlib xml) → nanoframes.Composition
         v
+ media pre-pass: extract video frames (content-keyed cache); load nested compositions
+        │
+        v
  seek(t): evaluate animation timeline → per-frame property values
         │
         v
  bake(t): merge visibility + animated props into a frame-specific SVG
-        │
+        │        (+ point video <image>s at their frame; inline nested compositions)
         v
  thorvg render → Pillow PNG   (single frame, or batch)
         │
@@ -97,6 +100,29 @@ each element's box, how many frames it is actually visible in, and the pixel dif
 seam. Text boxes come from the same renderer-exact `Measurer` the layout passes use, so a
 reported box is the box that gets drawn.
 
+The checking is deliberately split into the two things a model cannot verify for itself —
+**arithmetic** and **pixels** — and never into aesthetics, which it can. Every finding carries a
+stable `code`, so the loop is closable programmatically: `check --json` emits
+`{ok, errors, warnings, findings:[{severity, code, element, t, message}]}` and `debug --json`
+emits the frame report, the clip scan and the loop seam. The always-on checks name the failures
+that render as *something valid and wrong*:
+
+| code | catches |
+|---|---|
+| `geometry.never_on_canvas` | geometry that draws nothing in any frame |
+| `transform.no_pivot` | a `rotate`/`scale` around the origin that throws the element off its mark |
+| `animation.outside_visibility` | an animation that runs entirely outside its element's window |
+| `animation.target_unmatched` | a selector that matches no element |
+| `transform.value_invalid` / `animation.transform_shape_mixed` | values bake cannot express, or shapes the interpolator cannot blend |
+| `asset.missing` / `image.bad_aspect` / `media.*` | a missing asset, an unknown `data-aspect`, a video without ffmpeg or mapped past its source |
+| `clip.*`, `canvas.*`, `animation.keyframe_out_of_range` | timing and canvas metadata that is out of range |
+
+Two checks are **opt-in**, declared on the root `<svg>`, because they encode taste rather than
+truth and must stay silent until asked for: `data-safe-margin="N"` (text must stay inside an
+N-px inset — text only, since a full-bleed background touches every edge by design) and
+`data-palette-budget="N"` (distinct declared paint colors). `check` also follows nested
+compositions, so a defect inside an embedded child surfaces through the parent.
+
 ### Frame cache
 
 A frame is a pure function of (source bytes, time, canvas size), so it is cached
@@ -135,14 +161,42 @@ in `data-src`, so a later pass at a different scale resizes the original rather 
 Draft output is for judging timing and composition — it is not a pixel-exact downscale of the
 full-quality frame, so deliver at the default scale.
 
+## Embedded media (and why it is a pre-pass, not a renderer feature)
+
+Three things can be embedded: a picture, a video, another composition. All three are normalized
+*before* baking, so the renderer never grows a feature and every existing tool keeps working on a
+media-heavy composition:
+
+- **Pictures** — `data-aspect` computes the aspect-correct box, because ThorVG ignores
+  `preserveAspectRatio` and stretches a picture to its declared `width`/`height`.
+- **Video** — ThorVG is an SVG/Lottie rasterizer and cannot play video, and it does not need to:
+  `media.MediaCache` extracts the source once into a frame sequence (content-keyed, and extracted
+  *at the render scale*, which is where the draft speedup comes from), and baking points the node
+  at the frame its time maps to. The mapping is one pure function,
+  `src_t = data-in + (t - data-start) * data-speed` (wrapped under `data-loop`, clamped
+  otherwise) — the same shape as `seek(t)`, which is what keeps a frame a pure function of
+  `(source, t, canvas)`. Audio in the media is not mixed: a composition's audio is `video --audio`.
+- **Another composition** — an `<image href="child.nf.svg">` is *inlined*: ThorVG cannot draw an
+  SVG file as an `<image>` source (probed), so the child is baked at the mapped time and its tree
+  replaces the node inside a scaling group. The child's own timeline runs on the mapped clock, so
+  one badge composition can appear at speed 1 in one place and looping from its middle in another.
+
+Preparation runs on the owned document and application on the *baked copy*, so
+`Document.identity` — and with it the frame cache key — always describes the sources rather than
+any generated frame. `refs.media_fingerprint` folds the content of every referenced file into
+that identity, because a frame is a pure function of the composition *and its assets*: editing a
+picture under an unchanged path has to invalidate the frames that drew it. The limitation is
+stated rather than hidden: **media is a time-mapped rectangle of pixels** — no blending modes, no
+speed ramps, no multi-track audio. Contract: [media.md](media.md).
+
 ## Scope decisions (what we drop from hyperframes)
 
 | Hyperframes scope              | nanoframes |
 |--------------------------------|------------|
 | HTML/CSS + browser capture     | SVG + ThorVG software raster |
 | GSAP / Lottie / Three.js / anime | declarative keyframe timeline (v1) — *except* Lottie **import-render**: ThorVG's native Lottie loader turns a lottie.json scene into a deterministic MP4 (`nanoframes lottie`, 0.1.1). Lottie is an accepted *input format*, not an authoring surface |
-| inline `<video>` playback      | static `<image>` only (v1); no video-in-scene |
-| full audio mixing (buses, ducking) | optional FFmpeg audio mux passthrough (deferred P2) |
+| inline `<video>` playback      | a video is extracted to a frame sequence and drawn as an `<image>` per frame (`data-in` / `data-speed` / `data-loop`); no decoder inside the renderer, and embedded media is silent |
+| full audio mixing (buses, ducking) | optional FFmpeg audio mux passthrough — a composition's audio is `--audio`, and embedded media carries none |
 | hosted / Lambda / GCP rendering | local offline render only |
 | Figma import, Remotion port     | out of scope |
 | 20 authoring workflows          | a few core example templates |
@@ -300,10 +354,30 @@ MP4 export, and an agent-facing skill.
   lands on 8 real pixels at 8x), there was simply no way to ask for it, so a
   1280x720 preset read as "low resolution" on a retina screen. Diagram specs
   may carry a `dpi` hint, and `nanoframes diagram` prints the 2x command.
+- **0.2.0 (2026-09)** — the media and verification batch. Two things a model cannot
+  check for itself, made first-class. **Verification:** every lint finding gained a
+  stable `code`, with `check --json` / `debug --json` for programmatic consumption;
+  the oracle grew three checks (an animation whose whole span falls outside its
+  element's window; `data-safe-margin` and `data-palette-budget`, both opt-in so
+  they stay silent until asked for) and now follows nested compositions, so a
+  defect inside an embedded child surfaces through the parent. **Media:**
+  `data-aspect` (ThorVG ignores `preserveAspectRatio` — probed), video-backed
+  `<image>` (extraction cache, `data-in`/`data-speed`/`data-loop` time mapping,
+  per-frame injection), and nested `.nf.svg` inlining (ThorVG cannot load an SVG
+  file as an `<image>` source — probed), which is composition reuse with the
+  child's timeline on the mapped clock. The frame cache key now folds in the
+  content of every referenced asset, fixing a latent staleness bug where swapping
+  a picture under an unchanged `href` served frames of the old one. Three defects
+  were found and fixed on the way, each of the silent kind this batch exists to
+  hunt: `xlink:href` was baked with an auto-generated `ns1:` prefix that ThorVG
+  does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
+  video source and raise out of a draft render, and `data-fit`/`data-anchor` were
+  already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
-  (it is a library-API feature by design); in-scene video; Lottie markers
-  surfaced in the CLI; remaining recipe ports (product-promo,
-  ui-microinteractions, diagram types beyond flow/loop, visual-effects).
+  (it is a library-API feature by design); Lottie markers surfaced in the CLI;
+  remaining recipe ports (product-promo, ui-microinteractions, diagram types
+  beyond flow/loop, visual-effects); blending modes, speed ramps and multi-track
+  audio (see [media.md](media.md#determinism-and-limits)).
 
 `docs/` and `skills/` ship inside the pip wheel as `nanoframes/docs` and
 `nanoframes/skills`; `nanoframes` (no args, or `--help`) prints their installed locations.

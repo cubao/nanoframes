@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     data-width="200" data-height="200" data-fps="30" data-duration="2.0"
+     data-composition-id="badge">
+  <!-- A reusable composition: drop it into a parent with <image href="badge.nf.svg">.
+       The entrance is keyframed rather than `data-fade`, which would also mirror a
+       fade-out at the end and so vanish whenever a parent holds the last frame. -->
+  <circle id="ring" cx="100" cy="100" r="72" fill="none" stroke="#5ef17c"
+          stroke-width="4" data-duration="2.0"/>
+  <circle id="core" cx="100" cy="100" r="16" fill="#5ef17c" data-duration="2.0"/>
+  <script type="application/nanoframes+json"><![CDATA[
+  {
+    "animations": [
+      {
+        "target": "#ring",
+        "keyframes": [
+          {"t": 0.0, "opacity": 0.0, "transform": {"scale": 0.6, "center": "auto"}},
+          {"t": 0.5, "opacity": 1.0, "transform": {"scale": 1.0, "center": "auto"}, "ease": "ease-out"}
+        ]
+      },
+      {
+        "target": "#core",
+        "keyframes": [
+          {"t": 0.4, "transform": {"scale": 1.0, "center": "auto"}},
+          {"t": 0.9, "transform": {"scale": 1.35, "center": "auto"}, "ease": "ease-in-out"},
+          {"t": 1.5, "transform": {"scale": 1.0, "center": "auto"}, "ease": "ease-in-out"}
+        ]
+      }
+    ]
+  }
+  ]]></script>
+</svg>

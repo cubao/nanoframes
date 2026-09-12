@@ -25,11 +25,13 @@ For any "make me a video / animated card / motion graphic" request:
    `nanoframes init <name>` (the template ships with the package); repo
    checkouts additionally carry `examples/`.
 3. **Check** — `nanoframes check <comp>.nf.svg` lints the contract (exit 1 on
-   errors). Fix until ok.
+   errors). Fix until ok. Add `--json` for the machine-readable form: every
+   finding carries a stable `code` (plus `element`/`t` when it names one), so
+   branch on `code` and never on the message prose.
 4. **Preview** a frame — `nanoframes preview <comp>.nf.svg --t 2.0` renders and
    opens that second. If it comes out empty or an element is missing, run
    `nanoframes debug <comp>.nf.svg --t 2.0` instead of guessing: it names the
-   element whose geometry misses the canvas.
+   element whose geometry misses the canvas (`--json` for the structured form).
 5. **Render** — single frame, full batch, or video:
    `nanoframes render <comp>.nf.svg --t 2.0 -o shot.png`
    `nanoframes render <comp>.nf.svg -o out/`
@@ -149,6 +151,28 @@ Supported animated props:
   [text-capabilities.md](../../docs/text-capabilities.md).
 - ThorVG rasterizes the **SVG Tiny 1.2** subset — avoid CSS layout, filters,
   or SVG2-only geometry attributes. Prefer primitives + gradients + transforms.
+- **Opt-in budgets** (root `<svg>`): `data-safe-margin="N"` warns when text
+  leaves an N-px inset of the canvas; `data-palette-budget="N"` warns above N
+  distinct declared paint colors. Both stay silent unless you declare them.
+
+## Embedded media (pictures, video, another composition)
+
+An `<image>` can draw a picture, a video, or another `.nf.svg`. All three take
+the ordinary clip timing and transform system; read
+[docs/media.md](../../docs/media.md) before using the last two.
+
+- **Picture** — `data-aspect="contain"` (letterbox) or `"cover"` (fill and clip)
+  when the box's aspect differs from the source's. Without it ThorVG stretches
+  the picture to the declared `width`/`height` (`preserveAspectRatio` is ignored).
+- **Video** — `href="clip.mp4"` is extracted once and drawn frame by frame.
+  `data-in` is the source in-point (seconds), `data-speed` the rate, `data-loop`
+  repeats instead of freezing on the last frame. Needs ffmpeg; the media's own
+  audio is not mixed (a composition's audio is `nanoframes video --audio`).
+- **Reuse** — `href="badge.nf.svg"` inlines that composition, with the child's
+  timeline running on the mapped clock (`data-in`/`data-speed`/`data-loop` mean
+  the same as for video). A reusable child should keyframe its entrance rather
+  than use `data-fade`, which would also fade it out at its own end. `check`
+  lints nested children too, so a defect inside the child surfaces on the parent.
 
 ## Minimal working example
 
@@ -176,7 +200,9 @@ Supported animated props:
 ```bash
 nanoframes init <name>                  # scaffold <name>.nf.svg
 nanoframes check <comp>.nf.svg          # lint; exit 1 on errors
+nanoframes check <comp>.nf.svg --json   # machine-readable findings (stable codes)
 nanoframes debug <comp>.nf.svg --t 2    # where each element's geometry lands per frame
+nanoframes debug <comp>.nf.svg --t 2 --json   # structured frame report + clip scan
 nanoframes debug <comp>.nf.svg --loop   # + first/last frame diff (loop seam)
 nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png            # 1:1

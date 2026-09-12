@@ -227,7 +227,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_transform_values(doc.composition, findings)
     _check_clips(doc.composition, findings)
     _check_assets(doc, findings)
-    _check_image_fit(doc, findings)
+    _check_image_aspect(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
     _check_nested(doc, measurer, findings, _depth)
@@ -452,22 +452,22 @@ def _check_animation_windows(doc: Document, findings: list[Finding]) -> None:
                 break
 
 
-def _check_image_fit(doc: Document, findings: list[Finding]) -> None:
-    """Warn about a ``data-fit`` value the renderer does not implement.
+def _check_image_aspect(doc: Document, findings: list[Finding]) -> None:
+    """Warn about a ``data-aspect`` value the renderer does not implement.
 
-    An unknown mode is silently ignored by ``media.apply_fit`` (the geometry is
+    An unknown mode is silently ignored by ``media.apply_aspect`` (the geometry is
     left exactly as authored), which is the right runtime behaviour and a
     confusing authoring experience — so `check` names the typo.
     """
     for node in refs.iter_images(doc.root):
-        raw = node.get("data-fit")
-        if raw is None or raw == "" or raw.strip().lower() in media.FIT_MODES:
+        raw = node.get("data-aspect")
+        if raw is None or raw == "" or raw.strip().lower() in media.ASPECT_MODES:
             continue
         findings.append(Finding(
             "warning",
-            f"element {node.get('id') or '<image>'}: unknown data-fit {raw!r}"
-            f" (expected one of {', '.join(media.FIT_MODES)}) — geometry left as authored",
-            code="image.bad_fit", element=node.get("id") or "<image>",
+            f"element {node.get('id') or '<image>'}: unknown data-aspect {raw!r}"
+            f" (expected one of {', '.join(media.ASPECT_MODES)}) — geometry left as authored",
+            code="image.bad_aspect", element=node.get("id") or "<image>",
         ))
 
 
@@ -477,7 +477,7 @@ def _check_media(doc: Document, findings: list[Finding]) -> None:
     Two silent failures live here. Without ffmpeg the composition simply cannot
     render, so that is an error. And a window that maps past the end of its own
     source freezes on the last frame — visible, wrong, and easy to author by
-    accident (``data-anchor`` too early, or a speed/window mismatch).
+    accident (``data-in`` too early, or a speed/window mismatch).
     """
     comp = doc.composition
     entries = []
@@ -511,13 +511,13 @@ def _check_media(doc: Document, findings: list[Finding]) -> None:
         duration = probed[spec.source]
         if duration is None:
             continue
-        mapped_end = spec.anchor + spec.duration * spec.speed
+        mapped_end = spec.in_point + spec.duration * spec.speed
         if mapped_end > duration + 1e-6:
             findings.append(Finding(
                 "warning",
                 f"element {label}: this clip maps up to {mapped_end:.2f}s of a"
                 f" {duration:.2f}s source ({os.path.basename(spec.source)}) — the picture"
-                f" freezes at the end; add data-loop to repeat, or move data-anchor earlier",
+                f" freezes at the end; add data-loop to repeat, or move data-in earlier",
                 code="media.out_of_range", element=label,
             ))
 

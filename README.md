@@ -46,13 +46,32 @@ over a 1560x991 board: 2m47s at full quality, 49s at `--scale 0.5`, 17s at `0.25
 Draft frames are for judging timing and composition; re-export at the default
 scale for delivery.
 
+## Media
+
+`<image>` can embed a picture, a video, or another composition, and all three are
+placed by the same time model. `data-aspect="contain"|"cover"` gives a picture an
+aspect-correct box (ThorVG stretches one to its declared size and ignores
+`preserveAspectRatio`). A video source (`.mp4`, `.mov`, `.webm`, …) is extracted
+once into a frame-sequence cache and drawn frame by frame, mapped by `data-in` /
+`data-speed` / `data-loop` (ffmpeg required; embedded audio is not mixed — a
+composition's audio is `video --audio`). And an `<image>` pointing at another
+`.nf.svg` **inlines that composition** — reuse a badge, a lower third, a compiled
+diagram — with the child's own timeline running on the mapped clock, so one child
+can appear at speed 1 in one place and looping from its middle in another.
+`check` follows nested compositions, so a defect inside a child surfaces through
+the parent. See [docs/media.md](docs/media.md) and `examples/nested-card.nf.svg`.
+
+Diagnostics are machine-readable: every finding carries a stable `code`, and
+`nanoframes check --json` / `debug --json` emit the structured form an agent
+branches on instead of parsing prose.
+
 ## Layout
 
 ```
-docs/             architecture + composition + lottie-import + diagram contracts
+docs/             architecture + composition + lottie-import + diagram + media contracts
 examples/         `.nf.svg` compositions, diagram specs + their built diagrams, lottie scenes
 skills/nanoframes/ SKILL.md + references/ — agent production loop + craft library
-nanoframes/       package (model, parser, timeline, bake, render, lint, cli, video, lottie, diagram)
+nanoframes/       package (model, parser, timeline, bake, render, lint, cli, video, lottie, diagram, media)
 tests/            unit + render + snapshot + CLI tests
 ```
 
@@ -60,6 +79,7 @@ tests/            unit + render + snapshot + CLI tests
 
 - [Architecture](docs/architecture.md) — why SVG + ThorVG, the pipeline, scope decisions.
 - [Composition](docs/composition.md) — the `.nf.svg` contract (timing attributes + animation timeline).
+- [Media](docs/media.md) — pictures (`data-aspect`), video, nested compositions, the extraction cache.
 - [Text capabilities](docs/text-capabilities.md) — measured chips/wrap/curve/fit, bundled CJK font, `text_handler` escape hatch.
 - [Lottie import](docs/lottie.md) — render Lottie JSON scenes to MP4 (`nanoframes lottie`).
 - [Diagram specs](docs/diagram.md) — build editorial diagrams from JSON (`nanoframes diagram`).

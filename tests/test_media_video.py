@@ -24,24 +24,24 @@ needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None,
 
 def test_mapping_offsets_by_the_window_start_and_speed():
     # clip starts at 2s, source in-point 0.5s, 2x speed; at t=3 -> 0.5 + 1*2
-    assert time_mapping(t=3.0, clip_start=2.0, anchor=0.5, speed=2.0) == 2.5
+    assert time_mapping(t=3.0, clip_start=2.0, in_point=0.5, speed=2.0) == 2.5
 
 
 def test_mapping_freezes_at_the_end_without_loop():
-    assert time_mapping(t=9.0, clip_start=0.0, anchor=0.0, speed=1.0, duration=2.0) == 2.0
+    assert time_mapping(t=9.0, clip_start=0.0, in_point=0.0, speed=1.0, duration=2.0) == 2.0
 
 
 def test_mapping_never_goes_negative():
-    assert time_mapping(t=0.0, clip_start=1.0, anchor=0.0, speed=1.0, duration=2.0) == 0.0
+    assert time_mapping(t=0.0, clip_start=1.0, in_point=0.0, speed=1.0, duration=2.0) == 0.0
 
 
 def test_mapping_wraps_with_loop():
-    assert time_mapping(t=3.0, clip_start=0.0, anchor=0.0, speed=1.0,
+    assert time_mapping(t=3.0, clip_start=0.0, in_point=0.0, speed=1.0,
                         duration=2.0, loop=True) == 1.0
 
 
-def test_mapping_speed_zero_holds_the_anchor():
-    assert time_mapping(t=5.0, clip_start=0.0, anchor=0.4, speed=0.0) == 0.4
+def test_mapping_speed_zero_holds_the_in_point():
+    assert time_mapping(t=5.0, clip_start=0.0, in_point=0.4, speed=0.0) == 0.4
 
 
 # --- spec parsing ------------------------------------------------------------
@@ -52,11 +52,11 @@ def test_parse_media_reads_the_timing_attributes(tmp_path):
         '<svg xmlns="http://www.w3.org/2000/svg" data-width="64" data-height="48"'
         ' data-fps="10" data-duration="2.0">'
         '<image id="clip" href="clip.mp4" width="64" height="48"'
-        ' data-start="0.5" data-duration="1.5" data-anchor="1.0" data-speed="0.5"'
+        ' data-start="0.5" data-duration="1.5" data-in="1.0" data-speed="0.5"'
         ' data-loop="true"/></svg>', encoding="utf-8")
     doc = parse_file(str(comp))
     spec = media.video_specs(doc)[0]
-    assert (spec.clip_start, spec.duration, spec.anchor, spec.speed, spec.loop) == (
+    assert (spec.clip_start, spec.duration, spec.in_point, spec.speed, spec.loop) == (
         0.5, 1.5, 1.0, 0.5, True)
     assert spec.source.endswith("clip.mp4")
 
@@ -147,18 +147,18 @@ def test_video_frames_are_injected_per_frame(tmp_path):
 
 
 @needs_ffmpeg
-def test_anchor_quality_shifts_which_frame_is_drawn(tmp_path):
-    """data-anchor 0.5s at t=0 must draw the same frame as t=0.5 with no anchor."""
+def test_in_point_shifts_which_frame_is_drawn(tmp_path):
+    """data-in 0.5s at t=0 must draw the same frame as t=0.5 with no in-point."""
     video = _video(tmp_path)
     cache_dir = str(tmp_path / "cache")
     plain = parse_file(_comp(tmp_path, video))
-    anchored = parse_file(_comp(tmp_path, video, extra='data-anchor="0.5"'))
+    trimmed = parse_file(_comp(tmp_path, video, extra='data-in="0.5"'))
     a = MediaResolver(MediaCache(cache_dir), fps=10, scale=1.0)
     b = MediaResolver(MediaCache(cache_dir), fps=10, scale=1.0)
     a.prepare(plain)
-    b.prepare(anchored)
+    b.prepare(trimmed)
     assert (render_frame(plain, 0.5, media_resolver=a).tobytes()
-            == render_frame(anchored, 0.0, media_resolver=b).tobytes())
+            == render_frame(trimmed, 0.0, media_resolver=b).tobytes())
 
 
 @needs_ffmpeg

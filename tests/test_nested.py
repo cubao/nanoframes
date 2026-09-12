@@ -80,11 +80,11 @@ def test_nested_child_timeline_runs_on_the_parent_clock(tmp_path):
     assert _render(tmp_path, comp, 0.0) != _render(tmp_path, comp, 1.0)
 
 
-def test_nested_anchor_shifts_the_child_clock(tmp_path):
-    """anchor 0.5 at t=0 must equal an unanchored child at t=0.5."""
+def test_nested_in_point_shifts_the_child_clock(tmp_path):
+    """data-in 0.5 at t=0 must equal an untouched child at t=0.5."""
     _child(tmp_path)
     plain = _parent(tmp_path, name="plain.nf.svg")
-    anchored = _parent(tmp_path, image_attrs='x="0" y="0" width="50" height="50" data-anchor="0.5"',
+    anchored = _parent(tmp_path, image_attrs='x="0" y="0" width="50" height="50" data-in="0.5"',
                        name="anchored.nf.svg")
     assert _render(tmp_path, anchored, 0.0) == _render(tmp_path, plain, 0.5)
 
@@ -101,7 +101,7 @@ def test_nested_speed_matches_the_equivalent_time(tmp_path):
 def test_nested_composition_honours_data_fit(tmp_path):
     """A 1:1 child in a 2:1 box under `contain` is centred at its own size."""
     _child(tmp_path)
-    comp = _parent(tmp_path, image_attrs='x="0" y="0" width="100" height="50" data-fit="contain"')
+    comp = _parent(tmp_path, image_attrs='x="0" y="0" width="100" height="50" data-aspect="contain"')
     assert _alpha_bbox(comp, 0.0) == (25, 0, 75, 50)
 
 
