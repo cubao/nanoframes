@@ -68,7 +68,7 @@ def local_image_paths(root, base_dir: str | None) -> list[str]:
     return sorted(found)
 
 
-def _file_digest(path: str) -> str:
+def file_digest(path: str) -> str:
     """Streaming content digest of a file, or a stable marker when it is unreadable."""
     digest = hashlib.sha256()
     try:
@@ -96,6 +96,6 @@ def media_fingerprint(root, base_dir: str | None) -> str:
     for path in paths:
         digest.update(path.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(_file_digest(path).encode("ascii"))
+        digest.update(file_digest(path).encode("ascii"))
         digest.update(b"\0")
     return digest.hexdigest()

@@ -102,6 +102,23 @@ def _make_cache(args) -> FrameCache | None:
     return None if getattr(args, "no_cache", False) else FrameCache(DEFAULT_CACHE)
 
 
+def _media_resolver(doc, scale: float):
+    """A prepared video resolver for this composition, or ``None`` if it has none.
+
+    Preparation (frame extraction) is expensive and content-keyed, so it happens
+    once here rather than per frame; the extraction cache is separate from the
+    frame cache and is not disabled by ``--no-cache``.
+    """
+    from nanoframes.media import MediaCache, MediaResolver, has_video_source
+
+    if not has_video_source(doc):
+        return None
+    resolver = MediaResolver(MediaCache(DEFAULT_CACHE), doc.composition.fps, scale)
+    for warning in resolver.prepare(doc):
+        print(f"nanoframes: {warning}", file=sys.stderr)
+    return resolver
+
+
 def build_parser() -> argparse.ArgumentParser:
     # The docs/skill pointer must ride on --help as well: agents reach for
     # `nanoframes --help` first, and a bare command list drops them into a
@@ -460,11 +477,12 @@ def cmd_render(args: argparse.Namespace) -> int:
     out_dir = args.out
     cache = _make_cache(args)
     scale = _scale_of(args)
+    resolver = _media_resolver(doc, scale)
     if args.t is not None:
         # single frame -> write PNG to args.out (treat as file or dir/<name>_t.png)
         dst = _frame_dest(doc, args.out, args.t)
         render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache,
-                     scale=scale, dpi=_dpi_of(args))
+                     scale=scale, dpi=_dpi_of(args), media_resolver=resolver)
         print(f"rendered {dst}")
         return 0
 
@@ -477,7 +495,8 @@ def cmd_render(args: argparse.Namespace) -> int:
         t = i * step
         dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
         img = render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache,
-                           scale=scale, dpi=_dpi_of(args), warn_blank=False)
+                           scale=scale, dpi=_dpi_of(args), warn_blank=False,
+                           media_resolver=resolver)
         if frame_is_blank(img):
             blank.append(t)
     print(f"rendered {comp.frame_count} frames to {out_dir}/ ({prefix}.*.png)")
@@ -498,8 +517,9 @@ def _report_blank_frames(blank: list[float], total: int, composition: str) -> No
 def cmd_preview(args: argparse.Namespace) -> int:
     doc = _load(args.composition)
     dst = "/tmp/nanoframes_preview.png"
+    scale = _scale_of(args)
     render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=_make_cache(args),
-                 scale=_scale_of(args), dpi=_dpi_of(args))
+                 scale=scale, dpi=_dpi_of(args), media_resolver=_media_resolver(doc, scale))
     if sys.platform == "darwin":
         subprocess.run(["open", dst], check=True)
     elif sys.platform == "linux":
@@ -517,9 +537,10 @@ def cmd_video(args: argparse.Namespace) -> int:
         print("nanoframes: refusing to render a composition with lint errors "
               "(run `nanoframes check`)", file=sys.stderr)
         return 1
-    render_video(doc, args.out, fps=args.fps, scale=_scale_of(args), threads=args.threads,
+    scale = _scale_of(args)
+    render_video(doc, args.out, fps=args.fps, scale=scale, threads=args.threads,
                  keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio,
-                 dpi=_dpi_of(args))
+                 dpi=_dpi_of(args), media_resolver=_media_resolver(doc, scale))
     print(f"wrote {args.out}")
     return 0
 
@@ -601,19 +622,29 @@ def cmd_cache(args: argparse.Namespace) -> int:
 
     The cache is keyed by source content, so every edit to a composition
     orphans its previous frames; they are also always reproducible, which is
-    what makes clearing safe rather than destructive.
+    what makes clearing safe rather than destructive. Extracted video frames
+    live under the same directory and are reported (and cleared) with it.
     """
+    from nanoframes.media import MediaCache
+
     cache = FrameCache(DEFAULT_CACHE)
+    media = MediaCache(DEFAULT_CACHE)
     if args.clear:
         frames, size = cache.stats()
+        sequences, media_bytes = media.stats()
         cache.clear()
-        print(f"cleared {DEFAULT_CACHE}/ ({frames} frames, {size / 1e6:.0f} MB)")
+        print(f"cleared {DEFAULT_CACHE}/ ({frames} frames, {size / 1e6:.0f} MB;"
+              f" {sequences} video sequence(s), {media_bytes / 1e6:.0f} MB)")
         return 0
     frames, size = cache.stats()
     cap = cache.max_bytes / 1e6
     ttl = "never" if cache.ttl is None else f"{cache.ttl / 86400:.0f} days"
     print(f"{DEFAULT_CACHE}/: {frames} frames, {size / 1e6:.0f} MB"
           f" of {cap:.0f} MB (entries expire after {ttl})")
+    sequences, media_bytes = media.stats()
+    if sequences:
+        print(f"  media: {sequences} extracted video sequence(s), {media_bytes / 1e6:.0f} MB"
+              " (content-keyed; cleared with the cache)")
     if args.trim:
         removed = cache.trim()
         print(f"trimmed {removed} frame(s); now {cache.stats()[1] / 1e6:.0f} MB")

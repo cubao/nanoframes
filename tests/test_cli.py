@@ -235,6 +235,37 @@ def test_render_dpi_multiplies_the_raster(tmp_path):
     assert Image.open(two).size == tuple(v * 2 for v in Image.open(one).size)
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not available")
+def test_video_composition_renders_through_the_media_pre_pass(tmp_path, monkeypatch):
+    """A `<image href=clip.mp4>` renders, exports and reports its extracted media."""
+    import subprocess
+
+    from PIL import Image
+
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                    "-i", "testsrc=size=64x48:rate=10:duration=1", "-pix_fmt", "yuv420p",
+                    "clip.mp4"], check=True, capture_output=True)
+    comp = tmp_path / "c.nf.svg"
+    comp.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="64" data-height="48"'
+        ' data-fps="10" data-duration="1.0">'
+        '<image id="clip" href="clip.mp4" x="0" y="0" width="64" height="48"/></svg>',
+        encoding="utf-8")
+
+    code, out = run(["render", str(comp), "--t", "0.5", "-o", "frame.png"])
+    assert code == 0, out
+    assert Image.open("frame.png").convert("RGBA").getchannel("A").getbbox() is not None
+
+    code, out = run(["video", str(comp), "-o", "out.mp4"])
+    assert code == 0, out
+    assert os.path.getsize("out.mp4") > 0
+
+    code, out = run(["cache"])
+    assert code == 0
+    assert "video sequence" in out
+
+
 def test_render_dpi_rejects_nonpositive():
     import contextlib
 

@@ -61,6 +61,7 @@ def render_video(
     cache=None,
     audio: str | None = None,
     dpi: float = 1.0,
+    media_resolver=None,
 ) -> str:
     """Render all frames of ``doc`` into ``out_path`` (an MP4).
 
@@ -89,7 +90,7 @@ def render_video(
         for i in range(comp.frame_count):
             t = i * step
             img = render_frame(doc, t, threads=threads, cache=cache, scale=scale, dpi=dpi,
-                               warn_blank=False)
+                               warn_blank=False, media_resolver=media_resolver)
             dst = os.path.join(frame_dir, f"{prefix}.{i:05d}.png")
             if keep_frames:
                 img.save(dst)

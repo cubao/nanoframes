@@ -224,6 +224,7 @@ def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:
     _check_clips(doc.composition, findings)
     _check_assets(doc, findings)
     _check_image_fit(doc, findings)
+    _check_media(doc, findings)
     _check_palette(doc, findings)
     if has_errors(findings):
         # Bake would raise on the transform values just reported: stop before the
@@ -463,6 +464,57 @@ def _check_image_fit(doc: Document, findings: list[Finding]) -> None:
             f" (expected one of {', '.join(media.FIT_MODES)}) — geometry left as authored",
             code="image.bad_fit", element=node.get("id") or "<image>",
         ))
+
+
+def _check_media(doc: Document, findings: list[Finding]) -> None:
+    """Video-backed ``<image>`` nodes: the toolchain they need and the time they map to.
+
+    Two silent failures live here. Without ffmpeg the composition simply cannot
+    render, so that is an error. And a window that maps past the end of its own
+    source freezes on the last frame — visible, wrong, and easy to author by
+    accident (``data-anchor`` too early, or a speed/window mismatch).
+    """
+    comp = doc.composition
+    entries = []
+    for node in refs.iter_images(doc.root):
+        spec = media.parse_media(node, doc.base_dir, comp.duration)
+        if spec is not None:
+            entries.append((node, spec))
+    if not entries:
+        return
+    if not media.has_tool("ffmpeg"):
+        findings.append(Finding(
+            "error",
+            f"{len(entries)} video-backed <image> node(s) need ffmpeg to extract frames,"
+            " and ffmpeg was not found on PATH",
+            code="media.missing_tool",
+        ))
+        return
+
+    probed: dict = {}
+    for node, spec in entries:
+        label = node.get("id") or "<image>"
+        for problem in media.media_attribute_problems(node):
+            findings.append(Finding(
+                "warning", f"element {label}: {problem} (using the default)",
+                code="media.bad_attribute", element=label,
+            ))
+        if spec.loop:
+            continue
+        if spec.source not in probed:
+            probed[spec.source] = media.probe_duration(spec.source)
+        duration = probed[spec.source]
+        if duration is None:
+            continue
+        mapped_end = spec.anchor + spec.duration * spec.speed
+        if mapped_end > duration + 1e-6:
+            findings.append(Finding(
+                "warning",
+                f"element {label}: this clip maps up to {mapped_end:.2f}s of a"
+                f" {duration:.2f}s source ({os.path.basename(spec.source)}) — the picture"
+                f" freezes at the end; add data-loop to repeat, or move data-anchor earlier",
+                code="media.out_of_range", element=label,
+            ))
 
 
 def _opt_float(raw: str | None):

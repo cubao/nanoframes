@@ -189,7 +189,7 @@ def pin_viewport(root: ET.Element, width: float, height: float) -> None:
 
 
 def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
-              text_handler=None) -> ET.Element:
+              text_handler=None, media_resolver=None) -> ET.Element:
     """The per-frame XML tree: every element's visibility, opacity, transform,
     color and text layout materialized for time ``t``, timeline stripped."""
     comp = doc.composition
@@ -248,6 +248,12 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
     if doc.base_dir:
         _dereference_images(root, doc.base_dir)
 
+    # Video-backed <image> nodes become the extracted frame this time maps to
+    # (the media pre-pass). Runs on the baked copy only, so the document's
+    # identity still describes the source video rather than a generated frame.
+    if media_resolver is not None:
+        media_resolver.apply(root, t, comp.duration, doc.base_dir)
+
     # Aspect-correct embedding: ThorVG stretches a picture to its declared box
     # and ignores preserveAspectRatio, so `data-fit` computes the geometry.
     media.apply_fit(root, doc.base_dir)
@@ -269,10 +275,12 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
 
 
 def bake_svg(doc: Document, t: float, measurer: "Measurer | None" = None,
-             text_handler=None) -> str:
+             text_handler=None, media_resolver=None) -> str:
     """``bake_tree`` serialized as a standalone SVG document string."""
-    return ET.tostring(bake_tree(doc, t, measurer=measurer, text_handler=text_handler),
-                       encoding="unicode")
+    return ET.tostring(
+        bake_tree(doc, t, measurer=measurer, text_handler=text_handler,
+                  media_resolver=media_resolver),
+        encoding="unicode")
 
 
 def _dereference_images(root: ET.Element, base_dir: str) -> None:

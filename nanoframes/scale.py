@@ -112,7 +112,13 @@ def _resized_copy(src: str, scale: float) -> str:
 
     from PIL import Image  # heavy import, keep it lazy
 
-    with Image.open(src) as im:
-        size = (max(1, round(im.width * scale)), max(1, round(im.height * scale)))
-        im.convert("RGBA").resize(size, Image.LANCZOS).save(out)
+    try:
+        with Image.open(src) as im:
+            size = (max(1, round(im.width * scale)), max(1, round(im.height * scale)))
+            im.convert("RGBA").resize(size, Image.LANCZOS).save(out)
+    except Exception:  # noqa: BLE001
+        # Not a raster Pillow can resize — a video source (handled by the media
+        # path, which extracts frames at the render scale itself) or a file this
+        # build cannot decode. Leave the source alone rather than fail the render.
+        return src
     return out

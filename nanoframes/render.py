@@ -145,7 +145,7 @@ def blank_frame_warning(img, t: float) -> str | None:
 def render_frame(doc: Document, t: float, out_path: str | None = None, threads: int = 4,
                  cache: "FrameCache | None" = None,
                  text_handler=None, scale: float = 1.0, dpi: float = 1.0,
-                 warn_blank: bool = True) -> "object":
+                 warn_blank: bool = True, media_resolver=None) -> "object":
     """Render one frame of a composition at time ``t``.
 
     Returns a Pillow Image; if ``out_path`` is given the PNG is also saved. When
@@ -181,7 +181,8 @@ def render_frame(doc: Document, t: float, out_path: str | None = None, threads: 
                 hit.save(out_path)
             return hit
     prescale_images(doc, scale)
-    svg = bake.bake_svg(doc, t, measurer=measurer(), text_handler=text_handler)
+    svg = bake.bake_svg(doc, t, measurer=measurer(), text_handler=text_handler,
+                        media_resolver=media_resolver)
     img = render_svg(svg, width, height, threads=threads)
     if warn_blank:
         blank_frame_warning(img, t)
