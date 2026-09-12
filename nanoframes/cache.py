@@ -48,6 +48,10 @@ logger.remove()
 
 # Payload bytes the cache may hold before it starts evicting — roughly 4500
 # frames of a document-wide 1280x720 composition.
+# Where frames live when nothing says otherwise. Also the directory `doctor`
+# measures free space at, and what `cache --clear` reclaims.
+DEFAULT_CACHE = ".nanoframes-cache"
+
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024
 # Frames are reproducible from their composition, so an untouched entry is
 # worthless after a while; a week matches diskcache's own expiry convention.

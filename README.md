@@ -65,6 +65,13 @@ Diagnostics are machine-readable: every finding carries a stable `code`, and
 `nanoframes check --json` / `debug --json` emit the structured form an agent
 branches on instead of parsing prose.
 
+`nanoframes verify <comp>` is every gate at once — `doctor`, `check` and
+`debug` — into a single `--json` envelope with one `ok` and one exit code, where
+each section is the sub-command's own payload embedded verbatim (one producer per
+section, so the envelope cannot hold a second verdict). Reported findings — a box
+off the canvas, an element a later sibling painted over — are carried as warnings
+and do not fail on their own; `--strict` counts them.
+
 `nanoframes debug --pixels` answers the one question a box cannot: it hides each
 named element in turn, re-renders the same frame, and reports the elements whose
 removal changes no pixel — the ones on the canvas by every arithmetic reading

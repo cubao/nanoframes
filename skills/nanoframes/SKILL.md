@@ -208,6 +208,8 @@ nanoframes check <comp>.nf.svg --json   # machine-readable findings (stable code
 nanoframes debug <comp>.nf.svg --t 2    # where each element's geometry lands per frame
 nanoframes debug <comp>.nf.svg --t 2 --json   # structured frame report + clip scan
 nanoframes debug <comp>.nf.svg --loop   # + first/last frame diff (loop seam)
+nanoframes debug <comp>.nf.svg --pixels # + hide each element to find buried ones
+nanoframes verify <comp>.nf.svg         # doctor+check+debug, one --json envelope
 nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png            # 1:1
 nanoframes render <comp>.nf.svg --t 2 --dpi 2 -o shot@2x.png  # 2x pixel density
@@ -227,7 +229,15 @@ nanoframes walkthrough                  # regenerate the one-take tour (build/)
 `nanoframes debug`** — it lists each element's post-transform box, whether it
 is on-canvas, and (with the clip scan) whether it is ever visible. A frame that
 draws nothing renders as a valid, fully transparent PNG, so this is the command
-that turns a blank output into a named culprit.
+that turns a blank output into a named culprit. Add `--pixels` when an element
+is on-canvas by every reading and still not in the picture: it hides each named
+element in turn and re-renders, naming the ones a later sibling painted over.
+
+**Before reporting a composition as good, `nanoframes verify <comp>`** runs
+`doctor`, `check` and `debug` into one `--json` envelope: one `ok`, one exit
+code, and a list of sections that failed. Each section is the sub-command's own
+payload, so nothing is summarized away. Reported findings (a box off the canvas,
+a buried element) are warnings and do not fail the run; `--strict` counts them.
 
 `nanoframes` with no arguments prints where the docs and this skill live
 (`nanoframes --help` prints the same pointers — also available via `python -m nanoframes`). Full contract:

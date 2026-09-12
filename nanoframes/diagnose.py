@@ -304,6 +304,39 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
         record.contributes = differing > 0.0
 
 
+def assemble(report: "FrameReport", scan: "ClipScan | None" = None,
+             seam: "SeamReport | None" = None, doc: Document | None = None) -> dict:
+    """The ``debug --json`` object, from reports that have already been computed.
+
+    A pure assembler: the text path needs the objects themselves, so this takes
+    them rather than recomputing, and `verify` gets the same object by the same
+    code.
+    """
+    # `ok` is True whenever the reading was produced, because this section is a
+    # reading and not a gate: an element off the canvas is reported, and a
+    # report is not a failure. `verify` counts the findings as warnings; only
+    # `--strict` turns them into an exit code.
+    payload: dict = {"ok": True, "frame": report.to_dict()}
+    if doc is not None:
+        payload["identity"] = {"digest": doc.identity,
+                               "components": doc.identity_components()}
+    if scan is not None:
+        payload["scan"] = scan.to_dict()
+    if seam is not None:
+        payload["loop_seam"] = seam.to_dict()
+    return payload
+
+
+def debug_payload(doc: Document, t: float, *, measurer=None, samples: int = SCAN_SAMPLES,
+                  pixels: bool = False, threads: int = 4, scan: bool = True,
+                  loop: bool = False) -> dict:
+    """The ``debug --json`` object — and the ``debug`` section of ``verify``."""
+    report = frame_report(doc, t, measurer=measurer, pixels=pixels, threads=threads)
+    scanned = scan_clip(doc, measurer=measurer, samples=max(2, samples)) if scan else None
+    seam = loop_seam(doc) if loop else None
+    return assemble(report, scan=scanned, seam=seam, doc=doc)
+
+
 def frame_distance(a, b) -> tuple[float, int]:
     """Fraction of pixels that differ between two frames, and the largest channel delta."""
     from PIL import ImageChops

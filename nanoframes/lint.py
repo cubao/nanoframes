@@ -242,6 +242,23 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     return findings
 
 
+def payload(findings: list[Finding]) -> dict:
+    """The ``check --json`` object: one ``ok`` and the findings behind it.
+
+    Also the ``check`` section of ``verify``, embedded verbatim — which is why
+    it lives here rather than in the CLI. A section re-shaped for an envelope
+    would be a second implementation of the same verdict, and the second one is
+    the one nobody tests.
+    """
+    errors = sum(1 for f in findings if f.severity == "error")
+    return {
+        "ok": errors == 0,
+        "errors": errors,
+        "warnings": len(findings) - errors,
+        "findings": [f.to_dict() for f in findings],
+    }
+
+
 def lint_path(path: str, measurer=AUTO) -> list[Finding]:
     try:
         doc = parse_file(path)

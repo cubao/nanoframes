@@ -265,6 +265,7 @@ labels (each Han char = `font-size` px wide). Query it with
 
 ```bash
 nanoframes doctor                   # can this machine render? (each failure names its fix)
+nanoframes verify my-video.nf.svg   # all gates, one envelope, one exit code
 nanoframes init my-video            # scaffold a .nf.svg
 nanoframes check my-video.nf.svg    # lint (exit 1 on errors)
 nanoframes debug my-video.nf.svg --t 2.0        # where each element lands, frame by frame

@@ -18,13 +18,13 @@ Commands
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 
-from nanoframes import __version__, walkthrough
-from nanoframes.cache import FrameCache
+from nanoframes import __version__, envelope, walkthrough
+from nanoframes.cache import DEFAULT_CACHE, FrameCache
+from nanoframes.envelope import EXIT_FAIL, EXIT_OK
 from nanoframes.lint import has_errors, lint_path, lint_string
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import frame_is_blank, measurer, render_frame
@@ -65,7 +65,6 @@ TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
 """
 
 
-DEFAULT_CACHE = ".nanoframes-cache"
 
 
 def _add_scale(sp: argparse.ArgumentParser) -> None:
@@ -231,6 +230,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--check", action="store_true",
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_diagram)
+
+    sp = sub.add_parser("verify", help="every gate over one composition: one envelope, one exit code")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("--t", type=float, default=0.0, help="frame the debug section examines")
+    sp.add_argument("--samples", type=int, default=24, help="frames the clip scan sweeps")
+    sp.add_argument("--pixels", action="store_true",
+                    help="also probe whether hiding each element changes the frame")
+    sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
+    sp.add_argument("--strict", action="store_true",
+                    help="count reported warnings towards the exit code")
+    sp.add_argument("--json", action="store_true",
+                    help="emit the envelope as JSON (always exits 0; the verdict is `ok`)")
+    sp.set_defaults(handler=cmd_verify)
 
     sp = sub.add_parser("doctor", help="check this machine can render, and what fixes it")
     sp.add_argument("--json", action="store_true",
@@ -399,16 +411,15 @@ def cmd_fonts_install(args: argparse.Namespace) -> int:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """Lint the contract (geometry checks measure text, so ThorVG may load)."""
+    from nanoframes import lint
+
     findings = lint_path(args.composition)
-    errors = sum(1 for f in findings if f.severity == "error")
     if args.json:
-        print(json.dumps({
-            "ok": errors == 0,
-            "errors": errors,
-            "warnings": len(findings) - errors,
-            "findings": [f.to_dict() for f in findings],
-        }, ensure_ascii=False))
-        return 1 if errors else 0
+        # Same producer as the `check` section of `verify`, so the two cannot
+        # drift into two different verdicts for one composition.
+        envelope.emit_json(lint.payload(findings))
+        return EXIT_FAIL if lint.has_errors(findings) else EXIT_OK
+    errors = sum(1 for f in findings if f.severity == "error")
     for f in findings:
         print(str(f))
     if errors:
@@ -431,18 +442,9 @@ def cmd_debug(args: argparse.Namespace) -> int:
     seam = diagnose.loop_seam(doc) if args.loop else None
 
     if args.json:
-        payload: dict = {"frame": report.to_dict()}
-        # What this frame's identity is made of, so a digest that moved can say
-        # which input moved with it instead of sending the reader to bisect
-        # their own tree. See nanoframes.identity for what is in and out.
-        payload["identity"] = {"digest": doc.identity,
-                               "components": doc.identity_components()}
-        if scan is not None:
-            payload["scan"] = scan.to_dict()
-        if seam is not None:
-            payload["loop_seam"] = seam.to_dict()
-        print(json.dumps(payload, ensure_ascii=False))
-        return 0
+        # The same assembler `verify` uses for its `debug` section.
+        envelope.emit_json(diagnose.assemble(report, scan=scan, seam=seam, doc=doc))
+        return EXIT_OK
 
     print(f"frame {report.frame_index}  t={report.t:g}s  canvas {report.width}x{report.height}")
     if report.coverage is not None:
@@ -640,6 +642,26 @@ def cmd_diagram(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Every gate over one composition: one envelope, one exit code.
+
+    `--json` is the envelope; the text form is the same verdict for a person. A
+    composition that will not parse exits 2 — the sections cannot run at all,
+    which is a wrong invocation rather than a failed check.
+    """
+    from nanoframes import verify
+
+    doc = _load(args.composition)
+    code, payload = verify.run(doc, t=args.t, samples=max(2, args.samples),
+                               pixels=args.pixels, threads=args.threads,
+                               strict=args.strict, cache_dir=DEFAULT_CACHE)
+    if args.json:
+        envelope.emit_json(payload)
+        return EXIT_OK  # the verdict is in `ok`; see nanoframes.envelope
+    print("\n".join(verify.summary_lines(payload)))
+    return code
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Report every precondition a render needs, with the fix for each failure.
 
@@ -652,8 +674,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     report = doctor.report(DEFAULT_CACHE)
     if args.json:
-        print(json.dumps(report.to_dict(), ensure_ascii=False))
-        return 0
+        envelope.emit_json(report.to_dict())
+        return EXIT_OK
 
     for check in report.checks:
         mark = "ok  " if check.ok else "FAIL"
