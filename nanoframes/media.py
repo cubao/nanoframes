@@ -148,19 +148,31 @@ def apply_fit(root, base_dir: str | None) -> None:
         if intrinsic_w <= 0 or intrinsic_h <= 0:
             continue
 
-        x, y, width, height = box
-        fit = min if mode == "contain" else max
-        scale = fit(width / intrinsic_w, height / intrinsic_h)
-        drawn_w, drawn_h = intrinsic_w * scale, intrinsic_h * scale
-        node.set("x", f"{x + (width - drawn_w) / 2.0:g}")
-        node.set("y", f"{y + (height - drawn_h) / 2.0:g}")
-        node.set("width", f"{drawn_w:g}")
-        node.set("height", f"{drawn_h:g}")
+        fitted = _fit_box(box, intrinsic_w, intrinsic_h, mode)
+        node.set("x", f"{fitted[0]:g}")
+        node.set("y", f"{fitted[1]:g}")
+        node.set("width", f"{fitted[2]:g}")
+        node.set("height", f"{fitted[3]:g}")
 
         if mode == "cover":
             ordinal += 1
             clip_id = f"{_CLIP_PREFIX}{node.get('id') or 'img'}-{ordinal}"
             _clip_to_box(root, node, clip_id, box)
+
+
+def _fit_box(box, intrinsic_w: float, intrinsic_h: float, mode: str):
+    """``(x, y, w, h)`` for an intrinsic size drawn into ``box`` under ``mode``.
+
+    Shared by ``apply_fit`` (a picture's pixel size) and nested-composition
+    inlining (a child composition's canvas), so both place things identically.
+    """
+    x, y, width, height = box
+    if mode not in ("contain", "cover") or intrinsic_w <= 0 or intrinsic_h <= 0:
+        return box
+    fit = min if mode == "contain" else max
+    scale = fit(width / intrinsic_w, height / intrinsic_h)
+    drawn_w, drawn_h = intrinsic_w * scale, intrinsic_h * scale
+    return (x + (width - drawn_w) / 2.0, y + (height - drawn_h) / 2.0, drawn_w, drawn_h)
 
 
 # ---------------------------------------------------------------------------
@@ -416,9 +428,11 @@ class MediaResolver:
         self._frames: dict[str, str] = {}
         self._counts: dict[str, int] = {}
         self._durations: dict[str, float | None] = {}
+        self._children: dict[str, object] = {}
+        self._child_order: dict[str, int] = {}
 
     def prepare(self, doc) -> list[str]:
-        """Extract frame sequences for the document's videos; returns warnings."""
+        """Extract video frames and load nested compositions; returns warnings."""
         warnings: list[str] = []
         for spec in video_specs(doc):
             if spec.source in self._frames:
@@ -435,6 +449,16 @@ class MediaResolver:
             self._frames[spec.source] = directory
             self._counts[spec.source] = frames
             self._durations[spec.source] = probe_duration(spec.source)
+
+        for source in nested_sources(doc):
+            if source in self._children:
+                continue
+            try:
+                self._children[source] = load_nested(source)
+            except Exception as exc:  # noqa: BLE001 - report, never fail the render
+                warnings.append(f"nested composition {os.path.basename(source)}: {exc}")
+                continue
+            self._child_order[source] = len(self._child_order) + 1
         return warnings
 
     def prepared(self, source: str) -> bool:
@@ -450,7 +474,7 @@ class MediaResolver:
         return min(max(int(round(src_t * self.fps)), 0), count - 1)
 
     def apply(self, root, t: float, comp_duration: float, base_dir: str | None) -> None:
-        """Point every video ``<image>`` at the frame for time ``t``."""
+        """Point video ``<image>`` bounds at their frame, and inline nested compositions."""
         for node in refs.iter_images(root):
             spec = parse_media(node, base_dir, comp_duration)
             if spec is None or not self.prepared(spec.source):
@@ -461,3 +485,130 @@ class MediaResolver:
                 continue
             attr = next((a for a in refs.IMAGE_REF_ATTRS if node.get(a) is not None), "href")
             node.set(attr, frame)
+
+        for source, child in self._children.items():
+            for node in _nodes_for_source(root, base_dir, source):
+                inline_composition(root, node, child, t, comp_duration,
+                                   self._child_order[source])
+
+
+# ---------------------------------------------------------------------------
+# Nested compositions: a `.nf.svg` embedded in another `.nf.svg`
+# ---------------------------------------------------------------------------
+
+# A nested composition is recognized by the composition file's own suffix, so
+# `href="lower-third.nf.svg"` reads as "reuse that composition here".
+NESTED_SUFFIX = ".nf.svg"
+
+
+def is_nested_composition(path: str | None) -> bool:
+    """Whether a source names a nanoframes composition to inline (by extension)."""
+    return bool(path) and path.lower().endswith(NESTED_SUFFIX)
+
+
+def nested_sources(doc) -> list[str]:
+    """Absolute paths of the nested compositions a document embeds (in order)."""
+    found: list[str] = []
+    for node in refs.iter_images(doc.root):
+        source = resolve_source(node, doc.base_dir)
+        if is_nested_composition(source) and source not in found:
+            found.append(source)
+    return found
+
+
+def needs_media_pass(doc) -> bool:
+    """Whether a document embeds video or nested compositions (the media pre-pass)."""
+    return bool(video_specs(doc) or nested_sources(doc))
+
+
+def load_nested(path: str):
+    """Parse a nested composition into a Document."""
+    from nanoframes.parse import parse_file
+
+    return parse_file(path)
+
+
+def _nodes_for_source(root, base_dir: str | None, source: str):
+    """Every ``<image>`` in the baked tree that resolves to ``source``."""
+    for node in list(refs.iter_images(root)):
+        if resolve_source(node, base_dir) == source:
+            yield node
+
+
+def _placement_transform(placed, child_comp) -> str:
+    """Scale a child canvas into a parent box, then move it there."""
+    x, y, width, height = placed
+    sx = width / child_comp.width if child_comp.width else 1.0
+    sy = height / child_comp.height if child_comp.height else 1.0
+    return f"translate({x:g},{y:g}) scale({sx:.6g},{sy:.6g})"
+
+
+def _namespace_child_ids(group, index: int) -> None:
+    """Keep a child's generated clip ids from colliding with the parent's.
+
+    ``apply_fit`` names clip paths ``nf-fit-<id>-<n>``; two documents can easily
+    produce the same name, and an inlined child shares the parent's id space.
+    """
+    token = f"c{index}-"
+    for element in group.iter():
+        for attr, value in list(element.attrib.items()):
+            if value.startswith(f"url(#{_CLIP_PREFIX}"):
+                element.set(attr, value.replace(_CLIP_PREFIX, _CLIP_PREFIX + token, 1))
+            elif attr == "id" and value.startswith(_CLIP_PREFIX):
+                element.set(attr, _CLIP_PREFIX + token + value[len(_CLIP_PREFIX):])
+
+
+def inline_composition(root, node, child, t: float, comp_duration: float,
+                       index: int) -> None:
+    """Replace a nested-composition ``<image>`` with the child's baked tree.
+
+    ThorVG cannot draw an SVG file as an ``<image>`` source (probed: it renders
+    nothing, where a PNG renders), so a nested composition is *inlined* instead
+    of referenced: the child is baked at the time the parent's window maps to,
+    and its baked children replace the node inside a group that scales the child
+    canvas into the element's box. The child's own timeline therefore runs on the
+    mapped clock — ``data-anchor``/``data-speed``/``data-loop`` mean the same
+    thing here as they do for a video.
+    """
+    from nanoframes.bake import bake_tree  # deferred: bake imports this module
+
+    if node.get("display") == "none":
+        return  # hidden here: drawing nothing is already correct
+    parent = find_parent(root, node)
+    if parent is None:
+        return
+
+    child_comp = child.composition
+    box = _declared_box(node)
+    if box is None:
+        box = (_number(node, "x", 0.0), _number(node, "y", 0.0),
+               float(child_comp.width), float(child_comp.height))
+    mode = (node.get("data-fit") or "stretch").strip().lower()
+    placed = _fit_box(box, float(child_comp.width), float(child_comp.height), mode)
+
+    child_t = time_mapping(
+        t,
+        _number(node, "data-start", 0.0),
+        _number(node, "data-anchor", 0.0),
+        _number(node, "data-speed", 1.0),
+        child_comp.duration,
+        _truthy(node.get("data-loop")),
+    )
+
+    baked = bake_tree(child, child_t)
+    placement = _placement_transform(placed, child_comp)
+    static = node.get("transform")
+    transform = f"{static} {placement}" if static else placement
+    attrs = {"transform": transform}
+    for name in ("display", "opacity"):
+        value = node.get(name)
+        if value is not None:
+            attrs[name] = value
+    group = ET.Element(qname("g"), attrs)
+    for element in list(baked):
+        group.append(element)
+    _namespace_child_ids(group, index)
+
+    position = list(parent).index(node)
+    parent.remove(node)
+    parent.insert(position, group)

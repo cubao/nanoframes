@@ -103,15 +103,16 @@ def _make_cache(args) -> FrameCache | None:
 
 
 def _media_resolver(doc, scale: float):
-    """A prepared video resolver for this composition, or ``None`` if it has none.
+    """A prepared media resolver for this composition, or ``None`` if it has none.
 
-    Preparation (frame extraction) is expensive and content-keyed, so it happens
-    once here rather than per frame; the extraction cache is separate from the
-    frame cache and is not disabled by ``--no-cache``.
+    Covers both embedded video and nested ``.nf.svg`` compositions. Preparation
+    (frame extraction, child parsing) is expensive and content-keyed, so it
+    happens once here rather than per frame; the extraction cache is separate
+    from the frame cache and is not disabled by ``--no-cache``.
     """
-    from nanoframes.media import MediaCache, MediaResolver, has_video_source
+    from nanoframes.media import MediaCache, MediaResolver, needs_media_pass
 
-    if not has_video_source(doc):
+    if not needs_media_pass(doc):
         return None
     resolver = MediaResolver(MediaCache(DEFAULT_CACHE), doc.composition.fps, scale)
     for warning in resolver.prepare(doc):

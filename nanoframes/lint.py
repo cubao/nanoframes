@@ -24,6 +24,10 @@ from nanoframes.xmlutil import local_name
 # across frames, so even sampling finds them).
 _MAX_SAMPLES = 24
 
+# How deep `check` follows nested compositions before it stops (and says so) —
+# also the recursion guard for a composition that embeds itself.
+_MAX_NESTED_DEPTH = 4
+
 # Sentinel for "measure text if this composition has any" (see lint_document).
 AUTO = object()
 
@@ -207,7 +211,7 @@ def _check_assets(doc: Document, findings: list[Finding]) -> None:
             )
 
 
-def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:
+def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding]:
     """All findings for a parsed composition.
 
     ``measurer`` defaults to ``AUTO``: text is measured (which loads ThorVG)
@@ -226,6 +230,7 @@ def lint_document(doc: Document, measurer=AUTO) -> list[Finding]:
     _check_image_fit(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
+    _check_nested(doc, measurer, findings, _depth)
     if has_errors(findings):
         # Bake would raise on the transform values just reported: stop before the
         # geometry checks rather than crashing the whole lint pass.
@@ -515,6 +520,36 @@ def _check_media(doc: Document, findings: list[Finding]) -> None:
                 f" freezes at the end; add data-loop to repeat, or move data-anchor earlier",
                 code="media.out_of_range", element=label,
             ))
+
+
+def _check_nested(doc: Document, measurer, findings: list[Finding], depth: int) -> None:
+    """Lint embedded compositions too — `check` on a parent covers its children.
+
+    A nested ``.nf.svg`` is inlined at render time, so a defect inside it is a
+    defect in the parent's output; without this, `check` on the parent would
+    report a clean composition whose child draws nothing. No extraction is
+    involved — the child is linted, not rendered. The depth cap doubles as the
+    cycle guard (a composition embedding itself stops here with a warning).
+    """
+    for source in media.nested_sources(doc):
+        name = os.path.basename(source)
+        try:
+            child = parse_file(source)
+        except (OSError, ParseError) as exc:
+            findings.append(Finding("warning", f"nested composition {name}: {exc}",
+                                    code="media.nested_unreadable"))
+            continue
+        if depth >= _MAX_NESTED_DEPTH:
+            findings.append(Finding(
+                "warning",
+                f"nested composition {name}: nesting is deeper than {_MAX_NESTED_DEPTH}"
+                " levels (or a composition includes itself) — not checked further",
+                code="media.nested_depth"))
+            continue
+        for finding in lint_document(child, measurer, _depth=depth + 1):
+            findings.append(Finding(finding.severity, f"[{name}] {finding.message}",
+                                    code=finding.code, element=finding.element,
+                                    t=finding.t))
 
 
 def _opt_float(raw: str | None):
