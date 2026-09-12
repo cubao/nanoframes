@@ -12,6 +12,7 @@ from nanoframes import diagnose, timeline
 from nanoframes.cli import main
 from nanoframes.lint import lint_string
 from nanoframes.parse import parse_string
+from nanoframes.render import measurer as render_measurer
 from nanoframes.render import render_frame
 
 
@@ -171,6 +172,90 @@ def test_clip_scan_flags_an_element_that_is_never_visible():
     scan = diagnose.scan_clip(doc)
     assert [e.label for e in scan.never_visible] == ["#lost"]
     assert "#lost" in [e.label for e in scan.reported()]
+
+
+# --- the contribution probe (`debug --pixels`) ------------------------------
+
+BURIED = ('<rect width="400" height="200" fill="#101820"/>'
+          '<text id="caption" x="20" y="100" font-family="Arial" font-size="28"'
+          ' fill="#ffffff">CAPTION</text>'
+          '<rect id="curtain" width="400" height="200" fill="#101820"/>')
+
+
+def test_probe_finds_an_element_covered_by_a_later_sibling():
+    """The one fault no box measure can see.
+
+    `caption` is on the canvas by every arithmetic reading; a later sibling
+    paints over it. Its box is unchanged, its status is `on-canvas`, and nothing
+    of it reaches the picture.
+    """
+    doc = parse_string(comp(BURIED))
+    plain = {e.label: e for e in diagnose.frame_report(
+        doc, 0.0, measurer=render_measurer()).elements}
+    assert plain["#caption"].status == "on-canvas"
+    assert plain["#caption"].contributes is None, "no probe, no claim"
+
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert by_label["#caption"].contributes is False
+    assert by_label["#caption"].covered
+    assert by_label["#curtain"].contributes is True
+    assert not by_label["#curtain"].covered
+    assert [e.label for e in report.covered] == ["#caption"]
+
+
+def test_probe_does_not_claim_anything_about_elements_it_did_not_probe():
+    """A hidden or unmeasured element has no contribution to report."""
+    doc = parse_string(comp('<rect id="bg" width="400" height="200" fill="#fff"/>'
+                            '<rect id="later" x="0" y="0" width="10" height="10" fill="#f00"'
+                            ' data-start="1.0" data-duration="1.0"/>'))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert not by_label["#later"].painted
+    assert by_label["#later"].contributes is None
+
+
+def test_probe_only_reports_buried_elements_the_author_named():
+    """A check that fires on a background rectangle every time gets ignored."""
+    doc = parse_string(comp(BURIED))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    unnamed_buried = [e for e in report.elements
+                      if e.contributes is False and not e.has_id]
+    assert unnamed_buried, "the fixture's background is genuinely covered"
+    assert all(not e.covered for e in unnamed_buried)
+
+
+def test_probe_leaves_the_tree_as_it_found_it():
+    """Hiding is done in place, so a second probe has to see the same frame."""
+    doc = parse_string(comp(BURIED))
+    first = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    second = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    assert ([e.label for e in first.covered] == [e.label for e in second.covered]
+            == ["#caption"])
+
+
+def test_cli_debug_pixels_reports_the_buried_element(tmp_path):
+    src = tmp_path / "buried.nf.svg"
+    src.write_text(comp(BURIED), encoding="utf-8")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        code = main(["debug", str(src), "--pixels", "--no-scan"])
+    assert code == 0
+    text = out.getvalue()
+    assert "buried" in text and "#caption" in text
+
+
+def test_cli_debug_pixels_json_carries_the_verdict(tmp_path):
+    src = tmp_path / "buried.nf.svg"
+    src.write_text(comp(BURIED), encoding="utf-8")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        main(["debug", str(src), "--pixels", "--no-scan", "--json"])
+    payload = json.loads(out.getvalue())
+    assert payload["frame"]["covered"] == ["#caption"]
+    assert payload["identity"]["components"]["source"]
+    for element in payload["frame"]["elements"]:
+        assert "contributes" in element
 
 
 def test_loop_seam_closed_when_motion_finishes_by_the_last_frame():

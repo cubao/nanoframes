@@ -4,14 +4,17 @@
 the next question, the one a frame full of nothing poses: *which* element was
 supposed to draw, *where* its geometry landed, and *when* it was even visible.
 
-Everything here is arithmetic over the baked tree (``bounds``) plus one raster
-pass for the pixel-level questions (how much of the frame is covered, how far
-apart a loop's two seam frames are) — no element is rendered on its own, so a
-report costs about one frame.
+Most of it is arithmetic over the baked tree (``bounds``) plus one raster pass
+for the pixel-level questions (how much of the frame is covered, how far apart a
+loop's two seam frames are). ``--pixels`` adds one raster pass *per element*, to
+answer the question arithmetic cannot: whether anything of it survived to the
+picture once everything else had drawn. That is the only reading that catches an
+element painted over by a later sibling, which passes every box-based check.
 """
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from nanoframes import bake, bounds, timeline
@@ -33,11 +36,27 @@ class ElementBox:
     painted: bool  # this frame actually draws from it (clip window + opacity)
     complete: bool = True
     named: bool = False  # has an id, or sits at the top level
+    has_id: bool = False  # author gave it an id — what `covered` reports on
+    contributes: bool | None = None  # None unless pixels were probed
 
     @property
     def blank(self) -> bool:
         """Painted, fully measured, and yet nowhere near the canvas."""
         return self.painted and self.complete and self.status == "off-canvas"
+
+    @property
+    def covered(self) -> bool:
+        """On the canvas by its box, and contributing nothing to the picture.
+
+        The failure no arithmetic can find: something drawn later covered it.
+        Only meaningful once ``contributes`` has been probed, and reported only
+        for elements the author **named** — a background rectangle is buried by
+        anything full-bleed drawn after it, and saying so every time would train
+        the reader to ignore the line. Naming an element is how it opts into
+        being checked.
+        """
+        return (self.has_id and self.contributes is False
+                and self.status in ("on-canvas", "clipped"))
 
     def status_line(self) -> str:
         if not self.painted:
@@ -47,6 +66,10 @@ class ElementBox:
         note = "" if self.complete else "  (partly unmeasured)"
         if self.status == "off-canvas":
             note += "  <-- draws nothing here"
+        if self.covered:
+            note += "  <-- on the canvas, but buried: nothing of it reaches the picture"
+        elif self.contributes:
+            note += "  (reaches the picture)"
         return f"{format_box(self.box):<30}{self.status}{note}"
 
     def to_dict(self) -> dict:
@@ -60,7 +83,10 @@ class ElementBox:
             "painted": self.painted,
             "complete": self.complete,
             "named": self.named,
+            "has_id": self.has_id,
             "blank": self.blank,
+            "covered": self.covered,
+            "contributes": self.contributes,
         }
 
 
@@ -88,6 +114,14 @@ class FrameReport:
     def blanks(self) -> list[ElementBox]:
         return [e for e in self.elements if e.blank]
 
+    @property
+    def covered(self) -> list[ElementBox]:
+        """Elements whose geometry is on the canvas and whose pixels are not.
+
+        Empty unless ``pixels`` was probed.
+        """
+        return [e for e in self.elements if e.covered]
+
     def to_dict(self) -> dict:
         return {
             "t": self.t,
@@ -97,6 +131,7 @@ class FrameReport:
             "coverage": self.coverage,
             "elements": [e.to_dict() for e in self.elements],
             "blanks": [e.label for e in self.blanks],
+            "covered": [e.label for e in self.covered],
         }
 
 
@@ -187,13 +222,20 @@ class SeamReport:
         }
 
 
-def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True) -> FrameReport:
-    """Per-element boxes for the frame at ``t``, plus its canvas coverage."""
+def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True,
+                 pixels: bool = False, threads: int = 1) -> FrameReport:
+    """Per-element boxes for the frame at ``t``, plus its canvas coverage.
+
+    ``pixels`` adds the contribution probe: one extra raster per reported
+    element, answering whether hiding it would change the frame at all. Off by
+    default because a report without it costs one frame.
+    """
     comp = doc.composition
     canvas = bounds.canvas_box(comp.width, comp.height)
     root = bake.bake_tree(doc, t, measurer=measurer)
     report = FrameReport(t=t, width=comp.width, height=comp.height,
                          frame_index=round(t * comp.fps))
+    probed: list[tuple[ElementBox, object]] = []
     for path, node, ancestors in bounds.iter_renderable(root):
         painted, box, complete = bounds.placed(node, ancestors, measurer)
         record = ElementBox(
@@ -206,12 +248,71 @@ def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True) 
             painted=painted,
             complete=complete,
             named=bool(node.get("id")) or len(path) == 1,
+            has_id=bool(node.get("id")),
         )
         if record.named or record.blank:
             report.elements.append(record)
+            probed.append((record, node))
     if coverage:
         report.coverage = _coverage(doc, t)
+    if pixels:
+        _probe_contribution(root, comp.width, comp.height, probed, threads)
     return report
+
+
+def _probe_contribution(root, width: int, height: int, probed, threads: int) -> None:
+    """Fill in ``contributes``: does hiding this node change the frame?
+
+    Arithmetic says where a box landed; it cannot say whether any of it survived
+    to the picture. An element can sit on the canvas by every box measure and
+    contribute nothing, because a later sibling painted over it — and that
+    passes every box-based reading there is.
+
+    Each variant is **the same frame with one node hidden**, never the node
+    drawn on its own. Isolating a node changes what it is composited against,
+    which is enough to measure a plainly visible element as invisible: a pixel
+    test can only see a node against some backdrop, and the isolated backdrop is
+    not the one the composition has.
+
+    ``display="none"`` is the hide that works — probed, not assumed.
+    ``visibility="hidden"`` is silently ignored by this ThorVG build, and
+    ``opacity="0"`` works but leaves the node in the tree to be composited.
+    """
+    from nanoframes.render import render_svg
+
+    def draw() -> object:
+        return render_svg(ET.tostring(root, encoding="unicode"), width, height,
+                          threads=threads)
+
+    baseline = draw()
+    for record, node in probed:
+        # Only "not painted" is a reason to skip: a node its clip window or a
+        # zero opacity kept out of the frame cannot contribute, and needs no
+        # render to say so. An unmeasured box is NOT a reason — the pixel answer
+        # does not depend on the box, only the claim about where it landed does.
+        if not record.painted:
+            continue
+        previous = node.get("display")
+        node.set("display", "none")
+        try:
+            differing, _ = frame_distance(baseline, draw())
+        finally:
+            if previous is None:
+                node.attrib.pop("display", None)
+            else:
+                node.set("display", previous)
+        record.contributes = differing > 0.0
+
+
+def frame_distance(a, b) -> tuple[float, int]:
+    """Fraction of pixels that differ between two frames, and the largest channel delta."""
+    from PIL import ImageChops
+
+    diff = ImageChops.difference(a.convert("RGB"), b.convert("RGB"))
+    max_delta = max(channel[1] for channel in diff.getextrema())
+    histogram = diff.convert("L").histogram()
+    total = diff.width * diff.height
+    return (sum(histogram[1:]) / total if total else 0.0), max_delta
 
 
 def _coverage(doc: Document, t: float) -> float:
@@ -264,21 +365,14 @@ def loop_seam(doc: Document, scale: float = 1.0) -> SeamReport:
     which is easy to miss when authoring: closing the motion at ``duration``
     instead leaves a visible jump here.
     """
-    from PIL import ImageChops
-
     from nanoframes.render import render_frame
 
     comp = doc.composition
     first_t = 0.0
     last_t = timeline.last_frame_time(comp)
-    first = render_frame(doc, first_t, cache=None, scale=scale).convert("RGB")
-    last = render_frame(doc, last_t, cache=None, scale=scale).convert("RGB")
-
-    diff = ImageChops.difference(first, last)
-    max_delta = max(channel[1] for channel in diff.getextrema())
-    histogram = diff.convert("L").histogram()
-    changed = sum(histogram[1:])
-    total = diff.width * diff.height
+    differing, max_delta = frame_distance(
+        render_frame(doc, first_t, cache=None, scale=scale),
+        render_frame(doc, last_t, cache=None, scale=scale),
+    )
     return SeamReport(first_t=first_t, last_t=last_t,
-                      differing_fraction=(changed / total) if total else 0.0,
-                      max_channel_delta=max_delta)
+                      differing_fraction=differing, max_channel_delta=max_delta)

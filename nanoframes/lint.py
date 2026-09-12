@@ -228,6 +228,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_clips(doc.composition, findings)
     _check_assets(doc, findings)
     _check_image_aspect(doc, findings)
+    _check_inert_attributes(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
     _check_nested(doc, measurer, findings, _depth)
@@ -468,6 +469,28 @@ def _check_image_aspect(doc: Document, findings: list[Finding]) -> None:
             f"element {node.get('id') or '<image>'}: unknown data-aspect {raw!r}"
             f" (expected one of {', '.join(media.ASPECT_MODES)}) — geometry left as authored",
             code="image.bad_aspect", element=node.get("id") or "<image>",
+        ))
+
+
+def _check_inert_attributes(doc: Document, findings: list[Finding]) -> None:
+    """Warn about attributes this ThorVG build accepts and ignores.
+
+    Probed rather than assumed: ``visibility="hidden"`` on an element leaves the
+    element in the picture. An author who wrote it has said something about the
+    frame that the renderer does not do, and gets a wrong picture with no error
+    — the exact failure mode `check` exists to catch. ``display="none"`` is what
+    hides, and it is honoured.
+    """
+    for node in doc.root.iter():
+        raw = node.get("visibility")
+        if raw is None or raw.strip().lower() == "visible":
+            continue
+        findings.append(Finding(
+            "warning",
+            f"element {node.get('id') or local_name(node.tag)}: visibility={raw!r} is"
+            f" ignored by ThorVG — the element is drawn anyway; use display=\"none\"",
+            code="render.inert_attribute",
+            element=node.get("id") or local_name(node.tag),
         ))
 
 

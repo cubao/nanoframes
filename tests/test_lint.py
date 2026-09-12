@@ -107,3 +107,25 @@ def test_palette_ignores_non_colors():
            + '<rect width="10" height="10" fill="none" stroke="none"/>'
            + '<rect width="10" height="10" fill="url(#grad)"/></svg>')
     assert "design.palette_over_budget" not in _codes(lint_string(svg))
+
+
+def test_inert_visibility_is_reported():
+    """ThorVG draws the element anyway — probed, not assumed.
+
+    An author who wrote `visibility="hidden"` has asked for something the
+    renderer does not do, and gets a wrong frame with no error.
+    """
+    svg = (CANVAS.format(extra="")
+           + '<rect id="hid" width="10" height="10" fill="#f00" visibility="hidden"/>'
+           + '</svg>')
+    findings = lint_string(svg)
+    assert "render.inert_attribute" in _codes(findings)
+    assert any(f.element == "hid" for f in findings)
+
+
+def test_visibility_visible_is_not_reported():
+    """`visible` is the default, so writing it changes nothing to warn about."""
+    svg = (CANVAS.format(extra="")
+           + '<rect id="ok" width="10" height="10" fill="#0f0" visibility="visible"/>'
+           + '</svg>')
+    assert "render.inert_attribute" not in _codes(lint_string(svg))

@@ -134,6 +134,16 @@ with no other symptom, and `nanoframes check` warns about both:
 frame, and flags the ones that paint nothing; it also compares a loop's seam
 frames.
 
+A box landing on the canvas is not proof that anything of the element reached
+the picture — a later sibling can paint over it, and every arithmetic reading
+still says `on-canvas`. `nanoframes debug <comp> --pixels` answers that
+question by **hiding each named element in turn and re-rendering the same
+frame**: an element whose removal changes no pixel is buried, and the report
+says so. It costs one render per element, so it is opt-in. Naming an element
+(`id="…"`) is how it opts into being reported — a background rectangle is
+covered by anything full-bleed drawn after it, and saying so every time would
+train the reader to ignore the line.
+
 ## Seamless loops
 
 `frame_count = round(duration × fps)` and rendering walks `t = i/fps` for
@@ -184,6 +194,12 @@ SVG meaning but only within that subset.
   fully transparent — no error, no exception. Rendering prints a warning to
   stderr when that happens; run `nanoframes debug` to see which element is to
   blame.
+- **`visibility` is ignored.** Probed, not assumed: `visibility="hidden"` and
+  `visibility="collapse"` leave the element in the picture. `display="none"` is
+  what hides, and it is honoured. `check` warns when it sees either value
+  (`render.inert_attribute`), because the alternative is a wrong frame with no
+  error. `opacity="0"` also works, but leaves the element in the tree to be
+  composited.
 
 ## Text auto-layout (`data-*` on `<text>`)
 
@@ -251,6 +267,7 @@ labels (each Han char = `font-size` px wide). Query it with
 nanoframes init my-video            # scaffold a .nf.svg
 nanoframes check my-video.nf.svg    # lint (exit 1 on errors)
 nanoframes debug my-video.nf.svg --t 2.0        # where each element lands, frame by frame
+nanoframes debug my-video.nf.svg --pixels       # + hide each element to find buried ones
 nanoframes debug my-video.nf.svg --loop         # + compare the loop's seam frames
 nanoframes measure my-video.nf.svg  # report renderer-exact text widths
 nanoframes render my-video.nf.svg --t 2.0          # single frame PNG

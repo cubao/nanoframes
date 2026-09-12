@@ -153,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, default=0.0, help="frame to report (seconds)")
     sp.add_argument("--samples", type=int, default=24, help="frames sampled by the clip scan")
     sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
+    sp.add_argument("--pixels", action="store_true",
+                    help="probe whether hiding each element changes the frame"
+                         " (one extra render per element; finds buried elements)")
+    sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
     sp.add_argument("--loop", action="store_true",
                     help="also compare the first and last frame (loop seam)")
     sp.add_argument("--json", action="store_true",
@@ -415,7 +419,8 @@ def cmd_debug(args: argparse.Namespace) -> int:
 
     doc = _load(args.composition)
     m = measurer()
-    report = diagnose.frame_report(doc, args.t, measurer=m)
+    report = diagnose.frame_report(doc, args.t, measurer=m, pixels=args.pixels,
+                                   threads=args.threads)
     scan = None if args.no_scan else diagnose.scan_clip(
         doc, measurer=m, samples=max(2, args.samples))
     seam = diagnose.loop_seam(doc) if args.loop else None
@@ -445,6 +450,13 @@ def cmd_debug(args: argparse.Namespace) -> int:
         print(f"  ^ {blank.label} paints nothing at this time: its geometry misses the canvas"
               f" — an animated translate that leaves the frame, or a rotate with no pivot"
               f" (`nanoframes check` names those)")
+    if args.pixels and report.covered:
+        for buried in report.covered:
+            print(f"  ~ {buried.label} is on the canvas but buried: hiding it would change"
+                  f" nothing, so nothing of it reaches the picture. Something drawn after it"
+                  f" covers it — move it later in document order.")
+        print(f"  {len(report.elements)} element(s) probed by hiding each in turn"
+              f" and re-rendering this frame.")
 
     if scan is not None:
         print(f"clip scan: {scan.sampled} of {scan.frame_count} frames sampled")
