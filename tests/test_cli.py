@@ -34,9 +34,9 @@ def test_help_prints_docs_skill_guide():
     import io
 
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        with pytest.raises(SystemExit) as excinfo:
-            main(["--help"])
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf), \
+            pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
     assert excinfo.value.code == 0
     out = buf.getvalue()
     # the pointer block, same as the bare invocation
@@ -182,7 +182,7 @@ def test_render_dpi_multiplies_the_raster(tmp_path):
 def test_render_dpi_rejects_nonpositive():
     import contextlib
 
-    with pytest.raises(SystemExit) as exc:
-        with contextlib.redirect_stderr(open(os.devnull, "w")):
-            run(["render", TITLE, "--t", "0", "--dpi", "0"])
+    with pytest.raises(SystemExit) as exc, \
+            contextlib.redirect_stderr(open(os.devnull, "w")):
+        run(["render", TITLE, "--t", "0", "--dpi", "0"])
     assert exc.value.code == 2

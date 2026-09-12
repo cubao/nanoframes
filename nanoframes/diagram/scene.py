@@ -149,10 +149,7 @@ def translate(scene: Scene, dx: float, dy: float) -> Scene:
         return scene
     for group in scene.groups:
         for part in group.parts:
-            if isinstance(part, Rect) and part.weight in ("box", "chip"):
-                part.x += dx
-                part.y += dy
-            elif isinstance(part, Text):
+            if isinstance(part, Rect) and part.weight in ("box", "chip") or isinstance(part, Text):
                 part.x += dx
                 part.y += dy
             elif isinstance(part, Path):

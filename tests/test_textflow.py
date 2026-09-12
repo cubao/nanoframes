@@ -6,7 +6,6 @@ same code the render pipeline uses), asserting the geometry bake injects.
 
 import xml.etree.ElementTree as ET
 
-
 from nanoframes import bake
 from nanoframes.measure import Measurer
 from nanoframes.parse import parse_string
@@ -90,6 +89,7 @@ def test_measure_cli(capsys, tmp_path):
 def test_bundled_maple_mono_cn_font_present_and_monospace():
     """The bundled monospace CJK font exists, is monospace, and is known-safe."""
     import os
+
     from nanoframes.render import DEFAULT_FONT_CANDIDATES
 
     bundled = [p for p in DEFAULT_FONT_CANDIDATES if "SarasaMonoSC" in p]

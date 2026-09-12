@@ -123,19 +123,6 @@ class SeamReport:
         return self.differing_fraction == 0.0
 
 
-def _painted(node) -> bool:
-    """Whether bake left this node drawing anything at all in this frame."""
-    if node.get("display") == "none":
-        return False
-    opacity = node.get("opacity")
-    if opacity is not None:
-        try:
-            return float(opacity) > 0.0
-        except ValueError:
-            return True
-    return True
-
-
 def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True) -> FrameReport:
     """Per-element boxes for the frame at ``t``, plus its canvas coverage."""
     comp = doc.composition
@@ -144,17 +131,16 @@ def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True) 
     report = FrameReport(t=t, width=comp.width, height=comp.height,
                          frame_index=round(t * comp.fps))
     for path, node, ancestors in bounds.iter_renderable(root):
-        measured = bounds.painted_bounds(node, measurer)
-        box = measured.box.transform(ancestors) if measured.box is not None else None
+        painted, box, complete = bounds.placed(node, ancestors, measurer)
         record = ElementBox(
             path=path,
             depth=len(path) - 1,
             label=bounds.label(node),  # the baked node: auto-layout may have added nodes
             box=box,
-            status=bounds.classify(box, canvas) if box is not None and measured.complete
+            status=bounds.classify(box, canvas) if box is not None and complete
             else "unmeasured",
-            painted=_painted(node),
-            complete=measured.complete,
+            painted=painted,
+            complete=complete,
             named=bool(node.get("id")) or len(path) == 1,
         )
         if record.named or record.blank:
@@ -186,19 +172,18 @@ def scan_clip(doc: Document, measurer=None, samples: int = SCAN_SAMPLES) -> Clip
     for t in scan.times:
         root = bake.bake_tree(doc, t, measurer=measurer)
         for path, node, ancestors in bounds.iter_renderable(root):
-            measured = bounds.painted_bounds(node, measurer)
+            painted, box, complete = bounds.placed(node, ancestors, measurer)
             entry = tracked.get(path)
             if entry is None:
                 entry = ElementFrames(path=path, label=bounds.label(node),
                                       named=bool(node.get("id")) or len(path) == 1)
                 tracked[path] = entry
-            entry.complete = entry.complete and measured.complete
-            if not _painted(node):
+            entry.complete = entry.complete and complete
+            if not painted:
                 continue
             entry.painted_frames += 1
-            if measured.box is None:
+            if box is None:
                 continue
-            box = measured.box.transform(ancestors)
             if box.intersects(canvas):
                 entry.on_canvas_frames += 1
             elif entry.first_off_at is None:

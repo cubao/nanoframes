@@ -156,7 +156,7 @@ def test_flow_emits_wellformed_composition(measure):
     joined = "".join(el.text or "" for el in root.iter(SVG + "text"))
     for expected in ("Ingest path", "Edge", "API Gateway", "Postgres", "TLS", "SQL"):
         assert expected in joined
-    assert "text-anchor=\"middle\"" not in svg, "ThorVG ignores text-anchor" 
+    assert "text-anchor=\"middle\"" not in svg, "ThorVG ignores text-anchor"
 
 
 def test_flow_snaps_positions_to_the_4px_grid(measure):
@@ -241,7 +241,7 @@ def test_arrow_label_masks_stay_clear_of_their_stroke(measure):
     """
 
     scene = build_scene(parse_spec(flow_spec()), measurer=measure)
-    arrows = [t for t in scene.texts("arrow")]
+    arrows = list(scene.texts("arrow"))
     assert arrows
     connector_points = [p.points for p in scene.paths()]
     for run in arrows:
@@ -556,14 +556,14 @@ def test_load_spec_surfaces_json_errors(tmp_path):
 def test_geometry_helpers():
     assert geo.q4(82.5) == 84
     assert not geo.on_grid(82.5)
-    points, length = geo.elbow((0, 0), (100, 100), "right", "up")
+    points, length = geo.elbow((0, 0), (100, 100), "right")
     assert points[0] == (0, 0) and points[-1] == (100, 100)
     assert length > 0
     d = geo.path_d(points)
     assert d.startswith("M 0,0") and " Q " in d
-    straight, _ = geo.elbow((0, 0), (0, 80), "down", "up")
+    straight, _ = geo.elbow((0, 0), (0, 80), "down")
     assert len(straight) == 2
-    points, _ = geo.elbow((0, 0), (100, 100), "right", "up")
+    points, _ = geo.elbow((0, 0), (100, 100), "right")
     assert geo.point_at(points, 0) == (0, 0)
     assert geo.point_at(points, 10_000) == (100, 100)
     pts, at = geo.arrowhead([(0, 0), (40, 0)])
@@ -699,3 +699,35 @@ def test_plain_skins_emit_no_wobble(measure):
     # Every connector is a straight/elbow path with no quadratic bows of its own.
     for path in scene.paths():
         assert " M " not in path.d, "a clean connector should be one path"
+
+
+def test_diagram_text_is_exact_with_the_real_measurer():
+    """The layout's text fits its boxes and centres on its anchors, measured for real.
+
+    The layout tests above use a synthetic measurer so they do not need ThorVG.
+    This one runs the same flow through the renderer-exact Measurer, which is the
+    only way to catch a disagreement between "the width the box was sized for"
+    and "the width the emitter places".
+    """
+    from nanoframes.diagram.text import text_box
+    from nanoframes.render import measurer
+
+    m = measurer()
+    scene = build_scene(parse_spec(flow_spec()), measurer=m)
+    for group in scene.groups:
+        if not group.name.startswith("node:"):
+            continue
+        box = next(p for p in group.parts if isinstance(p, Rect) and p.weight == "box")
+        for run in [p for p in group.parts if isinstance(p, Text)]:
+            ink = m.ink(run.content, run.family, "400", run.size)
+            assert ink.w <= box.w, f"{run.content!r} is wider than its box"
+            if run.anchor == "middle":
+                # Where the emitter will put it, per its own rule: the drawn
+                # span's centre lands on the anchor within rounding.
+                placed = run.x - ink.w / 2.0 + ink.left_dx
+                centre = placed + ink.w / 2.0
+                assert abs(centre - run.x) <= 1.0, f"{run.content!r} centres at {centre:.1f}"
+    for run in scene.texts("arrow"):
+        plate = text_box(run, m)
+        ink = m.ink(run.content, run.family, "400", run.size)
+        assert plate[2] >= ink.w, "an arrow label's plate must cover its ink"

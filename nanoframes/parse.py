@@ -6,8 +6,8 @@ root to emit per-frame SVG without re-parsing.
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -40,15 +40,15 @@ class Document:
 def _to_float(value: str, name: str) -> float:
     try:
         return float(value)
-    except (TypeError, ValueError):
-        raise ParseError(f"invalid numeric attribute {name!r}: {value!r}")
+    except (TypeError, ValueError) as exc:
+        raise ParseError(f"invalid numeric attribute {name!r}: {value!r}") from exc
 
 
 def _to_int(value: str, name: str) -> int:
     try:
         return int(float(value))
-    except (TypeError, ValueError):
-        raise ParseError(f"invalid integer attribute {name!r}: {value!r}")
+    except (TypeError, ValueError) as exc:
+        raise ParseError(f"invalid integer attribute {name!r}: {value!r}") from exc
 
 
 def _collect_elements(root: ET.Element) -> list[Element]:

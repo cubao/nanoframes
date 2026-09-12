@@ -351,6 +351,21 @@ def iter_renderable(root, ancestors: Matrix = IDENTITY, path: tuple = ()):
         yield from iter_renderable(child, inner, here)
 
 
+def placed(node, ancestors: Matrix, measurer=None) -> tuple:
+    """This frame's painted geometry for one baked node, in canvas coordinates.
+
+    The single place that turns a baked node into "where would it draw?", shared
+    by `nanoframes debug`'s frame report and clip scan and by `check`'s
+    visibility pass. Returns ``(painted, box, complete)``: ``painted`` is False
+    when bake hid the node (``display="none"``, or folded-to-zero opacity), which
+    is different from the node being unmeasurable.
+    """
+    measured = painted_bounds(node, measurer)
+    if measured.box is None:
+        return False, None, measured.complete
+    return True, measured.box.transform(ancestors), measured.complete
+
+
 def label(node) -> str:
     """A short human label for a node (``#id``, else ``<tag>``)."""
     if node is None:

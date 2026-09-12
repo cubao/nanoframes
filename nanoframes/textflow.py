@@ -128,7 +128,7 @@ def _expand_wrap(parent, node, content, style, measurer, bg_color, max_width) ->
     parent_node = list(parent)
     idx = parent_node.index(node)
     parent.remove(node)
-    for i, (line_text, m) in enumerate(lines):
+    for i, (line_text, _metrics) in enumerate(lines):
         line = ET.Element(qname("text"))
         line.set("x", f"{style['x']:g}")
         line.set("y", f"{style['y'] + i * step:g}")

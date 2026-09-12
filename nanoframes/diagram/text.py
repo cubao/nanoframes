@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 _MONO_USER = ("mono", "monospace", "sarasa", "tofu", "等宽", "console", "fixedsys", "courier")
 
 
@@ -152,7 +151,7 @@ def node_texts(measurer, x: float, y: float, w: float, h: float, label: str,
     is *measured* (not assumed from the point size), because this renderer's
     faces carry very different descender depths.
     """
-    from nanoframes.diagram.scene import Rect, Text
+    from nanoframes.diagram.scene import Text
 
     out = []
     cx = x + w / 2.0
@@ -178,16 +177,34 @@ def node_texts(measurer, x: float, y: float, w: float, h: float, label: str,
                         size=ramp["sub"], fill=muted, family=font_sub,
                         anchor="middle", kind="sub"))
     if tag:
-        # The chip and its text are emitted together so they cannot drift apart.
         tag_m = measure(measurer, tag.upper(), font_sub, "400", ramp["tag"])
         chip_x, chip_y = x + TAG_INSET_X, y + TAG_INSET_Y
-        out.append(Rect(x=chip_x, y=chip_y, w=TAG_W, h=TAG_H, rx=2, fill="none",
-                        stroke=ink, stroke_opacity=0.4, stroke_width=0.8, weight="chip"))
         out.append(Text(x=chip_x + TAG_W / 2.0,
                         y=chip_y + (TAG_H + (-tag_m.top) - tag_m.bottom) / 2.0,
                         content=tag.upper(), size=ramp["tag"],
                         fill=soft, family=font_sub, anchor="middle", kind="tag"))
     return out
+
+
+def tag_chip(x: float, y: float, name: str, stroke: str, rough: bool = False) -> list:
+    """The type tag's chip outline at ``(x, y)`` — a rect, or hand-drawn strokes.
+
+    Emitted by the same module that lays out the tag's text, from the same
+    constants, so the outline cannot drift from the text. A caller that wants the
+    sketchy register gets the right outline on the first pass, instead of
+    finding and replacing a rect in the assembled group.
+    """
+    from nanoframes.diagram.scene import Path, Rect
+
+    chip_x, chip_y = x + TAG_INSET_X, y + TAG_INSET_Y
+    if not rough:
+        return [Rect(x=chip_x, y=chip_y, w=TAG_W, h=TAG_H, rx=2, fill="none",
+                     stroke=stroke, stroke_opacity=0.4, stroke_width=0.8,
+                     weight="chip")]
+    from nanoframes.diagram import sketchy
+
+    return [Path(d=d, stroke=stroke, stroke_width=1.4, opacity=0.4)
+            for d in sketchy.rough_rect(chip_x, chip_y, TAG_W, TAG_H, name)]
 
 
 # ---------------------------------------------------------------------------

@@ -22,13 +22,12 @@ import os
 import subprocess
 import sys
 
-from nanoframes import __version__
+from nanoframes import __version__, walkthrough
 from nanoframes.cache import FrameCache
 from nanoframes.lint import has_errors, lint_path, lint_string
 from nanoframes.parse import ParseError, parse_file
 from nanoframes.render import frame_is_blank, measurer, render_frame
 from nanoframes.video import render_video
-from nanoframes import walkthrough
 
 TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
      data-width="960" data-height="540" data-fps="30" data-duration="6.0"
@@ -222,7 +221,7 @@ def _load(path: str):
         return parse_file(path)
     except ParseError as exc:
         print(f"nanoframes: {exc}", file=sys.stderr)
-        raise SystemExit(2)
+        raise SystemExit(2) from None
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -286,6 +285,7 @@ def cmd_fonts_list(args: argparse.Namespace) -> int:
 
 def cmd_fonts_add(args: argparse.Namespace) -> int:
     import shutil
+
     from nanoframes.fonts import family_name
 
     src = args.path

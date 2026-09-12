@@ -57,12 +57,12 @@ def _corner(p0: tuple, p1: tuple, p2: tuple, r: float) -> tuple[str, tuple]:
     return frag, b
 
 
-def elbow(a: tuple, b: tuple, a_dir: str, b_dir: str, r: float = CORNER_R) -> tuple[list, float]:
+def elbow(a: tuple, b: tuple, a_dir: str, r: float = CORNER_R) -> tuple[list, float]:
     """Orthogonal route from ``a`` to ``b``; returns ``([points], rounded_length)``.
 
-    ``a_dir`` / ``b_dir`` are the port orientations the points were chosen on
-    (``right`` / ``left`` / ``up`` / ``down``). The route leaves along ``a_dir``,
-    turns on one (L) or two (Z) corners, and arrives along ``b_dir`` reversed.
+    ``a_dir`` is the port orientation the route leaves by (``right`` / ``left`` /
+    ``up`` / ``down``); the arrival side is the same axis, chosen by the riser
+    placement below.
     ``rounded_length`` is the polyline length minus the two corner cuts, i.e.
     the arc length actually stroked — the label midpoint walks this.
     """

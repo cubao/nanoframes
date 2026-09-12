@@ -188,7 +188,7 @@ def test_request_carries_text_style_and_kind():
 
     def handler(req):
         seen.update(req.__dict__)
-        return None
+        return
 
     bake.bake_svg(parse_string(EXAMPLE), 0.5, text_handler=handler)
     assert seen["text"] == "hello"

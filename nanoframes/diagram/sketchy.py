@@ -68,15 +68,14 @@ def wobbly_line(x1: float, y1: float, x2: float, y2: float, seed: int, index: in
     return f"M {_f(x1)},{_f(y1)} Q {_f(cx)},{_f(cy)} {_f(x2)},{_f(y2)}"
 
 
-def rough_rect(x: float, y: float, w: float, h: float, name: str,
-               seed_offset: int = 0) -> list:
+def rough_rect(x: float, y: float, w: float, h: float, name: str) -> list:
     """``d`` strings for a hand-drawn rectangle outline.
 
     One path per edge (so each side bows independently) plus, when
     ``DOUBLE_STROKE``, a second pass over a slightly inset rectangle — the
     doubled contour a pen leaves when it goes around a box twice.
     """
-    seed = _seed(name) + seed_offset
+    seed = _seed(name)
 
     def edges(box: tuple) -> list:
         bx, by, bw, bh = box

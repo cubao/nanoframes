@@ -338,23 +338,22 @@ def _check_visibility(doc: Document, measurer, findings: list[Finding]) -> None:
     labels: dict[tuple, str] = {}
     for t in timeline.sample_times(comp, cap=_MAX_SAMPLES):
         for path, node, ancestors in bounds.iter_renderable(bake.bake_tree(doc, t, measurer=measurer)):
-            measured = bounds.painted_bounds(node, measurer)
-            box = measured.box.transform(ancestors) if measured.box is not None else None
-            samples.setdefault(path, []).append((box, measured.complete))
+            painted, box, complete = bounds.placed(node, ancestors, measurer)
+            samples.setdefault(path, []).append((box if painted else None, complete))
             # Label from the baked node: auto-layout can insert nodes, so a
             # source-tree path is not guaranteed to name the same element.
             labels.setdefault(path, bounds.label(node))
 
     offenders: dict[tuple, bounds.Box] = {}
     for path, seen in samples.items():
-        painted = [box for box, _ in seen if box is not None]
-        if not painted:
+        placed_boxes = [box for box, _ in seen if box is not None]
+        if not placed_boxes:
             continue  # hidden by its clip window in every sampled frame
         if not all(complete for _, complete in seen):
             continue  # unmeasurable geometry: say nothing rather than guess
-        if any(box.intersects(canvas) for box in painted):
+        if any(box.intersects(canvas) for box in placed_boxes):
             continue  # lands on the canvas at least once
-        offenders[path] = painted[0]
+        offenders[path] = placed_boxes[0]
 
     # Report the deepest offender in each chain: when a group never lands, its
     # children never do either, and one finding is enough.

@@ -14,6 +14,7 @@ same way with the same fonts, so metrics and final frames cannot drift.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import tempfile
@@ -97,10 +98,8 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4,
     finally:
         canvas.destroy()
         engine.term()
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(path)
-        except OSError:
-            pass
 
 
 _MEASURER = None

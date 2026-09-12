@@ -158,8 +158,9 @@ def _fancy_text_handler(req: TextRequest) -> bytes | None:
     """
     if req.kind != "fancy":
         return None
-    from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
     from PIL import Image, ImageDraw, ImageFont
+
+    from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
 
     text = "你好世界" if req.text.strip() == "hello world" else req.text
     size = max(8, round(req.font_size))
@@ -200,8 +201,8 @@ def build(out_dir: str = "build/walkthrough", with_audio: bool = True) -> str:
     for d in (comp_dir, frame_dir, video_dir, audio_dir, asset_dir, lottie_dir):
         os.makedirs(d, exist_ok=True)
 
-    from nanoframes.render import render_frame
     from nanoframes.cache import FrameCache
+    from nanoframes.render import render_frame
     from nanoframes.video import render_video
 
     # Write the composition + the shared asset (green orb).

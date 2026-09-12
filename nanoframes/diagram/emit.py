@@ -13,7 +13,6 @@ from nanoframes.diagram import text as txt
 from nanoframes.diagram.scene import Group, Path, Rect, Scene, Text
 from nanoframes.diagram.text import text_box
 
-
 _MASK_PAD_Y = 4.0
 
 

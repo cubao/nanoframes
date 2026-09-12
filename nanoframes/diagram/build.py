@@ -19,8 +19,8 @@ from __future__ import annotations
 import math
 
 from nanoframes.diagram import geometry as geo
-from nanoframes.diagram import sketchy
 from nanoframes.diagram import scene as scene_mod
+from nanoframes.diagram import sketchy
 from nanoframes.diagram import text as txt
 from nanoframes.diagram.scene import Group, Path, Rect, Scene, Text
 from nanoframes.diagram.spec import BUDGET_EDGES, BUDGET_NODES, HARD_NODES, Spec
@@ -35,6 +35,9 @@ ARROW_GAP = 8.0
 LEGEND_H = 60.0
 ZONE_PAD = 16.0
 ZONE_HEAD = 32.0
+# Only a preset-sized canvas (or an explicit one) is worth centring
+# a small figure in; below this much slack the figure just sits at the top.
+CENTRE_MIN_SLACK = 320.0
 
 
 class _Builder:
@@ -164,7 +167,7 @@ def _finish(scene: Scene, spec: Spec, minimum: tuple | None = None,
     header = header_height(spec)
     figure_top = y0 + dy
     slack = min_h - (header + (y1 + dy - figure_top) + 2 * spec.margin)
-    if slack > 8 * spec.margin and figure_top >= header + spec.margin - 1:
+    if slack > CENTRE_MIN_SLACK and figure_top >= header + spec.margin - 1:
         # A preset (or taller explicit canvas) leaves vertical slack: centre the
         # *figure* in the space below the title band rather than parking it at
         # the top with one large void underneath. The header stays put.
@@ -214,29 +217,31 @@ def resolve_ramp(spec: Spec) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _roughen_chip(group: Group, x: float, y: float, w: float, h: float,
-                  name: str, tokens: Tokens) -> None:
-    """Replace a plain tag chip with a hand-drawn one, if one was emitted."""
-    for i, part in enumerate(group.parts):
-        if isinstance(part, Rect) and part.weight == "chip" and abs(part.x - x) < 0.6 \
-                and abs(part.y - y) < 0.6:
-            group.parts[i:i + 1] = _sketchy_paths(
-                x, y, w, h, name,
-                {"stroke": part.stroke, "stroke_opacity": part.stroke_opacity,
-                 "stroke_width": part.stroke_width}, tokens)
-            return
-
-
 def _rough(tokens: Tokens) -> bool:
     """Whether this skin draws with hand-drawn strokes."""
     return tokens.skin == "sketchy"
 
 
+def _box_parts(x: float, y: float, w: float, h: float, name: str, style: dict,
+               tokens: Tokens, rx: float = 6.0, weight: str = "box") -> list:
+    """A node box: a crisp ``Rect``, or a plate plus hand-drawn outline.
+
+    One place decides what "this skin draws a box" means, so a new skin changes
+    it once instead of in every caller.
+    """
+    if not _rough(tokens):
+        return [Rect(x=x, y=y, w=w, h=h, rx=rx, weight=weight, **style)]
+    parts = [Rect(x=x, y=y, w=w, h=h, rx=rx, weight=weight,
+                  fill=style["fill"], fill_opacity=style["fill_opacity"])]
+    parts += _sketchy_paths(x, y, w, h, name, _sketchy_style(style), tokens)
+    return parts
+
+
 def _sketchy_paths(x: float, y: float, w: float, h: float, name: str, style: dict,
-                   tokens: Tokens, seed_offset: int = 0) -> list:
+                   tokens: Tokens) -> list:
     """A hand-drawn rectangle outline, styled like the ``Rect`` it replaces."""
     out = []
-    for i, d in enumerate(sketchy.rough_rect(x, y, w, h, name, seed_offset)):
+    for i, d in enumerate(sketchy.rough_rect(x, y, w, h, name)):
         # The second pass is lighter, like a re-traced edge.
         width = style["stroke_width"] * (0.7 if i >= 4 else 1.0)
         out.append(Path(d=d, stroke=style["stroke"], stroke_width=width,
@@ -336,19 +341,13 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
         g = Group(name=f"node:{node.id}")
         g.start, g.fade = b.slice(REVEAL_FADE)
         style = t.node_style(node.type)
-        if _rough(t):
-            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
-                                fill=style["fill"], fill_opacity=style["fill_opacity"]))
-            g.parts += _sketchy_paths(x, y, w, h, f"node:{node.id}",
-                                      _sketchy_style(style), t)
-        else:
-            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box", **style))
+        g.parts += _box_parts(x, y, w, h, f"node:{node.id}", style, t)
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, node.label, node.sub, node.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=node.focal)
-        if _rough(t):
-            _roughen_chip(g, x + txt.TAG_INSET_X, y + txt.TAG_INSET_Y,
-                          txt.TAG_W, txt.TAG_H, f"tag:{node.id}", t)
+        if node.tag:
+            g.parts += txt.tag_chip(x, y, f"tag:{node.id}", style["stroke"],
+                                    rough=_rough(t))
         groups.append(g)
 
     groups += labels
@@ -445,7 +444,7 @@ def _route_edge(b: _Builder, spec: Spec, boxes: dict, edge) -> Path:
     b_ratio = (fan_in.index(edge) + 1) / (len(fan_in) + 1)
     a = _port_point(boxes[edge.source], a_side, a_ratio)
     z = _port_point(boxes[edge.target], b_side, b_ratio)
-    points, _ = geo.elbow(a, z, a_side, b_side)
+    points, _ = geo.elbow(a, z, a_side)
     style = t.edge_style(edge.style)
     if _rough(t):
         # Hand-drawn connectors: each leg bows, corners stay on the elbow points.
@@ -510,18 +509,11 @@ def _zone_group(b: _Builder, spec: Spec, node, boxes: dict):
     x, y = geo.q4(x0), geo.q4(y0)
     w, h = geo.q4(x1 - x), geo.q4(y1 - y)
     g = Group(name=f"zone:{zone.id}")
-    if _rough(t):
-        g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=8.0, weight="zone",
-                            fill=t.zone_fill[0], fill_opacity=t.zone_fill[1]))
-        g.parts += _sketchy_paths(
-            x, y, w, h, f"zone:{zone.id}",
-            {"stroke": t.zone_stroke[0], "stroke_opacity": t.zone_stroke[1],
-             "stroke_width": 0.8}, t)
-    else:
-        g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=8.0, weight="zone",
-                            fill=t.zone_fill[0], fill_opacity=t.zone_fill[1],
-                            stroke=t.zone_stroke[0], stroke_opacity=t.zone_stroke[1],
-                            stroke_width=0.8))
+    g.parts += _box_parts(
+        x, y, w, h, f"zone:{zone.id}",
+        {"fill": t.zone_fill[0], "fill_opacity": t.zone_fill[1],
+         "stroke": t.zone_stroke[0], "stroke_opacity": t.zone_stroke[1],
+         "stroke_width": 0.8}, t, rx=8.0, weight="zone")
     label = zone.label.upper()
     tracking = round(0.14 * t.ramp["tag"], 2)
     run_w = txt.visual_width(b.measurer, label, FONT_MONO, "400", t.ramp["tag"],
@@ -650,12 +642,7 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
     hub_x, hub_y = geo.q4(cx - hub_w / 2.0), geo.q4(cy - hub_h / 2.0)
     hub_style = {"fill": t.ink, "fill_opacity": 1.0, "stroke": t.ink,
                  "stroke_opacity": 1.0, "stroke_width": 1.0}
-    hub.parts.append(Rect(x=hub_x, y=hub_y, w=hub_w, h=hub_h, rx=8.0, weight="box",
-                          fill=t.ink, fill_opacity=1.0,
-                          stroke=None if _rough(t) else t.ink))
-    if _rough(t):
-        hub.parts += _sketchy_paths(hub_x, hub_y, hub_w, hub_h, "hub",
-                                    _sketchy_style(hub_style), t)
+    hub.parts += _box_parts(hub_x, hub_y, hub_w, hub_h, "hub", hub_style, t, rx=8.0)
     hub.parts += txt.node_texts(b.measurer, hub_x, hub_y, hub_w, hub_h,
                                 loop.hub_label, loop.hub_sub, "", t.ramp,
                                 b.node_font, b.sub_font, t.paper, t.paper, t.paper, t.accent)
@@ -666,15 +653,13 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
         g = Group(name=f"node:{st.id}")
         g.start, g.fade = b.slice(REVEAL_FADE)
         style = t.node_style("focal" if st.focal else "backend")
-        if _rough(t):
-            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box",
-                                fill=style["fill"], fill_opacity=style["fill_opacity"]))
-            g.parts += _sketchy_paths(x, y, w, h, f"node:{st.id}", _sketchy_style(style), t)
-        else:
-            g.parts.append(Rect(x=x, y=y, w=w, h=h, rx=6.0, weight="box", **style))
+        g.parts += _box_parts(x, y, w, h, f"node:{st.id}", style, t)
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, st.label, st.sub, st.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=st.focal)
+        if st.tag:
+            g.parts += txt.tag_chip(x, y, f"tag:{st.id}", style["stroke"],
+                                    rough=_rough(t))
         groups.append(g)
 
     items = [("STATION", "#ffffff" if t.skin == "light" else t.paper_2, t.ink, None),

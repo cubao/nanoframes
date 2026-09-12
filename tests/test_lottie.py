@@ -7,8 +7,8 @@ import pytest
 
 from nanoframes.lottie import (
     LottieError,
-    parse_background,
     load_scene,
+    parse_background,
     render_lottie_frames,
     render_lottie_video,
 )
@@ -163,10 +163,10 @@ def shutil_which(name):
 
 
 def test_cli_lottie(tmp_path):
-    from nanoframes.cli import main
-
     import contextlib
     import io
+
+    from nanoframes.cli import main
 
     buf = io.StringIO()
     keep = str(tmp_path / "frames")
@@ -182,11 +182,12 @@ def test_cli_lottie(tmp_path):
 
 
 def test_cli_lottie_background_flag(tmp_path):
-    from nanoframes.cli import main
-
     import contextlib
     import io
+
     from PIL import Image
+
+    from nanoframes.cli import main
 
     keep = str(tmp_path / "frames")
     out = str(tmp_path / "out.mp4")
@@ -206,10 +207,10 @@ def test_cli_lottie_background_flag(tmp_path):
 
 
 def test_cli_lottie_missing_file(tmp_path):
-    from nanoframes.cli import main
-
     import contextlib
     import io
+
+    from nanoframes.cli import main
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):

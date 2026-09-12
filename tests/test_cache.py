@@ -2,7 +2,6 @@
 
 import os
 
-
 from nanoframes.cache import FrameCache
 from nanoframes.parse import parse_file, parse_string
 from nanoframes.render import render_frame

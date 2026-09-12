@@ -1,0 +1,18 @@
+# nanoframes lint policy.
+#
+# Defaults (E4/E7/E9/F) plus the import-order, bug-class and simplification
+# rules. Deliberately not enabled:
+#   E501  — the source lines here are prose-heavy and run to ~100 columns;
+#           rewrapping them would hurt readability, not help it.
+#   ARG   — several public functions keep a parameter for signature symmetry
+#           with a sibling (documented at the call site).
+#   SIM115/SIM108/SIM102 — context-manager and ternary preferences that read
+#           worse in this codebase's style.
+#   UP037 — quoted forward references are written deliberately for Python 3.9
+#           compatibility in modules without `from __future__ import annotations`.
+line-length = 100
+target-version = "py39"
+
+[lint]
+extend-select = ["I", "B", "C4", "SIM", "PERF", "RET", "W"]
+ignore = ["E501", "SIM115", "SIM108", "SIM102", "PERF401", "PERF102", "C408"]
