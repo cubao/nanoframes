@@ -22,8 +22,23 @@ digest. Anything that can move a pixel is in; anything that cannot is out.
 | --- | --- |
 | `source` | the composition, as a canonical projection — attributes sorted, check-only attributes (`data-safe-margin`, `data-palette-budget`) stripped |
 | `media` | the content of every local `<image>` a composition references, named relative to the composition |
-| `fonts` | the content of each font file the renderer registers, keyed by basename |
-| `toolchain` | the `thorvg-python` version, the `nanoframes` version, and a digest of this package's own modules |
+| `fonts` | the content of each face the composition's runs **resolve to**, keyed by basename |
+| `toolchain` | the `thorvg-python` version, the content of the `libthorvg` that package carries, the `nanoframes` version, and a digest of this package's own modules |
+
+`fonts` is a *resolution*, not an inventory. This loader matches a whole
+`font-family` value against the faces it loaded and falls back to the first one
+for a value that matches none (the CSS stacks in a typical composition match
+nothing), so what can move a pixel is the face each run lands on — not every
+face the machine happens to have. The distinction is what makes the component
+comparable across machines: macOS ships Arial and a Linux runner does not, so an
+inventory of candidates differs by construction and *every* cross-machine
+comparison arrived as `changed — fonts changed`, which was true of the
+fingerprint and false of the render. A composition that names no family, or a
+stack that resolves to nothing, draws with the bundled face on every machine and
+now hashes the same on every machine; one that names a face the host lacks
+resolves to the fallback, is a genuinely different face, and still says so. A
+composition with no `<text>` at all has no faces in this component — a font swap
+cannot have moved a frame that draws no glyphs.
 
 Two consequences are deliberate. `data-safe-margin` and `data-palette-budget`
 are read by `lint` and by nothing that draws, so tuning a budget does not
@@ -95,8 +110,11 @@ on every run as `EXCUSED` so that an exemption cannot quietly turn into silence.
 What they are *not* is a layout difference: `nanoframes measure` prints identical
 widths on both machines, and restricting the registered faces to the bundled one
 changes nothing on either — the corpus draws with the same face everywhere. What
-is left is the rasterizer's own rounding of a glyph edge, and that is not in the
-identity at all (see below).
+is left is the rasterizer's own rounding of a glyph edge, and that is exactly
+what the identity now names: every platform wheel carries its own `libthorvg`, so
+a mismatch on the second machine arrives as `changed — toolchain changed`, the
+two bytes-level differences as well as any that would be new. It used to arrive
+as `changed — fonts changed`, which was never the cause.
 
 Three things a green run here does not say:
 
@@ -110,25 +128,32 @@ Three things a green run here does not say:
   round another glyph differently. When it does, the job names the composition
   and the reason, and the choice is to measure it and add it to the exemption
   list, or to treat the claim as falsified for that commit.
-- **That a mismatch here is a diagnosis.** The `fonts` component covers the faces
-  that *exist* on the machine, and that set differs by construction (macOS loads
-  Arial, Linux loads DejaVu), so a cross-machine mismatch always arrives as
-  `changed — fonts changed`. `regression` — the alarming verdict — needs every
-  declared input to be identical, which two machines with different system fonts
-  can never satisfy. The verdict is worth having; its reasons are not a
-  diagnosis of why the two disagree.
+- **That a mismatch here is a diagnosis of *why* two machines disagree.** The
+  reason is now the right component — `toolchain`, because the platform's
+  rasterizer build is in it — but it is still one component covering four inputs,
+  and the verdict does not say whether the pixels moved because of the library,
+  the version or this package. `regression`, the alarming verdict, is reachable
+  again: two machines with the same declared inputs *and* the same rasterizer
+  build that disagree are exactly what it names, and until the library's bytes
+  were in the identity no cross-machine comparison could ever produce it.
 
 ## What is not done here
 
-**The rasterizer's build, the interpreter, and the two libraries.** The identity
-covers the composition, the media, the fonts and the toolchain — not the
-platform's build of the rasterizer, not the Python runtime, not Pillow or NumPy,
-which decode images and measure glyph ink. The workflow pins Python, Pillow and
-NumPy to the versions the ledger was recorded under, so that a red result names
-the machine rather than a dependency bump; that is a pin inside one job, not an
-input in the identity, and a divergence they caused would be reported as a
-cross-machine difference it is not. Carrying them in the identity is the honest
-fix, and it is also what would make `regression` reachable across machines.
+**The interpreter and the two libraries.** The rasterizer's build is covered now
+— the `libthorvg` the installed `thorvg-python` carries is hashed into
+`toolchain`, because a version is not a build and every platform wheel links its
+own copy with its own FreeType. What stays out is the Python runtime and
+Pillow/NumPy, and they stay out on purpose rather than by omission: neither
+draws. Pillow decodes an `<image>` and NumPy carries the pixels, so anything they
+decide reaches the frame *through* the decoded asset — whose bytes are the
+`media` component — or through a measurement whose result is a coordinate in the
+drawn picture, and the code that turns it into one is in `toolchain` already. The
+workflow still pins Pillow and NumPy to the versions the ledger was recorded
+under, so a red result names the machine rather than a dependency bump; that is a
+pin inside one job, not an input in the identity. If a decode ever turns out to
+move a pixel, the honest fix is to add it here, and the way to find out is the
+same as it was for the rasterizer: a cross-machine run whose mismatch no declared
+input can explain.
 
 **A digest in the test suite.** `pytest` asserts the ledger's *shape* — every
 example has an entry, no entry outlives its file, every entry carries its four

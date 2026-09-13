@@ -159,6 +159,25 @@ def family_name(path: str) -> tuple[str, str]:
     return os.path.splitext(os.path.basename(path))[0], ""
 
 
+def face_names(path: str) -> tuple[str, ...]:
+    """The ``font-family`` values that select this face, as this loader matches them.
+
+    One `font-family` value is compared against these **exactly** — no CSS list
+    semantics, no quoting, no per-glyph fallback — so this is the whole set of
+    names that can select the face. The family answers, and so does
+    ``family style`` for a face that is not the regular one: measured with
+    ``Arial.ttf`` and ``Arial Bold.ttf`` both loaded, ``Arial`` resolves to the
+    regular and ``Arial Bold`` to the bold (docs/composition.md, "Known ThorVG
+    behaviors"). An empty tuple means the name table could not be read, and the
+    face then answers to nothing.
+    """
+    family, style = family_name(path)
+    if not family:
+        return ()
+    styled = f"{family} {style}" if style and style.lower() != "regular" else ""
+    return (family, styled) if styled else (family,)
+
+
 def _looks_mono(family: str) -> bool:
     fl = family.lower()
     return any(h in fl for h in _MONO_HINTS)

@@ -7,11 +7,15 @@ and one did not belong:
 * **The fonts.** ThorVG shapes glyphs from the faces loaded on the engine, so
   replacing the bundled CJK face moves every advance, every measured chip and
   every wrapped line with it. Left out, a font swap served the frames drawn
-  with the old face.
+  with the old face. What is covered is the faces a composition's runs *resolve
+  to*, not the faces the machine happens to have — the latter is a property of
+  the machine and made every cross-machine comparison read as a font change.
 * **The toolchain.** ``thorvg-python`` rasterizes the picture, and the
   package's own modules decide what it is asked to draw. Neither is visible in
   the composition's bytes, so an upgrade — or an edit to ``bake.py`` — used to
-  keep serving the previous code's frames.
+  keep serving the previous code's frames. The rasterizer's *build* is in here
+  too, not just its version: each platform wheel carries its own libthorvg, and
+  that is where a cross-machine pixel difference actually comes from.
 * **Check-only attributes** (``data-safe-margin``, ``data-palette-budget``).
   These are read by ``lint`` and by nothing that draws, so they must *not* be
   inputs: tuning a budget used to invalidate every frame of the composition
@@ -32,7 +36,7 @@ from __future__ import annotations
 import hashlib
 import os
 
-from nanoframes import refs
+from nanoframes import fonts, refs
 from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
 from nanoframes.xmlutil import local_name
 
@@ -70,11 +74,12 @@ def projection_hash(root) -> str:
 
 
 _FONTS: str | None = None
+_FACE_NAMES: tuple | None = None
 _TOOLCHAIN: str | None = None
 
 
 def _font_digest(paths) -> str:
-    """Digest over the font files that exist, keyed by basename.
+    """Digest over a set of font files, keyed by basename.
 
     Named by basename rather than by full path so the same face installed in a
     different place hashes the same. A candidate that is absent is skipped: it
@@ -92,13 +97,74 @@ def _font_digest(paths) -> str:
     return digest.hexdigest()
 
 
-def font_fingerprint(extra_paths=()) -> str:
-    """Digest over the fonts the renderer registers.
+def _candidate_names(paths) -> list:
+    """``[(path, the font-family values that select it)]`` for the loadable faces.
 
-    Memoised: the default set is 25 MB on disk and does not change within a
-    process, while a render loop asks for the identity once per frame.
+    Memoised per candidate tuple, because reading a name table opens the font:
+    the tuple is the key rather than a flag, so a caller that swaps the
+    candidates (a test, a vendored set) gets a fresh table.
+    """
+    global _FACE_NAMES
+    if _FACE_NAMES is None or _FACE_NAMES[0] != tuple(paths):
+        _FACE_NAMES = (tuple(paths),
+                       [(p, fonts.face_names(p)) for p in paths])
+    return _FACE_NAMES[1]
+
+
+def _resolve_face(family: str, table: list) -> str | None:
+    """The font file a ``font-family`` value draws with — the loader's own rule.
+
+    An exact match against the faces that were loaded, else the **first** loaded
+    face (docs/composition.md, "Known ThorVG behaviors"). ``family`` empty means
+    the run declared none, which is the same miss.
+    """
+    if family:
+        for path, names in table:
+            if family in names:
+                return path
+    return table[0][0] if table else None
+
+
+def used_faces(root, extra_paths=()) -> tuple[str, ...]:
+    """The font files this composition's runs actually draw with, in document order.
+
+    A run's face is *resolved*, not enumerated: the fingerprint used to cover
+    every face present on the machine, which differs by construction between two
+    machines (macOS ships Arial, Linux ships DejaVu) and so made every
+    cross-machine comparison report `fonts changed` whatever the pixels did. What
+    can move a pixel here is narrower and machine-independent in the common case:
+    when a composition declares no family — or a CSS stack, which matches nothing
+    and falls back — every machine draws it with the same bundled face.
+
+    A composition with no `<text>` at all draws no glyphs, so it has no faces and
+    a font swap cannot have moved a frame of it.
+    """
+    paths = [p for p in (*DEFAULT_FONT_CANDIDATES, *extra_paths) if os.path.exists(p)]
+    table = _candidate_names(paths)
+    faces: list[str] = []
+    for node in root.iter():
+        if local_name(node.tag) != "text":
+            continue
+        path = _resolve_face((node.get("font-family") or "").strip(), table)
+        if path is not None and path not in faces:
+            faces.append(path)
+    return tuple(faces)
+
+
+def font_fingerprint(extra_paths=(), root=None) -> str:
+    """Digest over the fonts a render depends on.
+
+    With a tree, that is the faces its runs resolve to (``used_faces``). With no
+    tree, it is every loadable candidate — the conservative reading, and what a
+    caller asking "what could this machine draw with" wants.
+
+    Memoised for the no-tree case: the default set is tens of MB on disk and does
+    not change within a process. The tree case is computed per call, which is
+    once per parse, not once per frame.
     """
     global _FONTS
+    if root is not None:
+        return _font_digest(used_faces(root, extra_paths))
     if extra_paths:
         return _font_digest(tuple(DEFAULT_FONT_CANDIDATES) + tuple(extra_paths))
     if _FONTS is None:
@@ -133,17 +199,60 @@ def _package_digest() -> str:
     return digest.hexdigest()
 
 
+def _rasterizer_digest() -> str:
+    """Content digest of the rasterizer the installed ``thorvg-python`` carries.
+
+    A version is not a build. Every platform wheel ships its own ``libthorvg-1``
+    and ThorVG statically links FreeType, so two machines with the same pinned
+    ``thorvg-python`` version rasterize with **different bytes** — which is what
+    the cross-architecture run measured, as 9 pixels inside one glyph on
+    `text-measure` that no declared input could name. Hashing the library moves
+    that difference into the identity, where it reads as `toolchain changed`, a
+    diagnosis, instead of arriving as `fonts changed`, which it never was.
+
+    A layout this does not recognise reports which, rather than hashing the same
+    as every other unrecognised one.
+    """
+    try:
+        import thorvg_python
+    except Exception:
+        return "thorvg-python-not-importable"
+    root = os.path.dirname(os.path.abspath(thorvg_python.__file__))
+    try:
+        libraries = sorted(name for name in os.listdir(root)
+                           if name.startswith("libthorvg"))
+    except OSError:
+        return "libthorvg-not-listable"
+    if not libraries:
+        return "libthorvg-not-found"
+    digest = hashlib.sha256()
+    for name in libraries:
+        digest.update(name.encode("utf-8"))
+        digest.update(_NUL)
+        digest.update(refs.file_digest(os.path.join(root, name)).encode("ascii"))
+        digest.update(_NUL)
+    return digest.hexdigest()
+
+
 def toolchain_fingerprint() -> str:
     """What rasterized the frame, and what decided how to ask it.
 
+    Four inputs: the ``thorvg-python`` version, that package's rasterizer build,
+    this package's version, and a digest of this package's own modules.
+
     ffmpeg is deliberately absent: it muxes after the frames are hashed and
     cannot move a pixel of them. A sound mix is outside the frame identity for
-    the same reason.
+    the same reason. The Python interpreter and Pillow/NumPy are absent too, and
+    stay absent: they decode images and measure glyph ink, and everything they
+    decide reaches the frame through a value that *is* in the identity or
+    through the rasterizer, which is now covered. See docs/determinism.md.
     """
     global _TOOLCHAIN
     if _TOOLCHAIN is None:
         digest = hashlib.sha256()
         digest.update(f"thorvg-python={dist_version('thorvg-python')}".encode("utf-8"))
+        digest.update(_SEP.encode("ascii"))
+        digest.update(_rasterizer_digest().encode("ascii"))
         digest.update(_SEP.encode("ascii"))
         from nanoframes import __version__
 
@@ -179,7 +288,7 @@ def components(root, base_dir: str | None = None) -> dict[str, str]:
     return {
         "source": projection_hash(root),
         "media": media or "none",
-        "fonts": font_fingerprint(),
+        "fonts": font_fingerprint(root=root),
         "toolchain": toolchain_fingerprint(),
     }
 

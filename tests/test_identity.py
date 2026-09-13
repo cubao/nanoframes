@@ -12,10 +12,13 @@ adding the whole source to the key *looks* strict and is what we had.
 """
 
 import hashlib
+import os
+import re
 
 import pytest
 
 from nanoframes import identity
+from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
 from nanoframes.parse import parse_file, parse_string
 
 SVG = """<svg xmlns="http://www.w3.org/2000/svg" data-width="320" data-height="180"
@@ -164,6 +167,89 @@ def test_identity_is_stable_within_and_across_documents(tmp_path):
     """Two parses of the same bytes agree — the memo must not leak state."""
     src = _doc(tmp_path)
     assert parse_file(str(src)).identity == parse_file(str(src)).identity
+
+
+# --- the fonts lane is a resolution, not an inventory -----------------------
+
+def _fonts_with(candidates, *compositions):
+    """The `fonts` component under a given candidate set, with the memo cleared."""
+    original = identity.DEFAULT_FONT_CANDIDATES
+    identity.DEFAULT_FONT_CANDIDATES = tuple(candidates)
+    identity._FACE_NAMES = None
+    try:
+        return [parse_string(text).identity_components()["fonts"] for text in compositions]
+    finally:
+        identity.DEFAULT_FONT_CANDIDATES = original
+        identity._FACE_NAMES = None
+
+
+def test_the_fonts_component_is_the_face_a_run_resolves_to():
+    """Two machines with different system fonts agree on a composition that names the
+    bundled face — which is the whole point, and was false while the component
+    covered every face that *exists* (macOS loads Arial, Linux loads DejaVu, so a
+    cross-machine comparison always came back `changed — fonts changed`).
+    """
+    bundled = DEFAULT_FONT_CANDIDATES[0]
+    named = SVG.format(text="hi")          # font-family="Arial" ...
+    named = named.replace('font-family="Arial"', 'font-family="Sarasa Mono SC"')
+    mac_like = [bundled, "/System/Library/Fonts/Supplemental/Arial.ttf"]
+    linux_like = [bundled, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+    assert _fonts_with(mac_like, named) == _fonts_with(linux_like, named)
+
+
+def test_a_missing_declared_face_is_a_different_resolution():
+    """The converse: a composition naming a face the machine lacks draws with the
+    fallback, and that is a different face — so its frames can differ and the
+    component has to say so.
+    """
+    bundled = DEFAULT_FONT_CANDIDATES[0]
+    arial = "/System/Library/Fonts/Supplemental/Arial.ttf"
+    if not os.path.exists(arial):
+        pytest.skip("no system Arial on this host to resolve to")
+    named = SVG.format(text="hi")           # declares Arial
+    assert _fonts_with([bundled, arial], named) != _fonts_with([bundled], named)
+
+
+def test_a_stack_that_matches_nothing_falls_back_like_no_family_at_all():
+    """The corpus's CSS stacks are inert: the whole value matches no face, so the run
+    draws with the first loaded one — the same as declaring nothing.
+    """
+    bundled = DEFAULT_FONT_CANDIDATES[0]
+    stack = SVG.format(text="hi").replace('font-family="Arial"',
+                                          'font-family="Arial, sans-serif"')
+    nothing = SVG.format(text="hi").replace(' font-family="Arial"', "")
+    assert _fonts_with([bundled], stack) == _fonts_with([bundled], nothing)
+
+
+def test_a_composition_with_no_glyphs_has_no_fonts_to_cover():
+    """No `<text>`, no face: a font swap cannot move a frame that draws none."""
+    svg = SVG.format(text="hi").replace("</svg>", "").replace(
+        '<text x="20" y="90" font-family="Arial" font-size="24" fill="#fff">hi</text>',
+        "") + "</svg>"
+    assert parse_string(svg).identity_components()["fonts"] == hashlib.sha256(b"").hexdigest()
+
+
+# --- the toolchain lane now covers the rasterizer's build -------------------
+
+def test_a_different_rasterizer_build_moves_the_toolchain(monkeypatch):
+    """A version is not a build: each platform wheel carries its own libthorvg.
+
+    That difference is what the cross-architecture run measured as 9 pixels in one
+    glyph, and it used to arrive attributed to the fonts.
+    """
+    before = identity.toolchain_fingerprint()
+    monkeypatch.setattr(identity, "_rasterizer_digest", lambda: "another-build")
+    identity._TOOLCHAIN = None
+    try:
+        assert identity.toolchain_fingerprint() != before
+    finally:
+        identity._TOOLCHAIN = None
+
+
+def test_the_rasterizer_digest_is_the_library_not_a_marker():
+    """On a machine that has thorvg-python, the digest is over its libthorvg bytes."""
+    digest = identity._rasterizer_digest()
+    assert re.fullmatch(r"[0-9a-f]{64}", digest), digest
 
 
 # --- the shape of it --------------------------------------------------------

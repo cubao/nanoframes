@@ -805,21 +805,19 @@ def loaded_font_names() -> tuple[set[str], str | None]:
     """
     global _FONT_NAMES
     if _FONT_NAMES is None:
-        from nanoframes.fonts import DEFAULT_FONT_CANDIDATES, family_name
+        from nanoframes.fonts import DEFAULT_FONT_CANDIDATES, face_names
 
         names: set[str] = set()
         fallback: str | None = None
         for path in DEFAULT_FONT_CANDIDATES:
             if not os.path.exists(path):
                 continue
-            family, style = family_name(path)
-            if not family:
+            aliases = face_names(path)
+            if not aliases:
                 continue
-            styled = f"{family} {style}" if style and style.lower() != "regular" else family
             if fallback is None:
-                fallback = styled
-            names.add(family)
-            names.add(styled)
+                fallback = aliases[-1]
+            names.update(aliases)
         _FONT_NAMES = [names, fallback]
     return _FONT_NAMES[0], _FONT_NAMES[1]
 

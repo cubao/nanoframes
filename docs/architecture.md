@@ -447,6 +447,33 @@ MP4 export, and an agent-facing skill.
   And no pixel changes: the corpus and the walkthrough are clean of all three
   idioms (`url(#…)` everywhere paints a gradient), the ledger re-records with the
   same digests, and the check is diagnostics only.
+- **0.2.19 (2026-09)** — the two machine-side inputs the identity could not name.
+  Raised by the cross-architecture run itself (0.2.9's CI, 0.2.13's ledger): the
+  9 pixels that differ inside one glyph on `text-measure` came from nowhere the
+  identity could point at, and the verdict said `fonts changed` — which was a
+  statement about two machines' font *inventories* (macOS loads Arial, Linux
+  loads DejaVu) and never about the frames. Two fixes, one per side. **`fonts` is
+  now a resolution, not an inventory**: the loader matches a whole `font-family`
+  value against the faces it loaded and falls back to the first for a value that
+  matches nothing, so what can move a pixel is the face each run *lands on*. A
+  composition that names no family (or a CSS stack, which the corpus's inert
+  stacks do) resolves to the bundled face on every machine and now hashes the
+  same on every machine — verified for all twelve examples across three
+  different font sets, with the one composition that draws no glyphs hashing
+  over no faces at all. And **the rasterizer's build is in `toolchain`**: a
+  version is not a build, every platform wheel carries its own `libthorvg` with
+  its own statically-linked FreeType, so the library's bytes are hashed in. That
+  is the input the 9 pixels actually came from, and putting it there is what
+  turns a cross-machine mismatch into `changed — toolchain changed` (a diagnosis)
+  instead of `fonts changed` (never the cause) — and what makes `regression`
+  reachable again, since two machines that agree on every declared input *and* on
+  the rasterizer build are exactly the pair whose disagreement that verdict is
+  for. What stays out is stated rather than left implicit: the interpreter and
+  Pillow/NumPy do not draw — they decode and measure, and everything they decide
+  reaches the frame through the decoded asset (`media`) or through a coordinate
+  the code in `toolchain` computed. No frame moved: the ledger re-records with
+  all twelve digests identical and only `fonts`/`toolchain` changed, which is the
+  check that the change is bookkeeping and not rendering.
 - **0.2.18 (2026-09)** — `zones[].nodes`, the membership list that was never read.
   Same theme as the two batches before it: a declaration is either honoured or
   named. A `flow` spec can say a node is in a zone two ways — the node's own
