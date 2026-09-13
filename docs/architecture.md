@@ -399,6 +399,25 @@ MP4 export, and an agent-facing skill.
   connector trunk, which in a tree *is* the relation. A chart grammar (scales,
   ticks, stacking) is the next one, and its primitives are the ones this batch
   proved are missing.
+- **0.2.15 (2026-09)** — the second computed grammar, and the two primitives the
+  first one did not need. `nanoframes chart` takes a data table — categories,
+  one label + values per series, the axis titles — and compiles it: a **linear
+  scale** (a value → a position over a domain the *compiler* chooses, not the
+  author) and a **tick algorithm** (Heckbert's *Nice Numbers for Graph Labels*:
+  snap the mantissa to 1, 2, 5 or 10 and keep the exponent). Two decisions are
+  worth recording because they are judgement, not defaults. The value axis
+  always contains zero — a bar needs a zero baseline, and a line axis starting
+  at the smallest observed value exaggerates every wiggle; the degenerate cases
+  (all-zero, single-value) widen the domain rather than dividing by a zero span.
+  And the plot's geometry is derived from the tick *count* rather than a target
+  pixel height: the step is a grid multiple, so every gridline is an exact
+  multiple of 4 below the baseline, the plot lands on the 4px grid, and a bar's
+  height is exactly proportional to its value (which is why bar heights are the
+  one coordinate that is deliberately *not* snapped). The band scale needed a
+  second grid primitive — `geo.ceil8`/`floor8`, an even number of grid cells —
+  because a band's *centre* is where its bar and tick mark go. Stacking, a
+  logarithmic axis and a second value axis are out of scope on purpose: the
+  grammar compiles one plot, and a figure that needs more is two charts.
 - **0.2.11 (2026-09)** — the last silent gap in the motion model, named. A clip
   window or a `data-fade` on a `<tspan>` was written into the mark-up and then
   ignored, and every arithmetic reading agreed with the mark-up: `lint`'s

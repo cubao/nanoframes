@@ -1,0 +1,16 @@
+{
+  "diagram": "chart",
+  "preset": "doc-wide",
+  "title": "Frames shipped",
+  "subtitle": "Four quarters, one series, value labels on",
+  "chart": {
+    "type": "bar",
+    "categories": ["Q1", "Q2", "Q3", "Q4"],
+    "series": [
+      {"label": "Shipped", "values": [12, 18, 9, 21]}
+    ],
+    "x_label": "Quarter",
+    "y_label": "Frames",
+    "unit": "k"
+  }
+}

@@ -36,10 +36,13 @@ layout grammars come from [diagram-design](https://github.com/cathrynlavery/diag
 (MIT); the shipped grammars are explicit `flow` layout, the parametric `loop`
 ring (stations on a circle, circular-arc flow, dashed radial write-backs), and
 `nanoframes tree` — a **hierarchy** (org chart, taxonomy) written as a nested
-node list with no coordinates in it at all, laid out by Reingold–Tilford. With
+node list with no coordinates in it at all, laid out by Reingold–Tilford — and
+`nanoframes chart` — a **data table** (bar or line) whose value axis, ticks and
+bar geometry the compiler derives, since a chart's axis is the one shape whose
+bounds have to be *nice numbers* rather than the author's. With
 `"reveal": true` the diagram assembles itself along the timeline. See
-[docs/diagram.md](docs/diagram.md), [docs/tree.md](docs/tree.md) and the
-runnable `examples/*.nf.json`.
+[docs/diagram.md](docs/diagram.md), [docs/tree.md](docs/tree.md),
+[docs/chart.md](docs/chart.md) and the runnable `examples/*.nf.json`.
 
 `--scale F` renders a **draft** at a fraction of the composition size. The
 canvas *and* every embedded `<image>` shrink together — ThorVG re-resamples each
@@ -109,6 +112,7 @@ tests/            unit + render + snapshot + CLI tests
 - [Lottie import](docs/lottie.md) — render Lottie JSON scenes to MP4 (`nanoframes lottie`).
 - [Diagram specs](docs/diagram.md) — build editorial diagrams from JSON (`nanoframes diagram`).
 - [Tree specs](docs/tree.md) — compile a hierarchy (org chart, taxonomy) from a nested node list (`nanoframes tree`).
+- [Chart specs](docs/chart.md) — plot a data table (bar or line) with a computed value axis (`nanoframes chart`).
 - [Determinism](docs/determinism.md) — what a frame is a function of, and the ledger that says which input moved.
 
 `docs/`, `skills/` and the `examples/` corpus also ship inside the pip wheel
@@ -126,11 +130,14 @@ nanoframes render  examples/architecture.nf.svg --t 0 -o architecture.png
 nanoframes video   examples/architecture.nf.svg -o architecture.mp4   # "reveal": true
 
 nanoframes tree examples/org-chart.nf.json --check         # -> examples/org-chart.nf.svg
+
+nanoframes chart examples/throughput.nf.json --check        # -> examples/throughput.nf.svg
 ```
 
-Three shipped specs to copy from: `examples/architecture.nf.json` (a zoned flow
+Five shipped specs to copy from: `examples/architecture.nf.json` (a zoned flow
 with a dashed async edge), `examples/loop.nf.json` (a six-station operating loop
-with one focal station) and `examples/org-chart.nf.json` (an 11-box hierarchy
-with no coordinate anywhere in the spec). All three build warning-free — the
-repo holds them to that with tests, so the examples and their `.nf.svg` outputs
-cannot drift.
+with one focal station), `examples/org-chart.nf.json` (an 11-box hierarchy with
+no coordinate anywhere in the spec), `examples/throughput.nf.json` (a bar chart
+with value labels) and `examples/net-change.nf.json` (a signed line series).
+All five build warning-free — the repo holds them to that with tests, so the
+examples and their `.nf.svg` outputs cannot drift.

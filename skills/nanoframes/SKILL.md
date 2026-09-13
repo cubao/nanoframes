@@ -74,6 +74,7 @@ not open the whole library.
 | Diagram: architecture, system map, flowchart, process, pipeline, deployment | `references/diagram-design.md` + `references/diagram-flow.md` |
 | Diagram: loop, flywheel, cycle, self-improving system | `references/diagram-design.md` + `references/diagram-loop.md` |
 | Diagram: org chart, hierarchy, reporting line, taxonomy, decomposition | `references/diagram-design.md` + `references/diagram-tree.md` |
+| Diagram: bar/line chart from a data table, trend, comparison over an axis | `references/diagram-design.md` + `references/diagram-chart.md` |
 | Diagram: hand-drawn / sketchy / whiteboard register | `references/diagram-sketchy.md` + the routed grammar |
 
 Mixed prompts: choose one primary recipe from the main deliverable, then add
@@ -223,6 +224,7 @@ nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
 nanoframes fonts list|add|verify|install          # CJK font toolbox
 nanoframes diagram <spec.json> -o out.nf.svg      # diagram spec -> composition
 nanoframes tree   <spec.json> -o out.nf.svg      # hierarchy spec (no coordinates in it)
+nanoframes chart  <spec.json> -o out.nf.svg      # data table (bar/line; axes computed)
 nanoframes lottie <scene.json> -o out.mp4         # ThorVG Lottie loader -> MP4
 nanoframes lottie scene.json -o out.mp4 --bg '#1e1e2e'   # backdrop (default white)
 nanoframes walkthrough                  # regenerate the one-take tour (build/)
@@ -253,7 +255,8 @@ a buried element) are warnings and do not fail the run; `--strict` counts them.
 All of `docs/`, `skills/` and `examples/` ship inside the installed package too
 (`site-packages/nanoframes/docs`, `.../skills`, `.../examples`), so an installed
 agent gets the same references — including the worked specs (`architecture`,
-`loop`, `org-chart`) beside the compositions they build. `nanoframes` with no
+`loop`, `org-chart`, `throughput`, `net-change`) beside the compositions they
+build. `nanoframes` with no
 arguments prints all three locations.
 
 ## Diagrams (spec-built, not hand-authored)
@@ -268,18 +271,20 @@ and holds the source design system's 4px grid and complexity budgets.
 ```bash
 nanoframes diagram spec.json -o diagram.nf.svg --check   # flow / loop: you place the nodes
 nanoframes tree    org.json  -o org.nf.svg --check       # tree: a hierarchy, no coordinates
+nanoframes chart   table.json -o table.nf.svg --check    # chart: a data table, axes computed
 nanoframes render  diagram.nf.svg --t 0 -o shot.png      # a still
 nanoframes video   diagram.nf.svg -o out.mp4             # with "reveal": true
 ```
 
 Read `references/diagram-design.md` plus the routed grammar
-(`diagram-flow.md`, `diagram-loop.md` or `diagram-tree.md`) before writing a
-spec; the contract is [docs/diagram.md](../../docs/diagram.md) for `flow` and
-`loop`, [docs/tree.md](../../docs/tree.md) for `tree`. Pick the grammar by
-shape: a strict one-parent hierarchy is `tree` (the layout is compiled, so there
-is nothing to place); anything many-to-many, cyclic, or where the arrangement is
-the argument is `flow`. Hand-author a `.nf.svg` only when the task is motion
-design, not a diagram.
+(`diagram-flow.md`, `diagram-loop.md`, `diagram-tree.md` or `diagram-chart.md`)
+before writing a spec; the contract is [docs/diagram.md](../../docs/diagram.md)
+for `flow` and `loop`, [docs/tree.md](../../docs/tree.md) for `tree`,
+[docs/chart.md](../../docs/chart.md) for `chart`. Pick the grammar by shape: a
+strict one-parent hierarchy is `tree` (the layout is compiled, so there is
+nothing to place); numbers per category with an axis are `chart`; anything
+many-to-many, cyclic, or where the arrangement is the argument is `flow`.
+Hand-author a `.nf.svg` only when the task is motion design, not a diagram.
 
 ## Lottie scenes (import-render, not authoring)
 

@@ -37,6 +37,30 @@ def ceil4(value: float) -> float:
     return float(int((value + 3.9999) // 4) * 4)
 
 
+def ceil8(value: float) -> float:
+    """Round *up* to an even number of 4px cells.
+
+    What needs this is a shape whose *centre* has to be a grid point: half of an
+    even cell count is a whole number of cells, so a band or a hub that is
+    ``ceil8`` wide centres on the grid no matter how many cells it spans.
+    """
+    return float(int((value + 7.9999) // 8) * 8)
+
+
+def floor8(value: float) -> float:
+    """Round *down* to an even number of 4px cells (see :func:`ceil8`)."""
+    return float(int(value // 8) * 8)
+
+
+def floor4(value: float) -> float:
+    """Round *down* to the 4px grid — for a size that must only ever shrink.
+
+    ``ceil4``'s opposite number: filling a declared page has to stay inside it,
+    so the step that a plot takes from the page is rounded down, never up.
+    """
+    return float(int(value // 4) * 4)
+
+
 def r2(value: float) -> float:
     return round(value + 0.0, 2)
 

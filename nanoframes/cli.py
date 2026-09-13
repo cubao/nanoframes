@@ -13,6 +13,7 @@ Commands
   lottie      <file.json>       render a Lottie JSON scene offline to MP4
   diagram     <spec.json>       build a .nf.svg composition from a diagram spec
   tree        <spec.json>       lay out a hierarchy spec (no coordinates in it)
+  chart       <spec.json>       plot a data table (no coordinates in it)
   walkthrough [-o DIR]          generate the one-take walkthrough
 """
 
@@ -240,6 +241,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--check", action="store_true",
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_tree)
+
+    sp = sub.add_parser("chart", help="plot a data table into a .nf.svg (no coordinates in it)")
+    sp.add_argument("spec", help="path to a chart spec JSON (categories + series, no positions)")
+    sp.add_argument("-o", "--out", default=None,
+                    help="output composition path (default <spec>.nf.svg)")
+    sp.add_argument("--check", action="store_true",
+                    help="build, then lint the composition; exit 1 on lint errors")
+    sp.set_defaults(handler=cmd_chart)
 
     sp = sub.add_parser("digest", help="per-frame digest: record it, or check it against a ledger")
     sp.add_argument("composition", nargs="?", help="path to a .nf.svg composition")
@@ -637,6 +646,17 @@ def cmd_tree(args: argparse.Namespace) -> int:
     return _build_composition(args, kinds=("tree",))
 
 
+def cmd_chart(args: argparse.Namespace) -> int:
+    """Build a data table into a composition — the chart grammar's verb."""
+    return _build_composition(args, kinds=("chart",))
+
+
+#: Which command builds which grammar: one verb per input shape, and the hint
+#: a misplaced spec gets. Kept here, next to the verbs, so the two cannot drift.
+GRAMMAR_VERBS = {"flow": "nanoframes diagram", "loop": "nanoframes diagram",
+                 "tree": "nanoframes tree", "chart": "nanoframes chart"}
+
+
 def _default_out(spec_path: str) -> str:
     """Where a spec builds to when ``-o`` is not given: ``<stem>.nf.svg``.
 
@@ -675,7 +695,7 @@ def _build_composition(args: argparse.Namespace, kinds: tuple) -> int:
         return 2
 
     if spec.kind not in kinds:
-        other = "nanoframes diagram" if spec.kind in ("flow", "loop") else "nanoframes tree"
+        other = GRAMMAR_VERBS.get(spec.kind, "nanoframes diagram")
         print(f'nanoframes: this is a "{spec.kind}" spec — build it with `{other}`',
               file=sys.stderr)
         return 2
@@ -926,6 +946,7 @@ def _resource_lines() -> list[str]:
         f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
         f"  diagram spec ............ {os.path.join(docs, 'diagram.md')}",
         f"  tree spec ............... {os.path.join(docs, 'tree.md')}",
+        f"  chart spec .............. {os.path.join(docs, 'chart.md')}",
         f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
     ]
     if os.path.isdir(examples):

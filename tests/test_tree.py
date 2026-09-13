@@ -96,7 +96,7 @@ def build(data, measurer=None):
 
 def test_the_grammar_table_covers_every_kind():
     """`diagram` decides the grammar in the spec; the table must know them all."""
-    assert set(GRAMMARS) == set(KINDS) == {"flow", "loop", "tree"}
+    assert set(GRAMMARS) == set(KINDS) == {"flow", "loop", "tree", "chart"}
 
 
 def test_every_grammar_is_one_compiler(measure):
@@ -107,6 +107,8 @@ def test_every_grammar_is_one_compiler(measure):
                  "loop": {"hub": {"label": "H"},
                           "stations": [{"label": f"S{i}"} for i in range(5)]}},
         "tree": tree_spec(),
+        "chart": {"diagram": "chart",
+                  "chart": {"series": [{"label": "S", "values": [1, 2]}]}},
     }
     for kind in KINDS:
         scene = build_scene(parse_spec(specs[kind]), measurer=measure)
@@ -116,7 +118,7 @@ def test_every_grammar_is_one_compiler(measure):
 def test_unknown_kind_lists_the_grammars():
     with pytest.raises(SpecError) as exc:
         parse_spec({"diagram": "sankey"})
-    assert "flow, loop, tree" in str(exc.value)
+    assert "flow, loop, tree, chart" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

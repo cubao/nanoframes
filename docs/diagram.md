@@ -39,6 +39,7 @@ emitter stays single.
 | `flow` | `nanoframes diagram` | nodes with explicit `x`/`y`, plus edges (below) |
 | `loop` | `nanoframes diagram` | stations on a computed ring, plus a hub (below) |
 | `tree` | [`nanoframes tree`](tree.md) | a nested node list, no coordinates |
+| `chart` | [`nanoframes chart`](chart.md) | a data table, no coordinates |
 
 ## The spec
 
@@ -60,7 +61,7 @@ One JSON object; the two kinds share a header.
 
 | key | values | notes |
 |---|---|---|
-| `diagram` | `flow`, `loop`, `tree` | required; picks the grammar (`tree` is built by `nanoframes tree`) |
+| `diagram` | `flow`, `loop`, `tree`, `chart` | required; picks the grammar (`tree` builds by `nanoframes tree`, `chart` by `nanoframes chart`) |
 | `skin` | `light` (default), `dark`, `sketchy`, `terminal` | token skins; `sketchy` draws hand-drawn strokes on warm paper |
 | `preset` | `doc-inline`, `doc-wide`, `slide-16x9`, `slide-4x3`, `social-og`, `social-square`, `print-a4-landscape`, `print-letter-landscape`, `fit` | canvas floor + type ramp; `fit` means the canvas is derived from content |
 | `canvas` | `{"width": 1280, "height": 720}` | explicit canvas; overrides the preset, still a *minimum* |
@@ -122,6 +123,13 @@ on the hub).
 A nested node list with no coordinates in it, compiled by Reingold–Tilford. It
 is a grammar of its own with its own command and page:
 [docs/tree.md](tree.md).
+
+### `chart` — computed scales
+
+A data table — categories, series, axis titles — with no coordinates in it,
+scaled and ticked by the compiler. The only grammar that adds a *scale* (a
+value → a position) and a *tick algorithm* (1/2/5 × 10^k bounds). It is a
+grammar of its own with its own command and page: [docs/chart.md](chart.md).
 
 ## What the builder guarantees
 

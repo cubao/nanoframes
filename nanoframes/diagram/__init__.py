@@ -14,6 +14,8 @@ new algorithm over the shared page machinery
 * ``flow`` — you place every node; the builder routes the connectors.
 * ``loop`` — a cycle: stations on a ring, spokes writing back to a hub.
 * ``tree`` — a hierarchy: a nested node list, laid out by Reingold–Tilford.
+* ``chart`` — a data table: values, categories and the axis titles, scaled and
+  ticked by the compiler.
 
 The design system, layout grammars and taste rules are adapted from
 [diagram-design](https://github.com/cathrynlavery/diagram-design) (MIT,
@@ -28,19 +30,22 @@ from nanoframes.diagram import compose
 
 svg = compose({"diagram": "flow", "nodes": [...], "edges": [...]})
 svg = compose({"diagram": "tree", "tree": {"label": "Platform", "children": [...]}})
+svg = compose({"diagram": "chart", "chart": {"type": "bar", "series": [...]}})
 ```
 """
 
 from __future__ import annotations
 
 from nanoframes.diagram.build import build_flow, build_loop
+from nanoframes.diagram.chart import build_chart
 from nanoframes.diagram.emit import render
 from nanoframes.diagram.spec import Spec, SpecError, load_spec, parse_spec
 from nanoframes.diagram.tree import build_tree
 
 #: Grammar name -> compiler. Every compiler takes ``(spec, tokens, measurer)``
 #: and returns a ``Scene``; nothing else about a grammar is fixed.
-GRAMMARS = {"flow": build_flow, "loop": build_loop, "tree": build_tree}
+GRAMMARS = {"flow": build_flow, "loop": build_loop, "tree": build_tree,
+            "chart": build_chart}
 
 __all__ = ["compose", "build_scene", "GRAMMARS", "render", "parse_spec", "load_spec",
            "SpecError"]

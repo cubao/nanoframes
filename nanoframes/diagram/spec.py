@@ -19,8 +19,9 @@ JSON the rest of the package already speaks):
 
 Layout is explicit for ``flow`` (the agent places nodes; the builder owns every
 box, connector, mask and arrowhead) and computed for ``loop`` (the ring, the
-spokes and the canvas) and ``tree`` (a nested hierarchy, laid out by the
-Reingold–Tilford algorithm in ``nanoframes.diagram.tree``). Everything invalid
+spokes and the canvas), ``tree`` (a nested hierarchy, laid out by the
+Reingold–Tilford algorithm in ``nanoframes.diagram.tree``) and ``chart`` (a data
+table, scaled and ticked by ``nanoframes.diagram.chart``). Everything invalid
 is reported as a named warning or error in :class:`SpecError` — never as a
 silent misdraw.
 """
@@ -28,11 +29,13 @@ silent misdraw.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 
-KINDS = ("flow", "loop", "tree")
+KINDS = ("flow", "loop", "tree", "chart")
 NODE_TYPES = ("focal", "backend", "store", "external", "input", "optional", "security")
 EDGE_STYLES = ("default", "accent", "link", "dashed", "async", "return")
+CHART_TYPES = ("bar", "line")
 
 # Complexity budget (source SKILL.md §7): above the soft ceiling the diagram is
 # probably two diagrams; the hard ceiling always splits.
@@ -116,6 +119,31 @@ class LoopSpec:
 
 
 @dataclass
+class SeriesSpec:
+    """One measured claim: a label, and one number per category.
+
+    There is nowhere in here to put a colour, a coordinate or a scale — the
+    chart's whole input is the table, and every rendering decision is derived.
+    """
+
+    label: str = ""
+    values: list = field(default_factory=list)     # list[float], one per category
+
+
+@dataclass
+class ChartSpec:
+    """A data table plus its axis titles — the chart grammar's input."""
+
+    type: str = "bar"                              # bar | line
+    categories: list = field(default_factory=list)  # list[str], left to right
+    series: list = field(default_factory=list)      # list[SeriesSpec]
+    x_label: str = ""
+    y_label: str = ""
+    unit: str = ""                                  # folded into the y axis title
+    grid: bool = True
+
+
+@dataclass
 class Spec:
     kind: str
     skin: str = "light"
@@ -134,6 +162,7 @@ class Spec:
     edges: list = field(default_factory=list)
     loop: LoopSpec | None = None
     tree: TreeNodeSpec | None = None
+    chart: ChartSpec | None = None
     h_gap: float | None = None      # tree: air between two neighbouring subtrees
     v_gap: float | None = None      # tree: air below a row of boxes
 
@@ -240,7 +269,7 @@ def parse_spec(data: dict) -> Spec:
             spec.edges.append(edge)
     elif kind == "loop":
         spec.loop = _parse_loop(data.get("loop"), problems)
-    else:
+    elif kind == "tree":
         # The tree grammar's two layout knobs, next to the header like `margin`.
         for field_name in ("h_gap", "v_gap"):
             value = data.get(field_name)
@@ -251,6 +280,8 @@ def parse_spec(data: dict) -> Spec:
                 continue
             setattr(spec, field_name, float(value))
         spec.tree = _parse_tree(data.get("tree"), problems)
+    else:
+        spec.chart = _parse_chart(data.get("chart"), problems)
 
     if problems:
         raise SpecError(problems)
@@ -402,6 +433,82 @@ def _parse_tree_node(raw, where: str, problems: list, ids: set) -> TreeNodeSpec 
     return TreeNodeSpec(id=node.id, label=node.label, sub=node.sub, tag=node.tag,
                         w=node.w, h=node.h, type=node.type, focal=node.focal,
                         children=children)
+
+
+def _parse_chart(raw, problems: list) -> ChartSpec | None:
+    """The data table: categories, series, and the two axis titles.
+
+    A chart cannot express a coordinate, because the value scale is the
+    compiler's decision — it owns the nice-number rounding, so the axis bounds
+    are not the author's to declare and a position would have no meaning to
+    check against. The only geometry-adjacent keys are the page header's
+    (``canvas``, ``preset``, ``margin``), which are a *minimum*, as everywhere.
+    """
+    if not isinstance(raw, dict):
+        problems.append(
+            'a "chart" diagram needs a "chart" object like'
+            ' {"type": "bar", "series": [{"label": "Shipped", "values": [12, 18]}]}'
+        )
+        return None
+    chart = ChartSpec()
+    ctype = raw.get("type", "bar")
+    if ctype not in CHART_TYPES:
+        problems.append(
+            f'chart "type" must be one of {", ".join(CHART_TYPES)} (got {ctype!r})')
+    else:
+        chart.type = str(ctype)
+
+    raw_series = raw.get("series")
+    if not isinstance(raw_series, list) or not raw_series:
+        problems.append('"chart.series" must be a non-empty list of {"label", "values"}')
+        return chart
+    for i, item in enumerate(raw_series):
+        if not isinstance(item, dict):
+            problems.append(f"chart.series[{i}] must be an object")
+            continue
+        raw_values = item.get("values")
+        if not isinstance(raw_values, list) or not raw_values:
+            problems.append(f'chart.series[{i}] needs a non-empty "values" list')
+            continue
+        clean: list = []
+        for j, value in enumerate(raw_values):
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value)):
+                problems.append(
+                    f"chart.series[{i}].values[{j}] must be a finite number (got {value!r})"
+                )
+                continue
+            clean.append(float(value))
+        chart.series.append(SeriesSpec(label=str(item.get("label") or f"Series {i + 1}"),
+                                       values=clean))
+    if not chart.series:
+        return chart
+
+    count = max(len(s.values) for s in chart.series)
+    raw_categories = raw.get("categories")
+    if raw_categories is None:
+        # No labels given: the categories are the positions, named by number.
+        chart.categories = [str(i + 1) for i in range(count)]
+    elif not isinstance(raw_categories, list) or not raw_categories:
+        problems.append('"chart.categories" must be a non-empty list of labels')
+    else:
+        chart.categories = [str(c) for c in raw_categories]
+        count = len(chart.categories)
+    for i, series in enumerate(chart.series):
+        if len(series.values) != count:
+            problems.append(
+                f"chart.series[{i}] has {len(series.values)} values but the chart has"
+                f" {count} categories — one value per category"
+            )
+
+    for field_name in ("x_label", "y_label", "unit"):
+        setattr(chart, field_name, str(raw.get(field_name, "")))
+    grid = raw.get("grid", True)
+    if not isinstance(grid, bool):
+        problems.append(f'chart "grid" must be true/false (got {grid!r})')
+    else:
+        chart.grid = grid
+    return chart
 
 
 def _slug(label: str) -> str:

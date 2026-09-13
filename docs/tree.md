@@ -14,7 +14,8 @@ nanoframes video  org.nf.svg -o out.mp4         # with "reveal": true
 
 ## One of the grammars
 
-`nanoframes diagram` and `nanoframes tree` are two front doors onto one contract.
+`nanoframes diagram`, `nanoframes tree` and `nanoframes chart` are three front
+doors onto one contract.
 A **grammar** is its own spec plus its own data→geometry algorithm, and every
 grammar emits the same scene — so tokens, the 4px grid, measured text, the
 legend, the reveal timeline, the canvas rules and every ThorVG workaround
@@ -25,6 +26,7 @@ legend, the reveal timeline, the canvas rules and every ThorVG workaround
 | `flow` | `nanoframes diagram` | nodes with explicit `x`/`y`, plus edges |
 | `loop` | `nanoframes diagram` | stations on a computed ring, plus a hub |
 | `tree` | `nanoframes tree` | a nested node list (this page) |
+| `chart` | [`nanoframes chart`](chart.md) | a data table: categories, series, axis titles |
 
 Reach for `flow` when the *arrangement is the argument* — a hand-placed pipeline
 reads as a decision — and for `tree` when the *hierarchy is the argument* and
@@ -132,7 +134,7 @@ from nanoframes.diagram import GRAMMARS, build_scene, parse_spec, render
 scene = build_scene(parse_spec(spec_dict))   # spec -> scene IR
 scene.warnings                               # budget findings
 
-GRAMMARS                                     # {"flow", "loop", "tree"} -> compiler
+GRAMMARS                                     # {"flow", "loop", "tree", "chart"} -> compiler
 ```
 
 The scene IR is the testable surface here too: `tests/test_tree.py` asserts the
