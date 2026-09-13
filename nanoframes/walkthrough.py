@@ -76,6 +76,11 @@ STORY = """<svg xmlns="http://www.w3.org/2000/svg"
   <text id="sub" x="60" y="205" font-family="Sarasa Mono SC" font-size="28" fill="#9fb0cc"
         data-start="1.3" data-duration="4.0">Deterministic. Offline. Built for agents.</text>
 
+  <!-- Motion. The dots scale, so they declare "center": "auto" on every keyframe:
+       SVG's own shorthand pivots on the canvas origin (0,0), which would drag a
+       scaled element away from where it is authored — `check` names that as
+       transform.no_pivot. All keyframes carry it: a keyframe without it drops the
+       pivot for the whole segment up to the next one. -->
   <script type="application/nanoframes+json"><![CDATA[
   {
     "animations": [
@@ -85,9 +90,9 @@ STORY = """<svg xmlns="http://www.w3.org/2000/svg"
           { "t": 4.2, "opacity": 0.9, "transform": { "translate": [560, 330], "scale": [1.0, 1.0], "rotate": 8 }, "ease": "ease-in-out" },
           { "t": 5.6, "opacity": 0.55, "transform": { "translate": [680, 430], "scale": [1.0, 1.0], "rotate": 4 } } ] },
       { "target": ".float", "keyframes": [
-          { "t": 0.2, "opacity": 0.0, "transform": { "translate": [0, 40], "scale": [0.5, 0.5] } },
-          { "t": 1.0, "opacity": 1.0, "transform": { "translate": [0, 0], "scale": [1.0, 1.0] }, "ease": "ease-out" },
-          { "t": 4.5, "opacity": 1.0, "transform": { "translate": [0, -30], "scale": [1.15, 1.15] }, "ease": "ease-in-out" } ] },
+          { "t": 0.2, "opacity": 0.0, "transform": { "center": "auto", "translate": [0, 40], "scale": [0.5, 0.5] } },
+          { "t": 1.0, "opacity": 1.0, "transform": { "center": "auto", "translate": [0, 0], "scale": [1.0, 1.0] }, "ease": "ease-out" },
+          { "t": 4.5, "opacity": 1.0, "transform": { "center": "auto", "translate": [0, -30], "scale": [1.15, 1.15] }, "ease": "ease-in-out" } ] },
       { "target": ".chip", "keyframes": [
           { "t": 0.5, "opacity": 0.0 },
           { "t": 0.8, "opacity": 1.0 } ] },
