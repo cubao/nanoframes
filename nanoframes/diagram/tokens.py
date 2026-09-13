@@ -57,13 +57,17 @@ _DEFAULT_SKETCHY = {
     "accent": "#e2543c",
     "link": "#2f5e9e",
 }
-# Offline font stacks. The browser skin uses Instrument Serif / Geist / Geist
-# Mono web fonts; a headless render only has fonts registered on the ThorVG
-# engine (see `nanoframes fonts`), so the stacks name what can actually load and
-# everything unknown falls back to the bundled mono CJK face.
-FONT_SANS = "Arial, 'DejaVu Sans', sans-serif"
-FONT_MONO = "'Sarasa Mono SC', monospace"
-FONT_SERIF = "'Times New Roman', 'DejaVu Serif', serif"
+# One face is loadable on any host: the bundled Sarasa Mono SC. The source skin
+# names Instrument Serif / Geist / Geist Mono web fonts, and an offline render
+# resolves `font-family` by matching the **whole value** against the faces it
+# loaded — no CSS list, no per-glyph fallback (docs/composition.md, "Known ThorVG
+# behaviors"). A stack such as "Arial, 'DejaVu Sans', sans-serif" therefore
+# selects nothing and the run is drawn with the bundled face anyway, so the three
+# roles name that one face: it is what every one of them was already drawing, and
+# `check` reports the stack form as `render.unresolved_font_family`. Naming a host
+# font would be worse than inert — `Arial` resolves on macOS and not on Linux, so
+# the same spec would draw differently on the machine that renders it.
+FONT_SANS = FONT_MONO = FONT_SERIF = "Sarasa Mono SC"
 
 # Type ramp by size class (px), from the source output spec §2.
 RAMP = {

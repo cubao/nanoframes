@@ -155,11 +155,16 @@ do not survive, and the builder works around each (probed, not assumed):
 
 Consequences worth knowing:
 
-- Fonts come from the host. The source's Instrument Serif / Geist / Geist Mono
-  are web fonts; the stacks here resolve offline — `Arial` (or DejaVu on Linux)
-  for names, the bundled `Sarasa Mono SC` for technical slots, a serif stack for
-  titles. Register a brand face with `nanoframes fonts add` and set it in a
-  custom stack.
+- Fonts come from the host, and exactly one is always there: the bundled
+  `Sarasa Mono SC`, which is also where an unresolved `font-family` lands (the
+  rule and its measurements are in
+  [composition.md](composition.md#known-thorvg-behaviors)). The source's
+  Instrument Serif / Geist / Geist Mono are web fonts that cannot be loaded
+  offline, so every role in the skin names that one face — which is what the
+  frames were drawing anyway. Naming a host font instead would be worse than
+  inert: `Arial` resolves on macOS and not on a bare Linux box, so one spec would
+  draw two different pictures depending on the machine that renders it. Register
+  a brand face with `nanoframes fonts add` and name it exactly in a custom stack.
 - `font-weight` is not a reliable axis (the engine's faces are regular-only),
   so weights are not emitted: hierarchy comes from size, spacing and color.
 - CJK labels work (the bundled mono face), and the width budget rules the

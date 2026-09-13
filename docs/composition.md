@@ -181,8 +181,11 @@ frame still sits just before the end state, so the loop jumps.
 
 - **Raster images**: `<image href="assets/foo.png" />` (relative paths are
   dereferenced against the composition directory).
-- **Fonts**: text renders with a system font loaded automatically (Arial /
-  DejaVuSans fallback). Declare `font-family`, `font-size`, `font-weight` as in SVG.
+- **Fonts**: the faces the renderer knows about are loaded automatically, and the
+  bundled CJK face (Sarasa Mono SC) is the first of them — so it is both the
+  default and whatever an unresolved `font-family` falls back to. Declare
+  `font-family`, `font-size` and `font-weight` as in SVG, but read the resolution
+  rule below first: only one exact family name selects a face.
 
 ## Supported SVG surface
 
@@ -197,6 +200,19 @@ SVG meaning but only within that subset.
 - **Text needs a loaded font.** ThorVG only rasterizes `<text>` after a font is
   registered (`Text.font_load`, done automatically per engine). Renders are
   therefore limited to fonts present on the host unless you supply one.
+- **`font-family` is one name, matched exactly.** There is no CSS list
+  semantics, no per-glyph fallback chain and no quoting: the **whole value** is
+  compared against the names of the faces that were loaded, and a value that
+  matches none of them draws with the first loaded face — the bundled Sarasa
+  Mono SC. Measured on thorvg-python 1.1.3 with `Arial.ttf` and `Arial Bold.ttf`
+  both loaded, by ink count: `Arial` resolves to the regular face and
+  `Arial Bold` to the bold one, while `arial` (case matters), `'Arial'`,
+  `Sarasa` and `Arial, sans-serif` all draw Sarasa, and surrounding whitespace
+  is trimmed (`" Arial"` resolves). So a portable-looking stack is inert, and
+  silently: the markup says Arial and the picture gets Sarasa. `check` names it
+  as `render.unresolved_font_family`, quoting the words the run draws when the
+  element has no `id` to point at. A `font-family` on a `<g>` does not reach the
+  `<text>` inside it either — the same rule, and the same silence.
 - **A frame that draws nothing is a valid PNG.** If every element is outside
   its clip window at a time, or its geometry is off-canvas, the frame comes out
   fully transparent — no error, no exception. Rendering prints a warning to

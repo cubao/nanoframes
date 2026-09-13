@@ -209,3 +209,92 @@ def test_an_animation_aimed_at_the_text_is_not_reported():
     script = ('{"animations": [{"target": "#host", "keyframes":'
               ' [{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1}]}]}')
     assert "render.inert_tspan" not in _codes(lint_string(_span("", script=script)))
+
+
+# --- font-family that selects no loaded face ---------------------------------
+
+def _text(attrs: str = "") -> str:
+    """One `<text>` run — the shape every case below varies."""
+    return (CANVAS.format(extra="")
+            + f'<text x="10" y="50" font-size="20"{attrs}>HELLO WORLD</text></svg>')
+
+
+def test_a_css_font_stack_is_reported():
+    """The whole value is one font name, so a portable-looking stack selects nothing.
+
+    ThorVG's loader has no list semantics and no per-glyph fallback: it compares
+    the entire value against the faces it loaded, and draws with the first one
+    when nothing matches. Measured by ink count, `Arial, sans-serif` draws
+    exactly the bundled Sarasa face — so the markup says Arial and the picture
+    says Sarasa, with no error anywhere.
+    """
+    findings = lint_string(_text(' font-family="Arial, \'DejaVu Sans\', sans-serif"'))
+    assert "render.unresolved_font_family" in _codes(findings)
+
+
+def test_the_warning_names_the_face_that_actually_draws():
+    """The fallback is read off the candidate list, not written into the message.
+
+    Which face a run lands on is a property of `fonts.DEFAULT_FONT_CANDIDATES`
+    order; a message that hardcoded a name would keep saying Sarasa after the
+    list changed.
+    """
+    from nanoframes.lint import loaded_font_names
+
+    _, fallback = loaded_font_names()
+    finding = next(f for f in lint_string(_text(' font-family="NoSuchFontAnywhere"'))
+                   if f.code == "render.unresolved_font_family")
+    assert fallback in finding.message
+    assert "NoSuchFontAnywhere" in finding.message
+
+
+def test_a_value_that_is_not_an_exact_name_is_reported():
+    """Case, quoting and partial names all miss — measured, one ink count each."""
+    for value in ("sarasa mono sc", "'Sarasa Mono SC'", "Sarasa", "monospace"):
+        findings = lint_string(_text(f' font-family="{value}"'))
+        assert "render.unresolved_font_family" in _codes(findings), value
+
+
+def test_an_exact_loaded_name_is_not_reported():
+    """The fix, and the one declaration the check has to stay quiet on.
+
+    The bundled face is always loaded and always first, which is why this name
+    works on every host and the test does not depend on the machine's fonts.
+    """
+    assert "render.unresolved_font_family" not in _codes(
+        lint_string(_text(' font-family="Sarasa Mono SC"')))
+
+
+def test_surrounding_whitespace_does_not_make_a_name_unresolved():
+    """Trimmed by the loader — measured: `" Arial"` draws Arial, not the fallback."""
+    assert "render.unresolved_font_family" not in _codes(
+        lint_string(_text(' font-family="  Sarasa Mono SC  "')))
+
+
+def test_an_unidentified_run_is_quoted_in_the_message():
+    """These `<text>` nodes usually carry no `id`, so the warning quotes the words.
+
+    The corpus is full of them: a face warning that says only `<text>` does not
+    tell a reader which of twenty runs it is about.
+    """
+    finding = next(f for f in lint_string(_text(' font-family="Arial, sans-serif"'))
+                   if f.code == "render.unresolved_font_family")
+    assert "HELLO WORLD" in finding.message
+
+
+def test_no_font_family_is_not_reported():
+    """Undeclared is not unresolved: the default face is a choice, not a mistake."""
+    assert "render.unresolved_font_family" not in _codes(lint_string(_text()))
+
+
+def test_a_font_family_on_a_group_is_not_reported():
+    """Out of scope on purpose: the check is about the element that draws glyphs.
+
+    A `font-family` on a `<g>` does not reach the `<text>` inside it (measured),
+    but that is a rule about inheritance, not about a value that cannot resolve,
+    and it is documented rather than warned about.
+    """
+    svg = (CANVAS.format(extra="")
+           + '<g font-family="Arial, sans-serif"><text x="10" y="50" font-size="20">HI'
+             "</text></g></svg>")
+    assert "render.unresolved_font_family" not in _codes(lint_string(svg))

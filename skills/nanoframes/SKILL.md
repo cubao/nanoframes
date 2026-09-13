@@ -186,7 +186,7 @@ the ordinary clip timing and transform system; read
      data-width="960" data-height="540" data-fps="30" data-duration="6.0"
      data-composition-id="intro">
   <rect id="bg" width="960" height="540" fill="#0a1128"/>
-  <text id="title" x="60" y="120" font-family="Arial" font-size="72"
+  <text id="title" x="60" y="120" font-family="Sarasa Mono SC" font-size="72"
         fill="#f4f7ff" data-fade="0.4" data-duration="6.0">nanoframes</text>
   <script type="application/nanoframes+json"><![CDATA[{
     "animations": [{

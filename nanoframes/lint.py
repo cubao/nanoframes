@@ -230,6 +230,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_image_aspect(doc, findings)
     _check_inert_attributes(doc, findings)
     _check_inert_tspan(doc, findings)
+    _check_font_family(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
     _check_nested(doc, measurer, findings, _depth)
@@ -564,6 +565,110 @@ def _check_inert_tspan(doc: Document, findings: list[Finding]) -> None:
                 code="render.inert_tspan", element=bounds.label(node),
             ))
             break  # one finding per animation, however many spans it matches
+
+
+_FONT_NAMES: list | None = None
+
+
+def loaded_font_names() -> tuple[set[str], str | None]:
+    """``(names that resolve, the face an unresolved family falls back to)``.
+
+    The names are the ones a ``font-family`` value has to equal **exactly** to
+    select a face, and they are built from the candidates the renderer actually
+    loads (``fonts.DEFAULT_FONT_CANDIDATES``, skipping the ones not on this
+    host): a face's family, plus ``family style`` when it is not the regular
+    one, because that is how the loader names the styled face (measured: with
+    ``Arial.ttf`` and ``Arial Bold.ttf`` both loaded, ``Arial`` resolves to the
+    regular and ``Arial Bold`` to the bold).
+
+    The fallback is the **first** candidate that exists — the one the renderer
+    hands a family it could not resolve. Its name is read off the file rather
+    than written into a message, because which face is first is a property of
+    ``font_candidates``, not of this check.
+
+    Memoised: it opens each candidate once per process, and the answer cannot
+    change while one runs.
+    """
+    global _FONT_NAMES
+    if _FONT_NAMES is None:
+        from nanoframes.fonts import DEFAULT_FONT_CANDIDATES, family_name
+
+        names: set[str] = set()
+        fallback: str | None = None
+        for path in DEFAULT_FONT_CANDIDATES:
+            if not os.path.exists(path):
+                continue
+            family, style = family_name(path)
+            if not family:
+                continue
+            styled = f"{family} {style}" if style and style.lower() != "regular" else family
+            if fallback is None:
+                fallback = styled
+            names.add(family)
+            names.add(styled)
+        _FONT_NAMES = [names, fallback]
+    return _FONT_NAMES[0], _FONT_NAMES[1]
+
+
+def _check_font_family(doc: Document, findings: list[Finding]) -> None:
+    """Warn about a ``font-family`` value that cannot select any loaded face.
+
+    ThorVG's SVG loader matches the **whole value** against the names of the
+    faces it has loaded: there is no CSS list semantics, no per-glyph fallback
+    chain and no quoting, and the comparison is case-sensitive (measured on
+    thorvg-python 1.1.3 — ``Arial`` and ``Arial Bold`` resolve to their faces
+    while ``arial``, ``'Arial'`` and ``Arial, sans-serif`` all render with the
+    bundled Sarasa face; surrounding whitespace is trimmed, so ``" Arial"``
+    still resolves).
+
+    That makes the corpus's portable-looking CSS stacks
+    (``Arial, 'DejaVu Sans', sans-serif``) inert, and *silently* so: the
+    author reads Arial and gets Sarasa, which is a wrong picture with no error —
+    the failure mode `check` exists to catch. This is the same shape as
+    ``render.inert_attribute``, and like it the warning only reports; the fix is
+    to name one loaded face exactly.
+
+    Checked on ``<text>`` only, because that is the element whose glyphs the
+    value decides. A ``font-family`` on a ``<g>`` does not reach the text inside
+    it either, but that is a separate rule and is documented, not warned about.
+    """
+    names, fallback = loaded_font_names()
+    for node in doc.root.iter():
+        if local_name(node.tag) != "text":
+            continue
+        raw = node.get("font-family")
+        if raw is None or not raw.strip():
+            continue
+        value = raw.strip()
+        if value in names:
+            continue
+        if fallback is None:  # no face loaded at all: the run is blank, not falling back
+            because = ("so nothing is drawn for this run at all — no face is loaded;"
+                       " `nanoframes doctor` names what is missing.")
+        else:
+            because = (f"so the text is drawn with {fallback!r} instead; name one loaded"
+                       f" face exactly ({fallback!r} is the default).")
+        findings.append(Finding(
+            "warning",
+            f"{bounds.label(node)}{_drawn_text(node)}: font-family={raw!r} selects no"
+            f" loaded face — this renderer matches the whole value against the faces it"
+            f" has loaded (no CSS list, no per-glyph fallback, case-sensitive), "
+            + because,
+            code="render.unresolved_font_family", element=bounds.label(node),
+        ))
+
+
+def _drawn_text(node, limit: int = 24) -> str:
+    """The words an element draws, for a finding that has no ``id`` to point at.
+
+    A composition's ``<text>`` often carries no ``id`` (a generated chart, a
+    hand-written card), and a warning about the face it asked for is useless
+    without something that identifies *which* run of text it is about.
+    """
+    text = " ".join("".join(node.itertext()).split())
+    if not text:
+        return ""
+    return f" ({text[:limit]}…)" if len(text) > limit else f" ({text})"
 
 
 def _span_timing(comp: Composition, node) -> str | None:
