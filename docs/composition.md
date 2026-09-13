@@ -207,22 +207,27 @@ SVG meaning but only within that subset.
   what hides, and it is honoured — on shapes and groups. `check` warns when it
   sees either value (`render.inert_attribute`), because the alternative is a
   wrong frame with no error.
-- **`display` and `opacity` are ignored on `<text>` and `<image>`.** Probed by
-  ink count, not by frame comparison (identical frames with and without an
-  attribute mean the attribute did nothing, which is easy to misread): `<text
-  display="none">`, `<text opacity="0">`, `<image display="none">` and `<image
-  opacity="0">` all draw exactly as if the attribute were absent. `<rect>`,
-  `<circle>`, `<path>` and `<g>` honour both.
-  Wrap the element in a `<g>` and the attributes work.
-  This is the one gap with consequences that are easy to miss, because those two
-  attributes are how the motion model is expressed: bake materializes a clip
-  window as `display="none"` and `data-fade` as `opacity`. **So a fade or a
-  `data-start`/`data-duration` window on a text or image element currently has no
-  effect** — it is drawn at full strength from t=0 and stays drawn to the end.
-  `nanoframes debug --pixels` reports this as `hidden_but_drawn`, and it is the
-  only reading that can see it: every arithmetic pass, including `lint`'s
-  visibility check, believes the attribute. Multi-line text is unaffected —
-  `data-wrap` already wraps its lines in a `<g>`.
+- **`display` and `opacity` are ignored on `<text>`, `<tspan>` and `<image>`.**
+  Probed by ink count, not by frame comparison (identical frames with and
+  without an attribute mean the attribute did nothing, which is easy to
+  misread): `<text display="none">`, `<text opacity="0">`, `<image
+  display="none">` and `<image opacity="0">` all draw exactly as if the
+  attribute were absent. `<rect>`, `<circle>`, `<path>`, `<use>` and `<g>`
+  honour both.
+
+  These two attributes are how the motion model is expressed — bake materializes
+  a clip window as `display="none"` and `data-fade` as `opacity` — so this is
+  the gap that bites hardest. Bake therefore **wraps a `<text>` or `<image>` in
+  a `<g>` carrying the attribute**, which the loader does read: a clip window
+  and a fade on either tag take effect, including on the elements that
+  `data-wrap`, `data-curve-*` and `data-raster` expand.
+
+  **`<tspan>` is the one case left.** A `<g>` inside `<text>` is not valid SVG,
+  and this loader drops the entire text when it meets one, so a window or a fade
+  on a span has no effect. `nanoframes debug --pixels` reports it as
+  `hidden_but_drawn` — the span draws while every arithmetic pass, including
+  `lint`'s visibility check, believes the attribute. Multi-line text is not
+  affected: `data-wrap` emits a separate `<text>` per line rather than spans.
 
 ## Text auto-layout (`data-*` on `<text>`)
 

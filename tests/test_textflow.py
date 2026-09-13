@@ -169,6 +169,28 @@ def test_curve_emits_rotated_per_char():
     assert all(e.text in "ARC" for e in chars)
 
 
+def test_a_hidden_text_carries_its_hide_onto_the_group_that_replaces_it():
+    """These passes remove the node they expand, so its `display` must move too.
+
+    Re-parenting without copying it would draw lines the frame had hidden:
+    `data-wrap` and `data-curve-*` both build a fresh `<g>` and drop the original.
+    Called directly on the parsed tree, with no bake wrapper in between, so this
+    reads the group the pass itself builds.
+    """
+    from nanoframes import textflow
+
+    for attr in ('data-wrap="100"', 'data-curve-d="M 20 120 C 100 40, 240 40, 320 120"'):
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" data-width="480" data-height="200"'
+               f' data-duration="1.0"><text id="t" x="40" y="140" font-family="Arial"'
+               f' font-size="20" fill="#fff" {attr} display="none">left middle'
+               " right</text></svg>")
+        root = parse_string(svg).root
+        textflow.apply_text_autoflow(root, Measurer())
+        group = next(e for e in root.iter() if e.tag == NS + "g")
+        assert group.get("display") == "none", f"{attr} lost the hide"
+        assert _texts(group), "the pass still expanded the text"
+
+
 def test_fit_shrinks_font_size_to_width():
     svg = '''<svg xmlns="http://www.w3.org/2000/svg" data-width="400" data-height="80"><rect width="400" height="80" fill="#000"/><text id="t" x="10" y="60" font-family="Arial" font-size="48" fill="#fff" data-fit="120" data-fit-min="8">MUCH TOO WIDE</text></svg>'''
     tree = ET.fromstring(bake.bake_svg(parse_string(svg), 0.5, measurer=Measurer()))

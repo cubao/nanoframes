@@ -81,7 +81,13 @@ TextHandler = Callable[[TextRequest], "bytes | None"]
 
 
 def apply_text_raster(root: ET.Element, text_handler: TextHandler) -> None:
-    """Replace every ``<text data-raster>`` the handler rasterizes with an image."""
+    """Replace every ``<text data-raster>`` the handler rasterizes with an image.
+
+    A node carrying ``display="none"`` is left alone rather than swapped: the
+    handler is not consulted for a frame that does not draw the text, and the
+    node stays hidden by whatever carries the attribute (bake wraps a `<text>`
+    in a `<g>`, because the loader ignores it on the tag itself).
+    """
     for node in [n for n in root.iter() if local_name(n.tag) == "text"]:
         kind = node.get("data-raster")
         if kind is None or node.get("display") == "none":

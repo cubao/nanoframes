@@ -238,10 +238,6 @@ def test_a_zero_opacity_element_is_reported_as_transparent_not_occluded():
     measured that hiding an element changed no pixel, then reported it as buried
     by a later sibling — which a pixel test cannot see. A fade and an occlusion
     leave identical evidence, so only opacity (separately measurable) is named.
-
-    A shape is the case where opacity really does hide: this ThorVG build honours
-    it on `<rect>` and ignores it on `<text>`, so a faded *text* element is not
-    invisible at all and is covered by the test above.
     """
     svg = ('<rect width="400" height="200" fill="#101820"/>'
            '<rect id="faded" x="20" y="80" width="100" height="40" fill="#ffffff"'
@@ -264,20 +260,23 @@ def test_an_occluded_element_lists_candidates_rather_than_a_single_cause():
     assert "a later sibling" in why and "clip or mask" in why
 
 
-def test_the_probe_detects_text_the_renderer_draws_while_hidden():
-    """The detection this feature exists for, on the bug it found in the product.
+def test_the_probe_still_catches_a_hide_the_renderer_ignores():
+    """The detection this feature exists for, on the one tag bake cannot fix.
 
-    bake materializes a clip window as ``display="none"``. ThorVG honours that on
-    shapes and groups and **ignores it on `<text>`**, so a text element outside
-    its window draws anyway — and every arithmetic reading, including `lint`'s
-    visibility pass, believes the attribute. Only the pixels can see it.
+    bake materializes a clip window as ``display="none"``, and ThorVG ignores
+    that attribute on text-bearing nodes. A `<text>` or `<image>` is wrapped in a
+    group so the hide lands where the loader reads it; a `<tspan>` cannot be —
+    a `<g>` inside `<text>` is not valid SVG, and this loader drops the whole
+    text when it meets one — so a window on a span still draws while every
+    arithmetic reading, `lint`'s included, believes the attribute.
     """
-    # A text element whose window starts later, and a rect in the same state: the
-    # rect is genuinely hidden, the text is not.
+    # The span's window starts later; the rect in the same state is genuinely
+    # hidden, the span is not.
     svg = ('<rect id="bar" x="0" y="0" width="40" height="40" fill="#0f0"'
            ' data-start="1.0" data-duration="1.0"/>'
-           '<text id="late" x="10" y="60" font-family="Arial" font-size="24"'
-           ' fill="#ffffff" data-start="1.0" data-duration="1.0">LATE</text>')
+           '<text id="host" x="10" y="60" font-family="Arial" font-size="24"'
+           ' fill="#ffffff"><tspan id="late" data-start="1.0"'
+           ' data-duration="1.0">LATE</tspan></text>')
     doc = parse_string(comp(svg))
     report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     by_label = {e.label: e for e in report.elements}
@@ -288,11 +287,33 @@ def test_the_probe_detects_text_the_renderer_draws_while_hidden():
     assert [e.label for e in report.hidden_but_drawn] == ["#late"]
 
 
-def test_the_probe_detects_an_image_drawn_while_hidden(tmp_path):
-    """The gap is not only `<text>`: `<image>` ignores the same two attributes.
+def test_a_text_window_hides_the_text_it_excludes():
+    """`<text>` is fixed rather than detected: the hide rides on a group too.
+
+    ThorVG ignores `display` on `<text>` itself, so bake hands it to a `<g>` the
+    loader does read. The attribute stays on the node as well — `bounds` prunes
+    hidden subtrees by reading it there — which is why the probe reports the
+    element as not painted rather than as buried under a sibling.
+    """
+    svg = ('<rect id="bar" x="0" y="0" width="40" height="40" fill="#0f0"'
+           ' data-start="1.0" data-duration="1.0"/>'
+           '<text id="late" x="10" y="60" font-family="Arial" font-size="24"'
+           ' fill="#ffffff" data-start="1.0" data-duration="1.0">LATE</text>')
+    doc = parse_string(comp(svg))
+    report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
+    by_label = {e.label: e for e in report.elements}
+    assert by_label["#late"].painted is False
+    assert by_label["#late"].contributes is False
+    assert not by_label["#late"].hidden_but_drawn
+    assert not report.hidden_but_drawn
+
+
+def test_an_image_window_hides_the_image_it_excludes(tmp_path):
+    """The same fix on the other tag that ignores the attribute.
 
     Found by sweeping `verify` over `examples/`: `master-demo`'s two orbs are
-    `<image>` elements with a `data-start` window, and the probe flagged both.
+    `<image>` elements carrying a `data-start` window and a keyframed opacity
+    that the loader ignored, so both drew from frame 0.
     """
     from PIL import Image as PILImage
 
@@ -307,14 +328,17 @@ def test_the_probe_detects_an_image_drawn_while_hidden(tmp_path):
     report = diagnose.frame_report(doc, 0.0, measurer=render_measurer(), pixels=True)
     by_label = {e.label: e for e in report.elements}
     assert by_label["#orb"].painted is False
-    assert by_label["#orb"].hidden_but_drawn, "an <image> window does not hide it either"
+    assert by_label["#orb"].contributes is False
+    assert not by_label["#orb"].hidden_but_drawn
 
 
 def test_a_visible_element_contributes_and_is_not_called_invisible():
     """The false positive the first hiding mechanism produced, kept as a test.
 
-    Hiding by attribute is ignored on `<text>`, so every visible text element
+    Hiding by attribute was ignored on `<text>`, so every visible text element
     measured as contributing nothing — the opposite of the check's purpose.
+    Hiding now happens in a group the renderer reads, so this stays true whether
+    the probe detaches the node or the frame hides it by clipping.
     """
     doc = parse_string(comp('<rect width="400" height="200" fill="#101820"/>'
                             '<text id="t" x="20" y="100" font-family="Arial"'

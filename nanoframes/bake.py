@@ -23,6 +23,7 @@ from nanoframes.xmlutil import (
     find_parent,
     float_attr,
     local_name,
+    qname,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +42,72 @@ _FILL_STROKE_TAGS = {
     "path", "rect", "circle", "ellipse", "polygon", "polyline",
     "line", "text", "tspan", "g", "use",
 }
+
+# Tags on which ThorVG's SVG loader silently ignores `display` and `opacity`.
+# Probed, not assumed: on every other tag bake emits — shapes, `<g>`, `<use>` —
+# both are honoured, and on these two the picture is wrong with no error. A
+# `<text>` outside its clip window still drew, and a faded caption rendered at
+# full strength, which `debug --pixels` found by counting ink rather than
+# arithmetic. The attributes therefore have to ride on a `<g>`, which the loader
+# does read.
+#
+# `<tspan>` is ignored too, and stays broken: a `<g>` inside `<text>` is not
+# valid SVG and this loader drops the whole text when it meets one (measured:
+# zero ink, at any opacity). A window on a span is not representable here, and
+# `verify` reports it as hidden-but-drawn rather than hiding the failure.
+_ATTR_CARRIER_TAGS = {"text", "image"}
+
+
+def _wrap_in_group(node: ET.Element, attrs: dict[str, str],
+                   parents: dict[ET.Element, ET.Element]) -> None:
+    """Re-parent ``node`` into a ``<g>`` carrying ``attrs``, in its old place."""
+    parent = parents.get(node)
+    if parent is None:  # the root has nowhere to be wrapped into
+        for name, value in attrs.items():
+            node.set(name, value)
+        return
+    wrapper = ET.Element(qname("g"))
+    for name, value in attrs.items():
+        wrapper.set(name, value)
+    index = list(parent).index(node)
+    parent.remove(node)
+    wrapper.append(node)
+    parent.insert(index, wrapper)
+    parents[node] = wrapper
+
+
+def _hide(node: ET.Element, parents: dict[ET.Element, ET.Element]) -> None:
+    """Materialize "this frame does not draw it" where the renderer will read it.
+
+    Two things route through here, because they are the same statement to the
+    loader and fail the same way: bake's own clip window, and a ``display="none"`
+    the author wrote in the source. Left on the tag, the second one draws an
+    element the composition declared invisible.
+
+    ``display`` stays on the node as well as on the wrapper, unlike opacity
+    below: `bounds.painted_bounds` prunes hidden subtrees by reading the
+    attribute off the node, so a node that no longer says ``display="none"``
+    would be reported as painted by `debug` while drawing nothing.
+    """
+    node.set("display", "none")
+    if local_name(node.tag) in _ATTR_CARRIER_TAGS:
+        _wrap_in_group(node, {"display": "none"}, parents)
+
+
+def _set_opacity(node: ET.Element, opacity: float,
+                 parents: dict[ET.Element, ET.Element]) -> None:
+    """Materialize a per-frame opacity the renderer will actually apply.
+
+    Unlike ``display`` this one *moves* to the wrapper instead of being copied:
+    opacity multiplies through nesting, so a pass that re-parents the node later
+    (`textflow`, `rastertext`) would carry a copy onto its own group and the
+    frame would come out at the square of the fade.
+    """
+    value = f"{opacity:.4f}"
+    if local_name(node.tag) in _ATTR_CARRIER_TAGS:
+        _wrap_in_group(node, {"opacity": value}, parents)
+    else:
+        node.set("opacity", value)
 
 
 def _node_element(node: ET.Element, comp: Composition) -> Element:
@@ -215,17 +282,21 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
         }
 
     # Apply computed values back onto the tree (skip timeline <script> nodes).
+    # Parents are indexed once up front: materializing an attribute on <text> or
+    # <image> has to wrap the node, and only a node that needs wrapping is ever
+    # looked up.
+    parents = {child: parent for parent in root.iter() for child in parent}
     for node in list(root.iter("*")):
         props = final_props[node]
         tag = local_name(node.tag)
         if tag == "script":
             continue
-        if not props["visible"]:
-            node.set("display", "none")
+        if not props["visible"] or node.get("display") == "none":
+            _hide(node, parents)
             continue
         opacity = props["opacity"]
         if opacity < 1.0:
-            node.set("opacity", f"{opacity:.4f}")
+            _set_opacity(node, opacity, parents)
         tf = element_transform(node, props["transform"], measurer)
         if tf:
             node.set("transform", tf)

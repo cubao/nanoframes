@@ -306,12 +306,14 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
 
     The node is **removed from the tree** rather than hidden with an attribute.
     Probed, ThorVG honours ``display="none"`` and ``opacity="0"`` on shapes and
-    groups and **ignores both on `<text>`**: the text renders anyway. Hiding by
-    attribute therefore reported every visible text element as contributing
-    nothing — a false positive on the element type this check most exists for
-    (a buried caption is a caption), arriving with no symptom. Detaching the node
-    is unambiguous and works for every type; the tree is restored by re-inserting
-    at the same index, before anything else can observe it.
+    groups and **ignores both on text-bearing nodes**: hiding by attribute
+    reported every visible text element as contributing nothing — a false
+    positive on the element type this check most exists for (a buried caption is
+    a caption), arriving with no symptom. bake works around the same gap by
+    wrapping a `<text>` or `<image>` in a `<g>`, but a `<tspan>` cannot be
+    wrapped, so the attribute is still not a reliable way to hide a node here.
+    Detaching is unambiguous and works for every type; the tree is restored by
+    re-inserting at the same index, before anything else can observe it.
     """
     from nanoframes.render import render_svg
 
@@ -323,10 +325,10 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
     for record, node in probed:
         # Every node is probed, including the ones bake marked hidden. That is
         # not wasted work: it is how a node the renderer draws *anyway* is found.
-        # `display="none"` is how bake materializes a clip window, and ThorVG
-        # ignores it on `<text>` — so a text element outside its window still
-        # draws, which is invisible to every arithmetic reading and to any check
-        # that trusts the attribute.
+        # `display="none"` is how bake materializes a clip window, and a
+        # renderer that ignores it draws the element regardless — the `<tspan>`
+        # case is live today, and it is invisible to every arithmetic reading and
+        # to any check that trusts the attribute.
         parent, index = _detach(root, record.path)
         try:
             differing, _ = frame_distance(baseline, draw())

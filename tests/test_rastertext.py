@@ -96,6 +96,23 @@ def test_invisible_raster_text_never_reaches_handler():
     assert rec.calls == []
 
 
+def test_hidden_raster_text_is_neither_rasterized_nor_drawn():
+    """A frame that hides the text does not consult the handler, and the PNG
+    cannot appear where the text was — the node is skipped and stays hidden by
+    the group bake wrapped it in."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="40"'
+           ' data-duration="1.0"><text id="eq" display="none" data-raster="d"'
+           ' x="10" y="20" font-size="12">x</text></svg>')
+    rec = Recorder(result=_png_bytes())
+    svg_out = bake.bake_svg(parse_string(svg), 0.5, text_handler=rec)
+    assert rec.calls == [], "a hidden node is not worth rasterizing"
+    tree = _tree(svg_out)
+    assert not [e for e in tree.iter() if e.tag == NS + "image"]
+    text = next(e for e in tree.iter() if e.tag == NS + "text")
+    wrapper = next(p for p in tree.iter() if text in list(p))
+    assert wrapper.tag == NS + "g" and wrapper.get("display") == "none"
+
+
 # ---------------------------------------------------------------------------
 # placement geometry
 # ---------------------------------------------------------------------------

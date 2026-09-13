@@ -152,6 +152,7 @@ def describe_debug(section: dict) -> str:
     parts = []
     for label, value in (("blank", section["frame"].get("blanks")),
                          ("invisible", section["frame"].get("invisible")),
+                         ("hidden but drawn", section["frame"].get("hidden_but_drawn")),
                          ("never visible", section.get("scan", {}).get("never_visible"))):
         if value:
             parts.append(f"{len(value)} {label}")

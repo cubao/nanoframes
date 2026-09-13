@@ -24,8 +24,9 @@ Empirically, in the installed ThorVG SVG loader neither route works:
 
 - `<tspan>` with `x`/`y`/`dy` **renders all spans on the same baseline** (confirmed: two tspans at `y=100`/`dy=40` both ink a single 20 px-tall line).
 - a literal `&#10;` newline is **collapsed into horizontal advance** (two "lines" render side by side, one line tall).
+- `<tspan>` also **ignores `display` and `opacity`** (see `docs/composition.md` → Known ThorVG behaviors). `<text>` and `<image>` ignore them too, and bake wraps those two in a `<g>` to fix it; a span cannot be wrapped, because a `<g>` inside `<text>` makes this loader drop the whole text.
 
-So multiline must be baked by us. We measure each candidate line and emit **separate `<text>` per line** (each line is its own paint, which ThorVG positions reliably). Interface: `data-wrap="<maxWidth>"`.
+So multiline must be baked by us. We measure each candidate line and emit **separate `<text>` per line** (each line is its own paint, which ThorVG positions reliably). Interface: `data-wrap="<maxWidth>"`. The same choice is why a `data-wrap` paragraph can carry a clip window and a fade: it is a stack of `<text>` elements, each of which bake can wrap in a `<g>`.
 
 ### 3. Text along a shape / curve? — No `<textPath>`, so we sample the curve ourselves
 

@@ -361,6 +361,23 @@ MP4 export, and an agent-facing skill.
   lands on 8 real pixels at 8x), there was simply no way to ask for it, so a
   1280x720 preset read as "low resolution" on a retina screen. Diagram specs
   may carry a `dpi` hint, and `nanoframes diagram` prints the 2x command.
+- **0.2.9 (2026-09)** — the renderer gap that made the motion model a lie on
+  text and pictures. ThorVG's loader ignores `display` *and* `opacity` on
+  `<text>`, `<tspan>` and `<image>` — measured by ink count, which is the only
+  reading that sees it, because an ignored attribute leaves the mark-up saying
+  exactly what it was asked to say. bake materializes a clip window as
+  `display="none"` and `data-fade` as `opacity`, so a window or a fade on either
+  tag did nothing: the element appeared at t=0 and stayed to the end, and every
+  arithmetic pass, `lint`'s visibility check included, agreed with the mark-up.
+  The fix wraps a `<text>` or `<image>` in a `<g>` carrying the attribute, which
+  the loader does read, and *moves* rather than copies the opacity, so a later
+  pass that re-parents the node — `data-wrap`, `data-curve-*`, `data-raster` —
+  cannot apply it twice. `<tspan>` stays broken: a `<g>` inside `<text>` is
+  invalid SVG and this loader drops the whole text when it meets one, so
+  `debug --pixels` still reports a span's window as `hidden_but_drawn`. Sweeping
+  the corpus, 145 of 750 frames move, all of them in the three compositions that
+  window or fade text or pictures; `verify` on `title-card` goes from 2 warnings
+  to 0, and on `master-demo` from 4 to 2.
 - **0.2.0 (2026-09)** — the media and verification batch. Two things a model cannot
   check for itself, made first-class. **Verification:** every lint finding gained a
   stable `code`, with `check --json` / `debug --json` for programmatic consumption;

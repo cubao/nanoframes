@@ -362,7 +362,14 @@ def _style_fill(node: ET.Element) -> dict:
 
 
 def _carry(g: ET.Element, node: ET.Element) -> None:
-    for attr in ("transform", "opacity"):
+    """Move the node's own baked attributes onto the group replacing it.
+
+    This pass removes the node it expands, so everything bake materialized on it
+    has to move or it is lost. ``display`` is the one that fails silently: a
+    composition swapping the node out without copying it draws an element the
+    frame had hidden.
+    """
+    for attr in ("transform", "opacity", "display"):
         v = node.get(attr)
         if v:
             g.set(attr, v)
