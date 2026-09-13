@@ -68,14 +68,18 @@ def _head_markup(path: Path) -> str:
             ' stroke-width="1.2"/>')
 
 
-def _run_markup(run: Text, x: float, anchor: str) -> str:
+def _run_markup(run: Text, x: float) -> str:
+    """One ``<text>`` run, at the x the renderer will draw it from.
+
+    No ``text-anchor``: this loader ignores it and left-aligns every run, so
+    writing it down would state something about the frame that is not true of
+    it. ``_text_markup`` derives the compensating ``x`` instead.
+    """
     pairs = [
         ("x", _fmt(x)), ("y", _fmt(run.y)),
         ("font-family", run.family), ("font-size", _fmt(run.size)),
         ("fill", run.fill),
     ]
-    if anchor != "start":
-        pairs.append(("text-anchor", anchor))
     if run.opacity < 1.0:
         pairs.append(("opacity", _fmt(run.opacity)))
     pairs.append(("xml:space", "preserve"))
@@ -96,9 +100,14 @@ def _text_markup(run: Text, measurer) -> str:
     ``tracking`` widens the run: the advance a browser would add per character
     is folded into the width, and the offset is derived from the same number, so
     the run stays centred on its anchor.
+
+    With no measurer the same arithmetic runs on ``txt``'s deterministic width
+    estimate. That compensating ``x`` is still the one to emit: an anchor this
+    renderer ignores would leave the run at its uncorrected ``x``, so there is
+    never a reason to write the attribute.
     """
-    if measurer is None or (run.anchor == "start" and not run.tracking):
-        return _run_markup(run, run.x, run.anchor)
+    if run.anchor == "start" and not run.tracking:
+        return _run_markup(run, run.x)
     ink = txt.measure(measurer, run.content, run.family, "400", run.size)
     width = ink.width
     if run.tracking:
@@ -110,7 +119,7 @@ def _text_markup(run: Text, measurer) -> str:
         x = run.x - width + ink.left
     else:
         x = run.x
-    return _run_markup(run, x, "start")
+    return _run_markup(run, x)
 
 
 def _group_markup(group: Group, reveal: bool, measurer, paper: str,

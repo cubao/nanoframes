@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass
 
 from nanoframes import bake, bounds, media, refs, timeline
@@ -229,6 +230,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_assets(doc, findings)
     _check_image_aspect(doc, findings)
     _check_inert_attributes(doc, findings)
+    _check_inert_text_props(doc, findings)
     _check_inert_tspan(doc, findings)
     _check_font_family(doc, findings)
     _check_media(doc, findings)
@@ -500,6 +502,9 @@ def _check_inert_attributes(doc: Document, findings: list[Finding]) -> None:
     frame that the renderer does not do, and gets a wrong picture with no error
     — the exact failure mode `check` exists to catch. ``display="none"`` is what
     hides, and it is honoured.
+
+    The text properties are the same failure without a rewrite to offer; they are
+    checked alongside, in ``_check_inert_text_props``.
     """
     for node in doc.root.iter():
         raw = node.get("visibility")
@@ -507,14 +512,91 @@ def _check_inert_attributes(doc: Document, findings: list[Finding]) -> None:
             continue
         findings.append(Finding(
             "warning",
-            f"element {node.get('id') or local_name(node.tag)}: visibility={raw!r} is"
-            f" ignored by ThorVG — the element is drawn anyway; use display=\"none\"",
-            code="render.inert_attribute",
-            element=node.get("id") or local_name(node.tag),
+            f"{bounds.label(node)}: visibility={raw!r} is ignored by ThorVG — the"
+            f" element is drawn anyway; use display=\"none\"",
+            code="render.inert_attribute", element=bounds.label(node),
         ))
 
 
 _SPAN_TIMING_ATTRS = ("data-start", "data-duration", "data-fade")
+
+
+_INERT_TEXT_PROPS = ("text-anchor", "letter-spacing")
+
+# `letter-spacing` takes a length; the unit decides nothing here, only whether
+# the author asked for spacing at all.
+_LENGTH_UNIT_RE = re.compile(r"(px|pt|em|rem|%)$", re.IGNORECASE)
+
+
+def _asks_for_spacing(raw: str) -> bool:
+    """Whether a ``letter-spacing`` value asks for any change from the default.
+
+    ``normal`` is CSS's initial value and ``0``/``0px`` are the same request for
+    nothing. Anything else — including a unit this module cannot read — is an
+    author asking for spacing that will not appear.
+    """
+    value = raw.strip().lower()
+    if value in ("", "normal", "inherit", "initial", "unset"):
+        return False
+    try:
+        return float(_LENGTH_UNIT_RE.sub("", value)) != 0.0
+    except ValueError:
+        return True
+
+
+def _check_inert_text_props(doc: Document, findings: list[Finding]) -> None:
+    """Warn where a text property claims something this renderer does not do.
+
+    Probed on this build rather than assumed, by ink count and pixel colour: with
+    ``text-anchor="middle"`` or ``"end"`` every run is still drawn left-aligned
+    at its ``x``, and with ``letter-spacing="6"`` — or ``6px``, or ``0.2em`` —
+    the run is still drawn at its natural spacing. The frame is identical to the
+    run without the declaration, both on the ``<text>`` itself and on a ``<g>``
+    above it, so nothing is inherited into the glyphs either. An author who wrote
+    either one asked for a moved or widened run and got neither, silently.
+
+    The two are reported separately because they are two different claims, and
+    neither is the same failure as the gap table's other two entries: ``<marker>``
+    and ``<pattern>`` draw *nothing*, ``rgba()`` draws black, these two draw the
+    run unchanged. See docs/diagram.md's ThorVG gap table for all four.
+
+    Reported only where glyphs are in scope — the declaration sits on a node with
+    a ``<text>`` on or under it — because on a node with no text below it the
+    attribute says nothing about the frame. ``text-anchor="start"`` (the initial
+    value) and a zero or ``normal`` spacing ask for nothing, and stay silent.
+
+    There is no rewrite to propose, so the remedy is the author's: place the run
+    by its measured ink (one ``<text>`` at ``x - ink_w/2 + left_bearing``, which
+    is what ``nanoframes diagram`` emits) or put the tracking in the string.
+    """
+    for node in doc.root.iter():
+        for attr in _INERT_TEXT_PROPS:
+            raw = node.get(attr)
+            if raw is None:
+                continue
+            if attr == "text-anchor":
+                if raw.strip().lower() in ("start", ""):
+                    continue
+                claim = ("every run is left-aligned at its x, so this one still starts"
+                         " where `start` would put it")
+                remedy = ("place the run by its measured ink (one <text> at"
+                          " x - ink_w/2 + left_bearing, which is what `nanoframes"
+                          " diagram` emits)")
+            else:
+                if not _asks_for_spacing(raw):
+                    continue
+                claim = ("the run is drawn at its natural spacing, so tracked text reads"
+                         " as one word")
+                remedy = ("space the characters in the string itself — this loader adds"
+                          " no tracking of its own")
+            if not any(local_name(d.tag) in ("text", "tspan") for d in node.iter()):
+                continue  # no glyphs here: the declaration cannot claim anything
+            findings.append(Finding(
+                "warning",
+                f"{bounds.label(node)}: {attr}={raw!r} is ignored by ThorVG — {claim};"
+                f" {remedy}.",
+                code="render.inert_attribute", element=bounds.label(node),
+            ))
 
 
 def _check_inert_tspan(doc: Document, findings: list[Finding]) -> None:

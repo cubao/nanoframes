@@ -284,28 +284,27 @@ def _text_bounds(node, measurer) -> Bounds:
     renderer draws it — ``itertext()`` walks the runs in document order and the
     result is the ink a frame would show. A span with an ``x`` of its own does
     not move inside it: the attribute is inert.
+
+    ``text-anchor`` and ``letter-spacing`` are not read either, for the same
+    reason: this renderer ignores both (``check`` names them as
+    ``render.inert_attribute``), so every run is drawn left-aligned at its ``x``
+    at its natural spacing — which is exactly the box measured here. Reading them
+    would move or widen the box away from the glyphs, and would make a value the
+    module cannot parse (``letter-spacing="0.2em"``) look unmeasurable.
     """
     text = "".join(node.itertext())
     if not text.strip():
         return Bounds()
     try:
         size = float_attr(node, "font-size", 16.0)
-        spacing = float_attr(node, "letter-spacing", 0.0)
     except ValueError:
         return Bounds(complete=False)
     ink = measurer.ink(text, node.get("font-family") or "Arial",
-                       node.get("font-weight") or "normal", size, spacing)
+                       node.get("font-weight") or "normal", size)
     if ink.w == 0 and ink.h == 0:
         return Bounds(Box(float_attr(node, "x"), float_attr(node, "y"),
                           float_attr(node, "x"), float_attr(node, "y")))
     x, y = float_attr(node, "x"), float_attr(node, "y")
-    # text-anchor shifts the ink box along x; center/end are rare enough that a
-    # one-line adjustment keeps the box honest.
-    anchor = node.get("text-anchor")
-    if anchor == "middle":
-        x -= ink.w / 2.0
-    elif anchor == "end":
-        x -= ink.w
     return Bounds(Box(x + ink.left_dx, y + ink.top, x + ink.right_dx, y + ink.bottom))
 
 

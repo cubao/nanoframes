@@ -115,7 +115,7 @@ that render as *something valid and wrong*:
 | `animation.target_unmatched` | a selector that matches no element |
 | `transform.value_invalid` / `animation.transform_shape_mixed` | values bake cannot express, or shapes the interpolator cannot blend |
 | `asset.missing` / `image.bad_aspect` / `media.*` | a missing asset, an unknown `data-aspect`, a video without ffmpeg or mapped past its source |
-| `render.inert_attribute` / `render.inert_tspan` | an attribute this loader accepts and ignores: `visibility`, or timing and animation written on a `<tspan>` |
+| `render.inert_attribute` / `render.inert_tspan` | an attribute this loader accepts and ignores: `visibility`, `text-anchor`, `letter-spacing`, or timing and animation written on a `<tspan>` |
 | `clip.*`, `canvas.*`, `animation.keyframe_out_of_range` | timing and canvas metadata that is out of range |
 
 Two checks are **opt-in**, declared on the root `<svg>`, because they encode taste rather than

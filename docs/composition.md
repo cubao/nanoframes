@@ -223,6 +223,19 @@ SVG meaning but only within that subset.
   what hides, and it is honoured — on shapes and groups. `check` warns when it
   sees either value (`render.inert_attribute`), because the alternative is a
   wrong frame with no error.
+- **`text-anchor` and `letter-spacing` are ignored.** Probed by ink count and
+  pixel colour: one 24px run on a 400x120 canvas inks 1084 px in box
+  (22,50,193,67), identically with `text-anchor="middle"`, `text-anchor="end"`,
+  `letter-spacing="6"`, `"6px"` or `"0.2em"` — on the `<text>` and on a `<g>`
+  above it, so nothing is inherited into the glyphs either. A "centred" run is
+  drawn left-aligned at its `x` and a "tracked" one at its natural spacing, both
+  with no error; `check` reports each as `render.inert_attribute`, named
+  separately because one moves a run and the other widens it. There is no
+  rewrite to offer: place the run by its measured ink (one `<text>` at
+  `x - ink_w/2 + left_bearing`, which is what `nanoframes diagram` emits) or put
+  the tracking in the string. These are not the gaps that draw *nothing*
+  (`<marker>`, `<pattern>`) or the one that paints black (`rgba()`) — all four
+  are in [diagram.md](diagram.md#thorvg-gaps).
 - **`display` and `opacity` are ignored on `<text>`, `<tspan>` and `<image>`.**
   Probed by ink count, not by frame comparison (identical frames with and
   without an attribute mean the attribute did nothing, which is easy to

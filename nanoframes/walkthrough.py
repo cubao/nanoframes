@@ -66,8 +66,10 @@ STORY = """<svg xmlns="http://www.w3.org/2000/svg"
   <!-- clips: enter at data-start, live for data-duration (chip fades via .chip) -->
   <rect id="slat" class="chip" x="60" y="48" width="6" height="26" rx="3" fill="#5ef17c"
         data-start="0.5" data-duration="5.0"/>
+  <!-- no letter-spacing on the kicker: this loader ignores it, so a "tracked" run
+       reads as one word while the mark-up claims otherwise (`check` names it) -->
   <text id="kicker" class="chip" x="80" y="72" font-family="Sarasa Mono SC" font-size="22"
-        letter-spacing="2" fill="#5ef17c" data-start="0.5" data-duration="5.0">NANOFRAMES</text>
+        fill="#5ef17c" data-start="0.5" data-duration="5.0">NANOFRAMES</text>
 
   <text id="title" x="60" y="150" font-family="Sarasa Mono SC" font-weight="700" font-size="72"
         fill="#f4f7ff" data-start="0.7" data-duration="4.8">SVG renders video.</text>

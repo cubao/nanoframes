@@ -656,6 +656,32 @@ def test_a_centred_run_is_one_element_centred_on_its_anchor(measure):
         assert f">{content}<" in markup
 
 
+def test_no_measurer_still_does_not_emit_the_anchor():
+    """The emitter never writes `text-anchor`, measured or estimated.
+
+    This loader ignores the attribute, so the estimate path used to hand back a
+    run that started at its anchor while the mark-up said "centred" — and
+    `check` reports that declaration as `render.inert_attribute`, so the emitter
+    would have been writing markup its own check flags. With no measurer the
+    compensating x comes from the deterministic width estimate instead.
+    """
+    from nanoframes.diagram import text as txt
+    from nanoframes.diagram.emit import _text_markup
+
+    for anchor in ("middle", "end"):
+        run = Text(x=200.0, y=100.0, content="Learn", size=12, fill="#000",
+                   family="Arial", anchor=anchor, kind="label")
+        markup = _text_markup(run, None)
+        assert "text-anchor" not in markup, anchor
+        x = float(re.search(r'\bx="([-\d.]+)"', markup).group(1))
+        est = txt.measure(None, "Learn", "Arial", "400", 12)
+        # the estimate's left bearing is folded in only for `middle`, so `end`
+        # lands within a bearing (1-2px) of the anchor rather than exactly on it
+        edge = (x - est.left + est.width / 2.0) if anchor == "middle" \
+            else (x + est.left + est.width)
+        assert abs(edge - 200.0) <= 2.5, f"{anchor}: anchored at {edge:.1f}"
+
+
 # ---------------------------------------------------------------------------
 # sketchy (hand-drawn) skin
 # ---------------------------------------------------------------------------

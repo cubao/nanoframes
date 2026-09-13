@@ -120,7 +120,7 @@ def test_inert_visibility_is_reported():
            + '</svg>')
     findings = lint_string(svg)
     assert "render.inert_attribute" in _codes(findings)
-    assert any(f.element == "hid" for f in findings)
+    assert any(f.element == "#hid" for f in findings)
 
 
 def test_visibility_visible_is_not_reported():
@@ -129,6 +129,79 @@ def test_visibility_visible_is_not_reported():
            + '<rect id="ok" width="10" height="10" fill="#0f0" visibility="visible"/>'
            + '</svg>')
     assert "render.inert_attribute" not in _codes(lint_string(svg))
+
+
+# --- text properties ThorVG accepts and ignores ------------------------------
+
+def _run(attrs: str = "", *, tag: str = "text", wrap: str = "") -> str:
+    """One `<text>` (or a `<g>` around one) carrying `attrs` — the shape varies."""
+    inside = (f'<{tag} id="t" x="10" y="50" font-family="Arial" font-size="20"'
+              f'{attrs}>HELLO WORLD</{tag}>')
+    return CANVAS.format(extra="") + (f'<g id="wrap"{wrap}>{inside}</g>' if wrap else inside) \
+        + "</svg>"
+
+
+def test_text_anchor_middle_and_end_are_reported():
+    """Measured: every run is left-aligned at its x whatever the anchor says.
+
+    Ink count and pixel colour are identical to the same run without the
+    attribute, so a "centred" title still starts at its x — a claim about the
+    frame the renderer does not honour.
+    """
+    for anchor in ("middle", "end"):
+        findings = lint_string(_run(f' text-anchor="{anchor}"'))
+        finding = next(f for f in findings if f.code == "render.inert_attribute")
+        assert finding.element == "#t"
+        assert f"text-anchor='{anchor}'" in finding.message
+
+
+def test_text_anchor_start_is_not_reported():
+    """`start` is the initial value: it asks for nothing to warn about."""
+    assert "render.inert_attribute" not in _codes(lint_string(_run(' text-anchor="start"')))
+
+
+def test_letter_spacing_is_reported():
+    """Measured: the run keeps its natural spacing, so tracked text reads as one word."""
+    for value in ("6", "6px", "0.2em"):
+        findings = lint_string(_run(f' letter-spacing="{value}"'))
+        finding = next(f for f in findings if f.code == "render.inert_attribute")
+        assert "letter-spacing" in finding.message and value in finding.message
+
+
+def test_a_zero_or_normal_letter_spacing_is_not_reported():
+    """`normal` and a zero length ask for no spacing, which is what the run gets."""
+    for value in ("normal", "0", "0px", "0em"):
+        assert "render.inert_attribute" not in _codes(
+            lint_string(_run(f' letter-spacing="{value}"'))), value
+
+
+def test_the_two_text_properties_are_reported_separately():
+    """One moves a run and one widens it: two claims, two findings.
+
+    Folding them together would say one thing about two different failures — the
+    same reason the drawing-nothing family (`<marker>`, `<pattern>`) and the
+    paints-black one (`rgba()`) keep their own wording in the gap table.
+    """
+    findings = [f for f in lint_string(_run(' text-anchor="middle" letter-spacing="6"'))
+                if f.code == "render.inert_attribute"]
+    assert len(findings) == 2
+    assert any("text-anchor='middle'" in f.message for f in findings)
+    assert any("letter-spacing='6'" in f.message for f in findings)
+
+
+def test_an_inert_text_property_on_a_group_over_text_is_reported():
+    """Nothing is inherited into the glyphs, so a wrapper's declaration is just as dead."""
+    findings = lint_string(_run(' letter-spacing="6"', wrap=' letter-spacing="6"'))
+    assert any(f.element == "#wrap" and "letter-spacing" in f.message for f in findings)
+
+
+def test_an_inert_text_property_with_no_text_under_it_is_not_reported():
+    """A declaration on a node with no glyphs in scope says nothing about the frame."""
+    svg = (CANVAS.format(extra="")
+           + '<rect id="bar" width="10" height="10" fill="#f00" text-anchor="middle"'
+             ' letter-spacing="6"/></svg>')
+    assert "render.inert_attribute" not in _codes(lint_string(svg))
+
 
 
 # --- timing written on a <tspan> --------------------------------------------

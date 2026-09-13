@@ -290,12 +290,16 @@ def placed_boxes(doc, t: float = 0.0) -> dict:
     return out
 
 
-def frame_ink(doc, t: float = 0.0) -> bounds.Box:
-    """The box the rendered frame actually inks — the pixels bounds has to agree with."""
+def _rgb(doc, t: float = 0.0):
+    """The rendered frame as a pixel array — the reading a box must not contradict."""
     from nanoframes.render import render_frame
 
-    rgb = np.asarray(render_frame(doc, t, warn_blank=False).convert("RGB"))
-    ys, xs = np.nonzero((rgb < 128).any(axis=-1))
+    return np.asarray(render_frame(doc, t, warn_blank=False).convert("RGB"))
+
+
+def frame_ink(doc, t: float = 0.0) -> bounds.Box:
+    """The box the rendered frame actually inks — the pixels bounds has to agree with."""
+    ys, xs = np.nonzero((_rgb(doc, t) < 128).any(axis=-1))
     return bounds.Box(float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
 
 
@@ -343,3 +347,43 @@ def test_a_spans_own_attributes_move_nothing():
 
     assert np.array_equal(rgb(comp(BG + loud)), rgb(comp(BG + SPAN_LINE))), \
         "the louder span draws the identical frame — so it cannot move a box"
+
+
+# ---------------------------------------------------------------------------
+# A text box reads only what the renderer honours
+# ---------------------------------------------------------------------------
+
+HELLO = ('<text id="t" x="20" y="80" font-family="Arial" font-size="28"'
+         ' fill="#000000">HELLO WORLD</text>')
+
+
+def test_a_text_box_ignores_the_anchor_it_cannot_have():
+    """A "centred" run is drawn left-aligned at its x — so its box starts at x.
+
+    `check` names `text-anchor` as inert (`render.inert_attribute`); if the box
+    still shifted by half the ink width, `bounds` would contradict the check and
+    the pixels, and `"center": "auto"` would pivot on a box nobody drew.
+    """
+    plain = placed_boxes(comp(BG + HELLO))["#t"][1]
+    for anchor in ("middle", "end"):
+        variant = comp(BG + HELLO.replace('fill="#000000"',
+                                         f'fill="#000000" text-anchor="{anchor}"'))
+        assert placed_boxes(variant)["#t"][1] == plain, anchor
+        assert frame_ink(variant) == frame_ink(comp(BG + HELLO)), anchor
+
+
+def test_a_text_box_ignores_tracking_and_is_still_measurable():
+    """`letter-spacing` widens nothing, and a value `bounds` cannot parse is not a hole.
+
+    `0.2em` used to make the whole box unmeasurable — a `ValueError` from the
+    unused attribute — which took the text out of `check`'s visibility pass
+    entirely: the one reading that watches for text which never lands.
+    """
+    plain = comp(BG + HELLO)
+    for value in ("6", "6px", "0.2em"):
+        variant = comp(BG + HELLO.replace('fill="#000000"',
+                                         f'fill="#000000" letter-spacing="{value}"'))
+        painted, box = placed_boxes(variant)["#t"]
+        assert painted, value
+        assert box == placed_boxes(plain)["#t"][1], value
+        assert np.array_equal(_rgb(variant), _rgb(plain)), value
