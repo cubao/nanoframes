@@ -115,6 +115,7 @@ that render as *something valid and wrong*:
 | `animation.target_unmatched` | a selector that matches no element |
 | `transform.value_invalid` / `animation.transform_shape_mixed` | values bake cannot express, or shapes the interpolator cannot blend |
 | `asset.missing` / `image.bad_aspect` / `media.*` | a missing asset, an unknown `data-aspect`, a video without ffmpeg or mapped past its source |
+| `render.inert_attribute` / `render.inert_tspan` | an attribute this loader accepts and ignores: `visibility`, or timing and animation written on a `<tspan>` |
 | `clip.*`, `canvas.*`, `animation.keyframe_out_of_range` | timing and canvas metadata that is out of range |
 
 Two checks are **opt-in**, declared on the root `<svg>`, because they encode taste rather than
@@ -398,6 +399,23 @@ MP4 export, and an agent-facing skill.
   connector trunk, which in a tree *is* the relation. A chart grammar (scales,
   ticks, stacking) is the next one, and its primitives are the ones this batch
   proved are missing.
+- **0.2.11 (2026-09)** — the last silent gap in the motion model, named. A clip
+  window or a `data-fade` on a `<tspan>` was written into the mark-up and then
+  ignored, and every arithmetic reading agreed with the mark-up: `lint`'s
+  visibility pass, `debug`'s on/off-canvas boxes, the clip scan. Only
+  `debug --pixels` saw it — the probe that hides one node and re-renders the
+  whole frame. Probing the renderer to fix it came back wider than the model:
+  this loader draws a `<text>` as **one unit**, so *every* attribute on a span
+  inside it is inert, the span's own `fill`/`font-size`/`font-weight`/`stroke`/
+  `x`/`dy` as much as `display`/`opacity` (ink count and colour both unchanged
+  with and without the attribute). A span contributes its characters and nothing
+  else, which also makes the per-word highlight route in
+  `docs/text-capabilities.md` a non-starter as written. There is no rewrite here
+  — bake's `<g>` carrier needs a `<g>` inside `<text>`, which drops the whole
+  text — so `check` names it instead (`render.inert_tspan`): a span carrying
+  `data-start`/`data-duration`/`data-fade`, or one an animation targets. The
+  diagnostic changes no pixel, and the corpus has no `tspan`, so the ledger is
+  untouched.
 - **0.2.0 (2026-09)** — the media and verification batch. Two things a model cannot
   check for itself, made first-class. **Verification:** every lint finding gained a
   stable `code`, with `check --json` / `debug --json` for programmatic consumption;

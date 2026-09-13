@@ -229,6 +229,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_assets(doc, findings)
     _check_image_aspect(doc, findings)
     _check_inert_attributes(doc, findings)
+    _check_inert_tspan(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
     _check_nested(doc, measurer, findings, _depth)
@@ -511,6 +512,83 @@ def _check_inert_attributes(doc: Document, findings: list[Finding]) -> None:
         ))
 
 
+_SPAN_TIMING_ATTRS = ("data-start", "data-duration", "data-fade")
+
+
+def _check_inert_tspan(doc: Document, findings: list[Finding]) -> None:
+    """Warn about a ``<tspan>`` whose window, fade or animation cannot take effect.
+
+    Probed rather than assumed, and the probe came back wider than the motion
+    model: this loader draws a ``<text>`` as a **single unit**, and every
+    attribute on the spans inside it is inert — a span's own ``fill``,
+    ``font-size``, ``font-weight``, ``stroke``, ``x``/``dy``, ``opacity`` and
+    ``display`` all render exactly as if unwritten, at every opacity (ink count
+    unchanged, colour unchanged). bake reaches for the same two attributes to
+    express timing — ``display="none"`` for a clip window, ``opacity`` for
+    ``data-fade`` — so a windowed or faded span is drawn as if neither were
+    written, and every keyframed property routed to one is dropped.
+
+    Unlike ``visibility`` there is no rewrite: bake fixes ``<text>``/``<image>``
+    by moving the attribute onto a ``<g>``, and a ``<g>`` inside ``<text>``
+    makes this loader drop the whole text (measured: zero ink). So `check` names
+    it, and the author either moves the timing to the ``<text>`` — which hides
+    every sibling span too — or drops the span.
+
+    A span whose declared window is the whole timeline is left alone: it asked
+    for nothing the renderer could fail to do.
+    """
+    for node in doc.root.iter():
+        if local_name(node.tag) != "tspan":
+            continue
+        declared = _span_timing(doc.composition, node)
+        if declared is None:
+            continue
+        findings.append(Finding(
+            "warning",
+            f"{bounds.label(node)}: {declared} on a <tspan> has no effect — this renderer"
+            f" draws a <text> as one unit and ignores every attribute on the spans inside"
+            f" it, so the span is drawn as if none of it were written; put the timing on"
+            f" the <text> (which then hides its other spans too) or drop the span.",
+            code="render.inert_tspan", element=bounds.label(node),
+        ))
+    for anim in doc.composition.animations:
+        for node in _matching_nodes(doc, anim.target):
+            if local_name(node.tag) != "tspan":
+                continue
+            findings.append(Finding(
+                "warning",
+                f"{anim.target}: this animation targets a <tspan> — every keyframed"
+                f" property is written onto the span and ignored, because this renderer"
+                f" draws a <text> as one unit, so the span holds its starting value for"
+                f" the whole composition; animate the <text> instead.",
+                code="render.inert_tspan", element=bounds.label(node),
+            ))
+            break  # one finding per animation, however many spans it matches
+
+
+def _span_timing(comp: Composition, node) -> str | None:
+    """The timing a span declared that will not happen, or ``None`` if it declared none.
+
+    Returns the authored attributes as they were written (the message quotes
+    them back), or ``None`` when the span carries no timing, or carries a window
+    equal to the whole composition — a no-op the renderer is not failing to do.
+    """
+    start = _opt_float(node.get("data-start"))
+    duration = _opt_float(node.get("data-duration"))
+    fade = _opt_float(node.get("data-fade"))
+    if fade is not None and fade > 0:
+        return f"data-fade={node.get('data-fade')!r}"
+    if start is None and duration is None:
+        return None
+    clip_start = start or 0.0
+    clip_end = clip_start + (duration if duration is not None else comp.duration)
+    if clip_start <= 1e-9 and clip_end >= comp.duration - 1e-9:
+        return None
+    declared = [f"{name}={node.get(name)!r}" for name in _SPAN_TIMING_ATTRS
+                if node.get(name) is not None]
+    return " ".join(declared)
+
+
 def _check_media(doc: Document, findings: list[Finding]) -> None:
     """Video-backed ``<image>`` nodes: the toolchain they need and the time they map to.
 
@@ -593,7 +671,7 @@ def _check_nested(doc: Document, measurer, findings: list[Finding], depth: int) 
 
 
 def _opt_float(raw: str | None):
-    """A declared budget value, or ``None`` when it was not declared (or is junk)."""
+    """A declared numeric attribute, or ``None`` when it was not declared (or is junk)."""
     if raw is None or raw == "":
         return None
     try:

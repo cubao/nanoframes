@@ -129,3 +129,83 @@ def test_visibility_visible_is_not_reported():
            + '<rect id="ok" width="10" height="10" fill="#0f0" visibility="visible"/>'
            + '</svg>')
     assert "render.inert_attribute" not in _codes(lint_string(svg))
+
+
+# --- timing written on a <tspan> --------------------------------------------
+
+def _span(span_attrs: str, *, text_attrs: str = "", script: str = "") -> str:
+    """One `<text>` holding one span — the shape every case below varies."""
+    return (CANVAS.format(extra="")
+            + f'<text id="host" x="10" y="50" font-family="Arial" font-size="20"'
+              f'{text_attrs}><tspan id="late"{span_attrs}>LATE</tspan></text>'
+            + (f'<script type="application/nanoframes+json"><![CDATA[{script}]]></script>'
+               if script else "")
+            + "</svg>")
+
+
+def test_a_window_on_a_tspan_is_reported():
+    """The window is baked as display="none" on the span — which this loader ignores.
+
+    Measured by ink count at the same opacity: a span "hidden" by its window draws
+    identically to one that is not, so the author gets a caption that is on screen
+    for the whole composition while every arithmetic reading agrees with the markup.
+    """
+    findings = lint_string(_span(' data-start="1.0" data-duration="1.0"'))
+    assert "render.inert_tspan" in _codes(findings)
+    finding = next(f for f in findings if f.code == "render.inert_tspan")
+    assert finding.element == "#late"
+    assert "data-start='1.0'" in finding.message and "data-duration='1.0'" in finding.message
+
+
+def test_a_fade_on_a_tspan_is_reported():
+    """`data-fade` rides on `opacity`, which is ignored on a span for the same reason."""
+    assert "render.inert_tspan" in _codes(lint_string(_span(' data-fade="0.5"')))
+
+
+def test_a_plain_span_is_not_reported():
+    """A span that declares no timing has asked for nothing the renderer cannot do."""
+    assert "render.inert_tspan" not in _codes(lint_string(_span("")))
+
+
+def test_a_span_window_covering_the_whole_composition_is_not_reported():
+    """Declaring the full timeline is a no-op window: there is no failure to name.
+
+    The canvas runs 4s, so `data-start="0" data-duration="4"` excludes no time —
+    warning here would be a false positive, and the check exists to be trusted.
+    """
+    assert "render.inert_tspan" not in _codes(
+        lint_string(_span(' data-start="0" data-duration="4.0" data-fade="0"')))
+
+
+def test_the_same_window_on_the_text_is_not_reported():
+    """The remedy the finding proposes has to be clean itself.
+
+    bake hands the attributes to a `<g>` around the `<text>`, where this loader
+    does read them, so moving the timing up is the fix.
+    """
+    svg = (CANVAS.format(extra="")
+           + '<text id="host" x="10" y="50" font-family="Arial" font-size="20"'
+             ' data-start="1.0" data-duration="1.0">LATE</text></svg>')
+    assert "render.inert_tspan" not in _codes(lint_string(svg))
+
+
+def test_an_animation_aimed_at_a_tspan_is_reported():
+    """Every keyframed property is written onto the span and dropped.
+
+    `opacity` is the measured case: the span is left at `opacity="0.0000"` at t=0
+    and still draws at full strength.
+    """
+    script = ('{"animations": [{"target": "#late", "keyframes":'
+              ' [{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1}]}]}')
+    findings = lint_string(_span("", script=script))
+    assert "render.inert_tspan" in _codes(findings)
+    finding = next(f for f in findings if f.code == "render.inert_tspan")
+    assert finding.element == "#late"
+    assert "#late" in finding.message
+
+
+def test_an_animation_aimed_at_the_text_is_not_reported():
+    """Animating the `<text>` is the fix, and the check has to stay quiet on it."""
+    script = ('{"animations": [{"target": "#host", "keyframes":'
+              ' [{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1}]}]}')
+    assert "render.inert_tspan" not in _codes(lint_string(_span("", script=script)))

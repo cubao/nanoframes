@@ -224,10 +224,19 @@ SVG meaning but only within that subset.
 
   **`<tspan>` is the one case left.** A `<g>` inside `<text>` is not valid SVG,
   and this loader drops the entire text when it meets one, so a window or a fade
-  on a span has no effect. `nanoframes debug --pixels` reports it as
-  `hidden_but_drawn` — the span draws while every arithmetic pass, including
-  `lint`'s visibility check, believes the attribute. Multi-line text is not
-  affected: `data-wrap` emits a separate `<text>` per line rather than spans.
+  on a span has no effect. Measured wider than that: the loader draws a `<text>`
+  as **one unit**, so *every* attribute on a span inside it is inert — the
+  span's own `fill`/`font-size`/`font-weight`/`stroke`/`x`/`dy` as much as
+  `display`/`opacity`. A span contributes its characters and nothing else.
+  `nanoframes debug --pixels` reports the timing case as `hidden_but_drawn` —
+  the span draws while every arithmetic pass, including `lint`'s visibility
+  check, believes the attribute. `check` now names it too, as
+  `render.inert_tspan`, for a span carrying `data-start`/`data-duration`/
+  `data-fade` or one an animation targets (a keyframed property on a span is
+  written and dropped the same way); the fix is to move the timing to the
+  `<text>` — which then hides its sibling spans too — or to drop the span.
+  Multi-line text is not affected: `data-wrap` emits a separate `<text>` per
+  line rather than spans.
 
 ## Text auto-layout (`data-*` on `<text>`)
 

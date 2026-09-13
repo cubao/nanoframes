@@ -24,7 +24,7 @@ Empirically, in the installed ThorVG SVG loader neither route works:
 
 - `<tspan>` with `x`/`y`/`dy` **renders all spans on the same baseline** (confirmed: two tspans at `y=100`/`dy=40` both ink a single 20 px-tall line).
 - a literal `&#10;` newline is **collapsed into horizontal advance** (two "lines" render side by side, one line tall).
-- `<tspan>` also **ignores `display` and `opacity`** (see `docs/composition.md` → Known ThorVG behaviors). `<text>` and `<image>` ignore them too, and bake wraps those two in a `<g>` to fix it; a span cannot be wrapped, because a `<g>` inside `<text>` makes this loader drop the whole text.
+- `<tspan>` **ignores its own presentation attributes entirely, not just `display`/`opacity`** (see `docs/composition.md` → Known ThorVG behaviors; `check` names the timing case as `render.inert_tspan`). A span's `fill`, `font-size`, `font-weight`, `stroke`, `x`/`dy` and `opacity` all leave the pixels exactly as they were: the loader draws the whole `<text>` as one unit with the `<text>`'s own style. `<text>` and `<image>` ignore `display`/`opacity` too, and bake wraps those two in a `<g>` to fix it; a span cannot be wrapped, because a `<g>` inside `<text>` makes this loader drop the whole text.
 
 So multiline must be baked by us. We measure each candidate line and emit **separate `<text>` per line** (each line is its own paint, which ThorVG positions reliably). Interface: `data-wrap="<maxWidth>"`. The same choice is why a `data-wrap` paragraph can carry a clip window and a fade: it is a stack of `<text>` elements, each of which bake can wrap in a `<g>`.
 
@@ -82,7 +82,7 @@ handler end-to-end), and the walkthrough showcase built from
 | measure + auto-fit font size (`fitTextFontSize` shrink-down until it fits one line) | hyperframes `core/text`, remotion layout-utils | ⚠️ trivial to add on top of `Measurer` (binary/step search). |
 | word-level wrapping / caption timing | remotion `@remotion/captions`, layout-utils; hyperframes caption blocks | wrap ✅ done; caption-timing needs duration→width math, straightforward. |
 | shrinkwrap "rounded text box" | remotion `@remotion/rounded-text-box` | ✅ done as `data-bg`. |
-| per-char / per-word highlight, kinetic captions (weight-shift, gradient-fill, clip-wipe…) | hyperframes `docs/catalog/components/caption-*` | examples to port later; core is just `tspan`-replacements + fills we already bake. |
+| per-char / per-word highlight, kinetic captions (weight-shift, gradient-fill, clip-wipe…) | hyperframes `docs/catalog/components/caption-*` | examples to port later, but **not via `tspan`**: this loader ignores every attribute a span carries (its own `fill` included), so a per-word highlight has to be one `<text>` per run, the way `data-wrap` already emits a line per `<text>`. |
 | global transforms (e.g. `getBoundingRect` helpers, `@remotion/paths` point/tangent) | remotion paths | curve ✅; expose `getLength/point/tangent` as re-usable module (done in `curve.py`). |
 | variable-font axis animation | hyperframes `registry/components/variable-font-flex` | ⚠️ needs font with variation axes + a shaper; stretch. |
 | Google-fonts auto-download | hyperframes/remotion `fonts` | ⚠️ offline equivalent = a `fonts/` dir + exact-family registration; see font note below. |
