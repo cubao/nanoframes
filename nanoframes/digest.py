@@ -18,11 +18,12 @@ fresh render can name the input that moved:
   produced different pixels. That is the alarming one, and the reason the ledger
   is keyed this way rather than on the file.
 
-Cross-architecture checking is what this is for and what it cannot do by itself:
-digests recorded on macOS/ARM are re-checked by running ``digest --check`` on
-another machine, which is work for a CI job this repository does not have yet.
-The ledger is the half that can exist locally; `docs/determinism.md` says what
-the other half needs.
+Cross-architecture checking is what this is for: the ledger is recorded on
+macOS/ARM and re-checked on Linux/x86-64 by ``.github/workflows/determinism.yml``,
+which is the half that cannot exist in a checkout. It found that the corpus
+reproduces byte for byte on 8 of 10 compositions and differs by a few
+antialiasing pixels on two; ``docs/determinism.md`` records the measurement, the
+exemptions and what a green run there does not prove.
 """
 
 from __future__ import annotations

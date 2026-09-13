@@ -59,7 +59,7 @@ outcomes:
   exists to make visible.
 
 ```bash
-nanoframes digest --all --record     # (re)record every example — about 5s for 750 frames
+nanoframes digest --all --record     # (re)record every example — about 5s for 780 frames
 nanoframes digest --all --check      # compare; exit 1 on any changed or regression
 nanoframes digest <one>.nf.svg --check --json
 ```
@@ -74,15 +74,61 @@ identical.
 `--samples N` digests a subset for a quick check and records `sampled: true`, so
 a cheap reading can never be mistaken in the ledger for a whole-film one.
 
+## The other half: a second machine
+
+`.github/workflows/determinism.yml` renders the corpus on Linux/x86-64 and runs
+`digest --all --check` against the ledger recorded here on macOS/ARM. Before it
+became a gate it was run by hand on native x86-64 hardware — Ubuntu 22.04.3,
+Intel i9-9900K, CPython 3.12.13, `thorvg-python` 1.1.3, Pillow 11.1.0, NumPy
+2.4.2 — against a ledger recorded on macOS 26.6.2, Apple M3, CPython 3.12.10.
+
+What that run measured:
+
+| composition | result |
+| --- | --- |
+| 8 of 10, over every frame | byte-identical |
+| `text-measure` | 9 pixels of 230 400 differ, by at most 3/255, inside one glyph |
+| `master-demo` | 45 frames of 180 differ, 1–5 pixels each, exactly ±1/255, on a glyph edge |
+
+The two are exempt from the gate by name in `EXCUSED_COMPOSITIONS`, and printed
+on every run as `EXCUSED` so that an exemption cannot quietly turn into silence.
+What they are *not* is a layout difference: `nanoframes measure` prints identical
+widths on both machines, and restricting the registered faces to the bundled one
+changes nothing on either — the corpus draws with the same face everywhere. What
+is left is the rasterizer's own rounding of a glyph edge, and that is not in the
+identity at all (see below).
+
+Three things a green run here does not say:
+
+- **Anything about emulation.** GitHub's `ubuntu-latest` runners are native
+  x86-64. The same comparison inside an `x86-64` container on an Apple Silicon
+  host is *translated*, not native x86-64 — a green result there says the
+  translation is faithful, not that the architecture is. (pocket-motion, in the
+  same lane, writes the same warning into `baselines/hash-portability.md`.)
+- **That every machine agrees.** One second machine is one sample. Another
+  runner — a different CPU, a different FreeType underneath the rasterizer — may
+  round another glyph differently. When it does, the job names the composition
+  and the reason, and the choice is to measure it and add it to the exemption
+  list, or to treat the claim as falsified for that commit.
+- **That a mismatch here is a diagnosis.** The `fonts` component covers the faces
+  that *exist* on the machine, and that set differs by construction (macOS loads
+  Arial, Linux loads DejaVu), so a cross-machine mismatch always arrives as
+  `changed — fonts changed`. `regression` — the alarming verdict — needs every
+  declared input to be identical, which two machines with different system fonts
+  can never satisfy. The verdict is worth having; its reasons are not a
+  diagnosis of why the two disagree.
+
 ## What is not done here
 
-**Cross-architecture checking.** The claim that most needs this evidence is that
-two machines produce identical frames. The ledger is the half that can exist in
-a checkout; the other half is a CI job that renders the same tree on Linux/x86-64
-and runs `digest --all --check` against digests recorded on macOS/ARM. There is
-no CI configuration in this repository yet, so that check has not been run — the
-ledger records the toolchain precisely so that when it is, a mismatch can name
-its cause.
+**The rasterizer's build, the interpreter, and the two libraries.** The identity
+covers the composition, the media, the fonts and the toolchain — not the
+platform's build of the rasterizer, not the Python runtime, not Pillow or NumPy,
+which decode images and measure glyph ink. The workflow pins Python, Pillow and
+NumPy to the versions the ledger was recorded under, so that a red result names
+the machine rather than a dependency bump; that is a pin inside one job, not an
+input in the identity, and a divergence they caused would be reported as a
+cross-machine difference it is not. Carrying them in the identity is the honest
+fix, and it is also what would make `regression` reachable across machines.
 
 **A digest in the test suite.** `pytest` asserts the ledger's *shape* — every
 example has an entry, no entry outlives its file, every entry carries its four

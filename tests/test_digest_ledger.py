@@ -1,13 +1,15 @@
 """The committed ledger's shape — cheap, and separate from running it.
 
 `digest --all --check` is the real determinism gate: it renders every example and
-compares. It is a ledger operation (seconds, and it re-renders 750 frames), so it
-is not run by `pytest`; `docs/determinism.md` says so and says why.
+compares. It is a ledger operation (seconds, and it re-renders 780 frames), so it
+is not run by `pytest`; `docs/determinism.md` says so and says why. The other
+machine is `.github/workflows/determinism.yml`, which renders the same corpus on
+Linux/x86-64.
 
 What *is* cheap is the part of the invariant a rendering run cannot express: a
 composition with no ledger entry is not "passing", it is unmeasured, and a
-ledger entry for a file that no longer exists hides that. There is no CI here
-yet, so this file is the only thing standing between the ledger and quiet decay.
+ledger entry for a file that no longer exists hides that. That is what this file
+stands between the ledger and quiet decay.
 """
 
 import glob
