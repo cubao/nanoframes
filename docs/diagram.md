@@ -53,9 +53,14 @@ One JSON object; the two kinds share a header.
   "title": "Ingest path",
   "subtitle": "Edge to store, one hop per arrow",
   "reveal": false,
-  "nodes": [ {"id": "edge", "label": "Edge", "sub": "cdn:443", "x": 80, "y": 220, "type": "external"} ],
-  "zones": [ {"id": "priv", "label": "Private zone", "nodes": ["gw"]} ],
-  "edges": [ {"from": "edge", "to": "gw", "label": "TLS"} ]
+  "nodes": [
+    {"id": "edge", "label": "Edge", "sub": "cdn:443", "x": 80, "y": 220, "type": "external"},
+    {"id": "gw", "label": "API Gateway", "sub": "grpc:8443", "x": 320, "y": 220, "type": "focal"},
+    {"id": "db", "label": "Postgres", "sub": "orders", "x": 640, "y": 220, "type": "store"}
+  ],
+  "zones": [ {"id": "priv", "label": "Private zone", "nodes": ["gw", "db"]} ],
+  "edges": [ {"from": "edge", "to": "gw", "label": "TLS"},
+             {"from": "gw", "to": "db", "label": "SQL"} ]
 }
 ```
 
@@ -87,6 +92,21 @@ Nodes carry `x`/`y`; the builder owns everything else.
 | `zone` | a zone id; the zone rect is computed from its members |
 | `focal` | shorthand for `type: "focal"` (max 2 per diagram) |
 
+| zone key | meaning |
+|---|---|
+| `id` | referenced by `nodes[].zone` and by `zones[].nodes` |
+| `label` | uppercased eyebrow on the plate's top-left corner |
+| `nodes` | the member node ids, in spec order |
+
+**Membership can be declared either way round** and the two are equivalent, so a
+zone may list its members (`zones[].nodes`) or each node may name its zone
+(`nodes[].zone`) — or a mix. The plate is the bounding box of its members plus
+the fixed padding, snapped to the 4px grid, with the label in a paper chip so
+connectors pass behind it. Two things are refused rather than guessed at: a name
+in `zones[].nodes` that is not a node in the spec, and a node that ends up in two
+zones (one plate per node). A zone nobody joins is a build *warning*, not a
+silence.
+
 | edge key | meaning |
 |---|---|
 | `from` / `to` | node ids |
@@ -106,7 +126,10 @@ Nodes carry `x`/`y`; the builder owns everything else.
     "radius": 240,
     "stations": [
       {"id": "capture", "label": "Capture", "sub": "signals in"},
-      {"id": "decide",  "label": "Decide",  "sub": "human approves", "focal": true}
+      {"id": "distil",  "label": "Distil",  "sub": "one record"},
+      {"id": "decide",  "label": "Decide",  "sub": "human approves", "focal": true},
+      {"id": "act",     "label": "Act",     "sub": "ship it"},
+      {"id": "measure", "label": "Measure", "sub": "did it work"}
     ]
   }
 }

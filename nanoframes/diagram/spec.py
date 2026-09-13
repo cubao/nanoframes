@@ -101,6 +101,13 @@ class EdgeSpec:
 
 @dataclass
 class ZoneSpec:
+    """A labelled region of a `flow` diagram.
+
+    ``nodes`` is the membership list (``zones[].nodes``), and a node can equally
+    join with its own ``zone`` key; the two forms are equivalent and may be
+    mixed, as long as no node ends up in two zones.
+    """
+
     id: str
     label: str
     nodes: list = field(default_factory=list)
@@ -236,8 +243,12 @@ def parse_spec(data: dict) -> Spec:
         if zid in zones:
             problems.append(f"duplicate zone id {zid!r}")
             continue
+        members = raw.get("nodes", []) or []
+        if not isinstance(members, list):
+            problems.append(f'zones[{i}].nodes must be a list of node ids')
+            members = []
         zones[zid] = ZoneSpec(id=zid, label=str(raw.get("label", zid)),
-                              nodes=list(raw.get("nodes", []) or []))
+                              nodes=[str(m) for m in members])
     spec.zones = list(zones.values())
 
     seen: set[str] = set()
@@ -252,6 +263,39 @@ def parse_spec(data: dict) -> Spec:
         if node.zone and node.zone not in zones:
             problems.append(f"node {node.id!r} references unknown zone {node.zone!r}")
         spec.nodes.append(node)
+
+    # Membership is declarable two ways and they have to agree: a node joins its
+    # zone by `nodes[].zone` or by being named in `zones[].nodes`, and a node in
+    # two different zones has no single plate to be drawn on. Both lists are
+    # checked here so a typo is a spec error rather than a zone that quietly
+    # shrinks — which is what `zones[].nodes` used to be, entirely: parsed, then
+    # never read, so a zone declared only that way never appeared at all.
+    joined: dict[str, str] = {}
+    for zone in spec.zones:
+        for member in zone.nodes:
+            if member not in seen:
+                problems.append(
+                    f"zone {zone.id!r} names {member!r}, which is no node in this spec"
+                )
+                continue
+            other = joined.get(member)
+            if other is not None and other != zone.id:
+                problems.append(
+                    f"node {member!r} is in two zones ({other!r} and {zone.id!r}) —"
+                    f" a node has one plate"
+                )
+                continue
+            joined[member] = zone.id
+    for node in spec.nodes:
+        if not node.zone:
+            continue
+        other = joined.get(node.id)
+        if other is not None and other != node.zone:
+            problems.append(
+                f"node {node.id!r} is in two zones ({other!r} and {node.zone!r}) —"
+                f" a node has one plate"
+            )
+        joined[node.id] = node.zone
 
     if kind == "flow":
         if not spec.nodes:

@@ -104,11 +104,12 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
 
     groups = [b.background(minimum[0], minimum[1])]
 
-    for node in spec.nodes:                      # zones, in spec order
-        g = _zone_group(b, spec, node, boxes)
-        if g is not None and g not in groups:
-            g.start, g.fade = b.slice(0.0)
-            groups.append(g)
+    for zone in spec.zones:                      # zones, in spec order
+        g = _zone_group(b, spec, zone, boxes)
+        if g is None:
+            continue
+        g.start, g.fade = b.slice(0.0)
+        groups.append(g)
 
     labels = []
     for edge in spec.edges:                      # connectors, then their labels
@@ -248,15 +249,18 @@ def _edge_label_group(b: Canvas, path: Path, edge, start: float, fade: float) ->
 # -- zones -------------------------------------------------------------------
 
 
-def _zone_group(b: Canvas, spec: Spec, node, boxes: dict):
-    """The zone group for ``node``'s zone (built once, when its first member is seen)."""
-    if not node.zone:
-        return None
+def _zone_group(b: Canvas, spec: Spec, zone, boxes: dict):
+    """One zone's plate, sized to its members.
+
+    A member is any node that joins the zone — by its own ``zone`` key or by
+    being named in ``zones[].nodes`` (the parser has already refused a node that
+    joins two zones, and a name that is not a node). Both forms were always
+    documented; only the first was ever read, so a zone whose members were
+    declared in the ``zones`` list alone was never drawn at all.
+    """
     t = b.tokens
-    zone = next((z for z in spec.zones if z.id == node.zone), None)
-    if zone is None:
-        return None
-    members = [boxes[n.id] for n in spec.nodes if n.zone == zone.id and n.id in boxes]
+    members = [boxes[n.id] for n in spec.nodes
+               if n.id in boxes and (n.zone == zone.id or n.id in zone.nodes)]
     if not members:
         b.warnings.append(f"zone {zone.id!r} contains no nodes")
         return None

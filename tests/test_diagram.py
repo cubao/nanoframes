@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -17,6 +18,8 @@ from nanoframes.diagram.scene import Rect, Text
 from nanoframes.diagram.spec import SpecError, load_spec
 
 SVG = "{http://www.w3.org/2000/svg}"
+EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "examples")
 
 
 class FakeMeasurer:
@@ -344,6 +347,117 @@ def test_zones_group_their_members(measure):
         "zone does not contain its member node"
 
     assert "PRIVATE" in "".join(t.content for t in scene.texts("eyebrow"))
+
+
+def test_zone_members_can_be_declared_in_the_zones_list(measure):
+    """`zones[].nodes` is the membership list, and it is honoured.
+
+    Both spellings are documented and equivalent. Only `node.zone` used to be
+    read, so a zone declared the other way round — which is how the shipped
+    `architecture.nf.json` declares its one zone — was never drawn at all, with
+    nothing anywhere saying so.
+    """
+    spec = flow_spec(zones=[{"id": "priv", "label": "Private", "nodes": ["api", "db"]}])
+    scene = build_scene(parse_spec(spec), measurer=measure)
+    zone = next(g for g in scene.groups if g.name == "zone:priv")
+    plate = next(p for p in zone.parts if isinstance(p, Rect) and p.weight == "zone")
+    for box in scene.rects("box"):
+        if box.x in (320, 640):                      # api, db
+            assert geo.rect_contains((box.x, box.y, box.w, box.h),
+                                     (plate.x, plate.y, plate.w, plate.h))
+    assert "PRIVATE" in "".join(t.content for t in scene.texts("eyebrow"))
+
+
+def test_the_two_membership_spellings_mix(measure):
+    """A node may join with `zone` and another with `zones[].nodes`; one plate holds both."""
+    spec = flow_spec(zones=[{"id": "priv", "label": "Private", "nodes": ["api"]}])
+    for node in spec["nodes"]:
+        if node["id"] == "db":
+            node["zone"] = "priv"
+    scene = build_scene(parse_spec(spec), measurer=measure)
+    zone = next(g for g in scene.groups if g.name == "zone:priv")
+    plate = next(p for p in zone.parts if isinstance(p, Rect) and p.weight == "zone")
+    members = [b for b in scene.rects("box") if b.x in (320, 640)]
+    assert len(members) == 2 and all(
+        geo.rect_contains((b.x, b.y, b.w, b.h), (plate.x, plate.y, plate.w, plate.h))
+        for b in members)
+
+
+def test_a_zone_naming_a_non_node_is_a_spec_error():
+    """A typo in the membership list used to shrink the zone silently."""
+    spec = flow_spec(zones=[{"id": "priv", "label": "Private", "nodes": ["api", "dbb"]}])
+    with pytest.raises(SpecError) as exc:
+        parse_spec(spec)
+    assert "no node in this spec" in str(exc.value) and "dbb" in str(exc.value)
+
+
+def test_a_node_in_two_zones_is_a_spec_error():
+    """One plate per node: the two spellings have to agree, not overlap."""
+    spec = flow_spec(zones=[{"id": "priv", "label": "Private", "nodes": ["api"]},
+                            {"id": "pub", "label": "Public", "nodes": ["api"]}])
+    with pytest.raises(SpecError) as exc:
+        parse_spec(spec)
+    assert "two zones" in str(exc.value)
+    spec = flow_spec(zones=[{"id": "priv", "label": "Private", "nodes": ["api"]},
+                            {"id": "pub", "label": "Public", "nodes": []}])
+    for node in spec["nodes"]:
+        if node["id"] == "api":
+            node["zone"] = "pub"
+    with pytest.raises(SpecError) as exc:
+        parse_spec(spec)
+    assert "two zones" in str(exc.value)
+
+
+def test_an_empty_zone_is_warned_about(measure):
+    """A zone nobody joins is dead input, and the build says so rather than dropping it."""
+    spec = flow_spec(zones=[{"id": "priv", "label": "Private", "nodes": []}])
+    scene = build_scene(parse_spec(spec), measurer=measure)
+    assert any("contains no nodes" in w for w in scene.warnings)
+    assert "zone:priv" not in [g.name for g in scene.groups]
+
+
+def test_every_diagram_spec_in_the_docs_builds():
+    """A spec snippet in the docs is a copy-paste template; it has to be a valid one.
+
+    Two of the four were not: the `flow` example named an edge endpoint it never
+    declared, and the `loop` example had two stations where the grammar takes
+    5-8. Both would have failed the moment a reader used them, and neither was
+    covered by anything.
+    """
+    import glob
+    import json
+    import re
+
+    from nanoframes.render import measurer
+
+    m = measurer()
+    found = 0
+    for path in sorted(glob.glob(os.path.join(os.path.dirname(EXAMPLES), "docs", "*.md"))):
+        for block in re.findall(r"```json\n(.*?)\n```", open(path).read(), re.S):
+            try:
+                data = json.loads(block)
+            except ValueError:
+                continue                       # not JSON, so not a spec template
+            if not isinstance(data, dict) or "diagram" not in data:
+                continue
+            found += 1
+            scene = build_scene(parse_spec(data), measurer=m)   # raises if invalid
+            assert scene.warnings == [], f"{path}: {scene.warnings}"
+    assert found >= 4
+
+
+def test_the_shipped_flow_example_draws_the_zone_it_declares(measure):
+    """`architecture.nf.json` declares one zone with `zones[].nodes` — it must appear.
+
+    The README calls this example "a zoned flow", and until now that was false in
+    the rendered file: the declared zone had no `node.zone` anywhere, so no plate
+    was ever built.
+    """
+    spec = load_spec(os.path.join(EXAMPLES, "architecture.nf.json"))
+    assert spec.zones and spec.zones[0].nodes
+    scene = build_scene(spec, measurer=measure)
+    zone = next(g for g in scene.groups if g.name == f"zone:{spec.zones[0].id}")
+    assert any(isinstance(p, Rect) and p.weight == "zone" for p in zone.parts)
 
 
 def test_a_zone_plate_takes_the_page_shift_with_its_members(measure):

@@ -447,6 +447,25 @@ MP4 export, and an agent-facing skill.
   And no pixel changes: the corpus and the walkthrough are clean of all three
   idioms (`url(#…)` everywhere paints a gradient), the ledger re-records with the
   same digests, and the check is diagnostics only.
+- **0.2.18 (2026-09)** — `zones[].nodes`, the membership list that was never read.
+  Same theme as the two batches before it: a declaration is either honoured or
+  named. A `flow` spec can say a node is in a zone two ways — the node's own
+  `zone` key, or being listed in `zones[].nodes` — and both were documented, but
+  `_zone_group` only ever read the first, and `ZoneSpec.nodes` had no reader at
+  all. The consequence was in the shipped corpus: `examples/architecture.nf.json`
+  declares one zone the `zones[].nodes` way, the README calls it "a zoned flow",
+  and the rendered file contained no zone at all — with nothing anywhere saying
+  so. `zones[].nodes` is now a real membership source (the union of the two
+  spellings, in spec order), the two are refused when they disagree — a name that
+  is not a node, or a node that ends up in two zones — and a zone nobody joins is
+  a build *warning* rather than a plate that silently never appears. The visible
+  effect is one rebuilt example: `architecture.nf.svg` gains its private-zone
+  plate, and its ledger digest is the one entry that moves (all twelve still
+  check, 30 frames, same sample count). The docs' own spec snippets got the same
+  treatment as the code: the `flow` example named an edge endpoint it never
+  declared and the `loop` example had two stations where the grammar takes 5-8,
+  so both failed the moment a reader copied them — there is now a test that builds
+  every diagram spec in `docs/`.
 - **0.2.17 (2026-09)** — two fields of the scene IR that only one code path
   honoured. Building the chart grammar forced the question of what carries a
   rule (a `Path`), and the answer hid two latent drops. `Scene.translate` moved
