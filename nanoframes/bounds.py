@@ -16,6 +16,15 @@ Consumers:
 Transforms are tracked as 2D affine matrices ``(a, b, c, d, e, f)`` in SVG
 order (``x' = a·x + c·y + e``). Boxes are axis-aligned and conservative: a
 rotated element reports the box of its rotated corners, not its silhouette.
+
+Text is the one place where the tree and the picture disagree about what counts
+as an element. This loader draws a ``<text>`` as one unit: a ``<tspan>``
+contributes its characters and nothing else, because every attribute a span
+carries is inert — measured, ``transform`` and ``x`` included (see
+docs/composition.md's Known ThorVG behaviors). So a span has no geometry of its
+own, and none is invented for it: a span reports the ink box of the line it
+belongs to, which is the only statement about where its glyphs are that the
+renderer supports.
 """
 
 from __future__ import annotations
@@ -95,6 +104,18 @@ def parse_transform(text: str | None) -> Matrix:
             raise TransformError(f"transform {name!r} has no arguments")
         matrix = multiply(matrix, _function_matrix(name, args))
     return matrix
+
+
+def own_matrix(node) -> Matrix:
+    """A node's own transform — the identity where the renderer ignores it.
+
+    Every attribute on a ``<tspan>`` is inert, ``transform`` included: a span
+    translated by -400px draws in the same place. Reading it would move the
+    line's box somewhere the frame never drew it.
+    """
+    if local_name(node.tag) == "tspan":
+        return IDENTITY
+    return parse_transform(node.get("transform"))
 
 
 # ---------------------------------------------------------------------------
@@ -242,15 +263,28 @@ def _own_geometry(node) -> Bounds:
         x, y = float_attr(node, "x"), float_attr(node, "y")
         w, h = float_attr(node, "width"), float_attr(node, "height")
         return Bounds(Box(x, y, x + w, y + h))
-    if tag in ("text", "tspan"):
-        return Bounds(complete=False)  # needs a font: see subtree_bounds(measurer=…)
+    if tag == "text":
+        return Bounds(complete=False)  # needs a font: see own_bounds(measurer=…)
+    if tag == "tspan":
+        # A span draws, but it has no geometry of its own: its characters are
+        # measured as part of its line (``_text_bounds`` reads the whole
+        # ``<text>``), and everything a span could say about where they go —
+        # ``x``, ``y``, ``transform`` — is inert. Inventing a box from those
+        # attributes is how a span came to be reported at the origin.
+        return Bounds()
     if tag in ("g", "svg", "a", "switch"):
         return Bounds()
     return Bounds(complete=False)  # <use>, <foreignObject>, anything unknown
 
 
 def _text_bounds(node, measurer) -> Bounds:
-    """Ink box of a ``<text>`` node, measured the way the renderer will draw it."""
+    """Ink box of a ``<text>`` node, measured the way the renderer will draw it.
+
+    The whole line is measured at once, spans and all, because that is how the
+    renderer draws it — ``itertext()`` walks the runs in document order and the
+    result is the ink a frame would show. A span with an ``x`` of its own does
+    not move inside it: the attribute is inert.
+    """
     text = "".join(node.itertext())
     if not text.strip():
         return Bounds()
@@ -278,7 +312,7 @@ def _text_bounds(node, measurer) -> Bounds:
 def own_bounds(node, measurer=None) -> Bounds:
     """A single node's own geometry, excluding its ``transform`` and its children."""
     tag = local_name(node.tag)
-    if tag in ("text", "tspan") and measurer is not None:
+    if tag == "text" and measurer is not None:
         return _text_bounds(node, measurer)
     return _own_geometry(node)
 
@@ -301,7 +335,7 @@ def subtree_bounds(node, measurer=None) -> Bounds:
     if inner.box is None:
         return inner
     try:
-        matrix = parse_transform(node.get("transform"))
+        matrix = own_matrix(node)
     except TransformError:
         return Bounds(complete=False)
     return Bounds(inner.box.transform(matrix), inner.complete)
@@ -321,7 +355,7 @@ def painted_bounds(node, measurer=None) -> Bounds:
     if inner.box is None:
         return inner
     try:
-        matrix = parse_transform(node.get("transform"))
+        matrix = own_matrix(node)
     except TransformError:
         return Bounds(complete=False)
     return Bounds(inner.box.transform(matrix), inner.complete)
@@ -331,27 +365,31 @@ def canvas_box(width: float, height: float) -> Box:
     return Box(0.0, 0.0, float(width), float(height))
 
 
-def iter_renderable(root, ancestors: Matrix = IDENTITY, path: tuple = ()):
-    """Yield ``(path, node, matrix)`` for every renderable node under ``root``.
+def iter_renderable(root, ancestors: Matrix = IDENTITY, path: tuple = (), line=None):
+    """Yield ``(path, node, matrix, line)`` for every renderable node under ``root``.
 
     ``path`` is the child-index chain — stable across bakes of one document, so
     per-frame samples can be lined up. ``matrix`` maps the node's *parent* space
-    into the root's. Non-rendering subtrees (``defs``, ``script``, masks) are
-    pruned, as is anything under a transform this module cannot model.
+    into the root's. ``line`` is the nearest ancestor ``<text>``, or None below
+    none: a ``<tspan>`` has no geometry of its own, so the node that can answer
+    for it is its line (see ``placed``). Non-rendering subtrees (``defs``,
+    ``script``, masks) are pruned, as is anything under a transform this module
+    cannot model.
     """
     for index, child in enumerate(root):
         here = path + (index,)
-        if local_name(child.tag) in NON_RENDERING_TAGS:
+        tag = local_name(child.tag)
+        if tag in NON_RENDERING_TAGS:
             continue
-        yield here, child, ancestors
+        yield here, child, ancestors, line
         try:
-            inner = multiply(ancestors, parse_transform(child.get("transform")))
+            inner = multiply(ancestors, own_matrix(child))
         except TransformError:
             continue
-        yield from iter_renderable(child, inner, here)
+        yield from iter_renderable(child, inner, here, child if tag == "text" else line)
 
 
-def placed(node, ancestors: Matrix, measurer=None) -> tuple:
+def placed(node, ancestors: Matrix, measurer=None, line=None) -> tuple:
     """This frame's painted geometry for one baked node, in canvas coordinates.
 
     The single place that turns a baked node into "where would it draw?", shared
@@ -362,8 +400,22 @@ def placed(node, ancestors: Matrix, measurer=None) -> tuple:
     It is **not** about opacity: a node at ``opacity="0"`` still measures, which
     is why `diagnose.effective_opacity` exists and why the contribution probe
     asks opacity separately before blaming a sibling for a fade.
+
+    ``line`` is the enclosing ``<text>`` from ``iter_renderable``. A ``<tspan>``
+    has no box of its own to report — see the module docstring — so it answers
+    with its line's, in the line's own coordinates. That is what makes a span
+    land wherever its text lands, in `check`, in `debug` and in the clip scan
+    alike, without any of them special-casing the tag.
     """
+    inline = line is not None and local_name(node.tag) == "tspan"
     measured = painted_bounds(node, measurer)
+    if measured.box is None and inline:
+        if node.get("display") == "none":
+            # bake's clip window, which this renderer ignores on a span — the
+            # one thing `painted` still has to say about a span. The pixel probe
+            # is what finds the drawing behind it.
+            return False, None, measured.complete
+        measured = painted_bounds(line, measurer)
     if measured.box is None:
         return False, None, measured.complete
     return True, measured.box.transform(ancestors), measured.complete

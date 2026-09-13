@@ -243,7 +243,11 @@ SVG meaning but only within that subset.
   on a span has no effect. Measured wider than that: the loader draws a `<text>`
   as **one unit**, so *every* attribute on a span inside it is inert — the
   span's own `fill`/`font-size`/`font-weight`/`stroke`/`x`/`dy` as much as
-  `display`/`opacity`. A span contributes its characters and nothing else.
+  `display`/`opacity`. A span contributes its characters and nothing else. It
+  therefore has no geometry of its own either: with `x`, `y` and `transform` all
+  inert there is nothing to place a span *by*, so `nanoframes debug` and `check`
+  answer for a span with the ink box of the line it is drawn in — and a line that
+  never lands is still named, at the `<text>`, whether or not a span sits in it.
   `nanoframes debug --pixels` reports the timing case as `hidden_but_drawn` —
   the span draws while every arithmetic pass, including `lint`'s visibility
   check, believes the attribute. `check` now names it too, as

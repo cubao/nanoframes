@@ -211,6 +211,33 @@ def test_an_animation_aimed_at_the_text_is_not_reported():
     assert "render.inert_tspan" not in _codes(lint_string(_span("", script=script)))
 
 
+def test_a_span_under_a_landing_text_is_not_reported():
+    """A span has no box of its own, so a span that draws is never called blank.
+
+    A span used to be measured at its own ``x``/``y`` — which it cannot have,
+    every attribute on a span being inert — so a span that the frame plainly
+    draws (479 ink pixels) reported geometry at the origin and was called a
+    drawing of nothing.
+    """
+    assert lint_string(_span("")) == []
+
+
+def test_a_span_under_an_off_canvas_text_is_still_reported():
+    """Nothing is hidden: the line is named, because the line is what has geometry.
+
+    The check must not learn "spans are exempt" — the characters a span carries
+    are drawn, and a line that never lands has to be named whether or not a span
+    sits in it.
+    """
+    svg = (CANVAS.format(extra="")
+           + '<text id="host" x="10" y="-200" font-family="Arial" font-size="20"'
+             ' fill="#ffffff">WORD <tspan id="late">LATE</tspan></text></svg>')
+    findings = lint_string(svg)
+    assert "geometry.never_on_canvas" in _codes(findings)
+    assert next(f for f in findings
+                if f.code == "geometry.never_on_canvas").element == "#host"
+
+
 # --- font-family that selects no loaded face ---------------------------------
 
 def _text(attrs: str = "") -> str:

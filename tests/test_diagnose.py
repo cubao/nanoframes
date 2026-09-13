@@ -287,6 +287,23 @@ def test_the_probe_still_catches_a_hide_the_renderer_ignores():
     assert [e.label for e in report.hidden_but_drawn] == ["#late"]
 
 
+def test_a_span_lands_wherever_its_line_lands():
+    """The clip scan used to call a span that draws "draws nothing in any sampled frame".
+
+    A span cannot be placed: every attribute it carries is inert, so its glyphs
+    are drawn as part of its line. Reading a position off the span itself put its
+    box at the origin — off-canvas — while the frame drew it all along.
+    """
+    svg = ('<text id="host" x="10" y="60" font-family="Arial" font-size="24"'
+           ' fill="#ffffff">WORD <tspan id="late">LATE</tspan></text>')
+    doc = parse_string(comp(svg))
+    scan = diagnose.scan_clip(doc, measurer=render_measurer(), samples=3)
+    by_label = {e.label: e for e in scan.elements}
+    assert by_label["#late"].painted_frames == scan.sampled
+    assert by_label["#late"].on_canvas_frames == scan.sampled
+    assert not by_label["#late"].never_visible
+
+
 def test_a_text_window_hides_the_text_it_excludes():
     """`<text>` is fixed rather than detected: the hide rides on a group too.
 
@@ -356,7 +373,7 @@ def test_effective_opacity_multiplies_down_the_path():
            ' font-size="20" fill="#fff" opacity="0.5">x</text></g>')
     doc = parse_string(comp(svg))
     root = bake.bake_tree(doc, 0.0, measurer=render_measurer())
-    found = [(path, node) for path, node, _ in bounds.iter_renderable(root)
+    found = [(path, node) for path, node, _, _ in bounds.iter_renderable(root)
              if bounds.label(node) == "#t"]
     assert found, "the text node should be in the baked tree"
     path, _ = found[0]

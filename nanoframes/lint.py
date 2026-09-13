@@ -387,8 +387,9 @@ def _sampled_boxes(doc: Document, measurer) -> dict:
     comp = doc.composition
     entries: dict[tuple, dict] = {}
     for t in timeline.sample_times(comp, cap=_MAX_SAMPLES):
-        for path, node, ancestors in bounds.iter_renderable(bake.bake_tree(doc, t, measurer=measurer)):
-            painted, box, complete = bounds.placed(node, ancestors, measurer)
+        for path, node, ancestors, line in bounds.iter_renderable(
+                bake.bake_tree(doc, t, measurer=measurer)):
+            painted, box, complete = bounds.placed(node, ancestors, measurer, line)
             entry = entries.get(path)
             if entry is None:
                 # Label from the baked node: auto-layout can insert nodes, so a

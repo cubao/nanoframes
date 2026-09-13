@@ -262,3 +262,84 @@ def test_composed_static_transform_matches_the_nested_wrapper_idiom():
     assert ink(composed, 2.0) == ink(nested, 2.0)
     x0, x1, y0, y1 = ink(composed, 2.0)
     assert y1 - y0 > 100  # at 90 degrees the arm stands up, still 120 long
+
+
+# ---------------------------------------------------------------------------
+# A <tspan> draws inside its line: it has no geometry of its own
+# ---------------------------------------------------------------------------
+
+# The shape the false positive came from: a plain span under a text that sits
+# well inside the canvas. Wrapping characters in a span must change no box —
+# every attribute a span carries is inert, `x` and `transform` included, so the
+# only true statement about where those glyphs are is the line's ink box.
+WORD = 'WORD <tspan id="late">LATE</tspan>'
+SPAN_LINE = ('<text id="host" x="20" y="80" font-family="Arial" font-size="28"'
+             f' fill="#000000">{WORD}</text>')
+
+
+def placed_boxes(doc, t: float = 0.0) -> dict:
+    """``{label: (painted, box)}`` for one baked frame, as the diagnostics read it."""
+    from nanoframes.measure import Measurer
+
+    measurer = Measurer()
+    root = bake.bake_tree(doc, t, measurer=measurer)
+    out: dict = {}
+    for _, node, ancestors, line in bounds.iter_renderable(root):
+        painted, box, _ = bounds.placed(node, ancestors, measurer, line)
+        out[bounds.label(node)] = (painted, box)
+    return out
+
+
+def frame_ink(doc, t: float = 0.0) -> bounds.Box:
+    """The box the rendered frame actually inks — the pixels bounds has to agree with."""
+    from nanoframes.render import render_frame
+
+    rgb = np.asarray(render_frame(doc, t, warn_blank=False).convert("RGB"))
+    ys, xs = np.nonzero((rgb < 128).any(axis=-1))
+    return bounds.Box(float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+
+def test_a_span_reports_the_ink_box_of_its_line():
+    """A span has no box of its own, so it answers with its line's — in canvas space."""
+    boxes = placed_boxes(comp(BG + SPAN_LINE))
+    painted, host = boxes["#host"]
+    span_painted, span = boxes["#late"]
+    assert painted and span_painted
+    assert span == host, "a span's geometry is the line it is drawn in"
+
+
+def test_the_line_box_is_where_the_frame_inks_and_honours_the_baseline():
+    """Bounds and pixels have to agree, or the box is a guess: 20,80 is the anchor."""
+    doc = comp(BG + SPAN_LINE)
+    _, box = placed_boxes(doc)["#host"]
+    ink = frame_ink(doc)
+    assert box.x0 <= ink.x0 + 1 and box.x1 >= ink.x1 - 1, "the line box covers the ink"
+    assert box.y0 <= ink.y0 + 1 and box.y1 >= ink.y1 - 1
+    assert box.x0 >= 20, "text starts at its x anchor, not at the origin"
+    assert box.y1 <= 80, "'WORD LATE' has no descender: nothing ink below the baseline"
+
+
+def test_wrapping_characters_in_a_span_changes_no_box():
+    """A span is markup, not geometry — the same characters measure the same either way."""
+    plain = comp(BG + SPAN_LINE.replace(WORD, 'WORD LATE'))
+    spanned = comp(BG + SPAN_LINE)
+    assert placed_boxes(spanned)["#host"][1] == placed_boxes(plain)["#host"][1]
+
+
+def test_a_spans_own_attributes_move_nothing():
+    """What the renderer ignores, the box must not read: x, y, transform, font-size."""
+    from nanoframes.render import render_frame
+
+    loud = ('<text id="host" x="20" y="80" font-family="Arial" font-size="28"'
+            ' fill="#000000">WORD <tspan id="late" x="200" y="10"'
+            ' transform="translate(-400,0)" font-size="48">LATE</tspan></text>')
+    quiet_boxes = placed_boxes(comp(BG + SPAN_LINE))
+    loud_boxes = placed_boxes(comp(BG + loud))
+    assert loud_boxes["#late"][1] == quiet_boxes["#late"][1]
+    assert loud_boxes["#host"][1] == quiet_boxes["#host"][1]
+
+    def rgb(doc):
+        return np.asarray(render_frame(doc, 0.0, warn_blank=False).convert("RGB"))
+
+    assert np.array_equal(rgb(comp(BG + loud)), rgb(comp(BG + SPAN_LINE))), \
+        "the louder span draws the identical frame — so it cannot move a box"

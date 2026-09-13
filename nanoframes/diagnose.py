@@ -266,8 +266,8 @@ def frame_report(doc: Document, t: float, measurer=None, coverage: bool = True,
     report = FrameReport(t=t, width=comp.width, height=comp.height,
                          frame_index=round(t * comp.fps))
     probed: list[tuple[ElementBox, object]] = []
-    for path, node, ancestors in bounds.iter_renderable(root):
-        painted, box, complete = bounds.placed(node, ancestors, measurer)
+    for path, node, ancestors, line in bounds.iter_renderable(root):
+        painted, box, complete = bounds.placed(node, ancestors, measurer, line)
         record = ElementBox(
             path=path,
             depth=len(path) - 1,
@@ -460,8 +460,8 @@ def scan_clip(doc: Document, measurer=None, samples: int = SCAN_SAMPLES) -> Clip
     tracked: dict[tuple, ElementFrames] = {}
     for t in scan.times:
         root = bake.bake_tree(doc, t, measurer=measurer)
-        for path, node, ancestors in bounds.iter_renderable(root):
-            painted, box, complete = bounds.placed(node, ancestors, measurer)
+        for path, node, ancestors, line in bounds.iter_renderable(root):
+            painted, box, complete = bounds.placed(node, ancestors, measurer, line)
             entry = tracked.get(path)
             if entry is None:
                 entry = ElementFrames(path=path, label=bounds.label(node),
