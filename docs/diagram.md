@@ -5,6 +5,11 @@ map, operating loop, process flow — into an ordinary **`.nf.svg` composition**
 `check`, `render`, `video` and `debug` all apply to the result unchanged, so a
 diagram is a still PNG, a draft, or a revealing clip with the same toolchain.
 
+For a **hierarchy** — org chart, taxonomy, decomposition — use
+[`nanoframes tree`](tree.md) instead: it takes a nested node list with no
+coordinates in it and compiles the layout, while everything on this page (tokens,
+grid, measured text, legend, reveal, ThorVG gaps) applies to it unchanged.
+
 ```bash
 nanoframes diagram spec.json -o diagram.nf.svg      # build a composition
 nanoframes diagram spec.json --check                # build, then lint the result
@@ -21,6 +26,19 @@ treatments, connector rules, complexity budgets, ring math) and re-expresses it
 for a headless renderer; the browser idioms it cannot adopt are listed under
 [ThorVG gaps](#thorvg-gaps) below. The craft references ship with the agent
 skill: `skills/nanoframes/references/diagram-*.md`.
+
+## Grammars
+
+A **grammar** is one compiler: its own spec plus its own data→geometry
+algorithm, producing the same scene. That is the whole extension point — a new
+grammar is a new algorithm over the shared page, never a new renderer, and the
+emitter stays single.
+
+| grammar | command | the input it compiles |
+|---|---|---|
+| `flow` | `nanoframes diagram` | nodes with explicit `x`/`y`, plus edges (below) |
+| `loop` | `nanoframes diagram` | stations on a computed ring, plus a hub (below) |
+| `tree` | [`nanoframes tree`](tree.md) | a nested node list, no coordinates |
 
 ## The spec
 
@@ -42,7 +60,7 @@ One JSON object; the two kinds share a header.
 
 | key | values | notes |
 |---|---|---|
-| `diagram` | `flow`, `loop` | required |
+| `diagram` | `flow`, `loop`, `tree` | required; picks the grammar (`tree` is built by `nanoframes tree`) |
 | `skin` | `light` (default), `dark`, `sketchy`, `terminal` | token skins; `sketchy` draws hand-drawn strokes on warm paper |
 | `preset` | `doc-inline`, `doc-wide`, `slide-16x9`, `slide-4x3`, `social-og`, `social-square`, `print-a4-landscape`, `print-letter-landscape`, `fit` | canvas floor + type ramp; `fit` means the canvas is derived from content |
 | `canvas` | `{"width": 1280, "height": 720}` | explicit canvas; overrides the preset, still a *minimum* |
@@ -99,6 +117,12 @@ boxes so each arrowhead lands on a box edge; write-back spokes are dashed radii
 that stop 6px short of the hub. The canvas is derived (or the preset's, centred
 on the hub).
 
+### `tree` — computed hierarchy
+
+A nested node list with no coordinates in it, compiled by Reingold–Tilford. It
+is a grammar of its own with its own command and page:
+[docs/tree.md](tree.md).
+
 ## What the builder guarantees
 
 - **Auto-sized boxes.** Node width/height come from the *measured* ink of the
@@ -124,8 +148,8 @@ do not survive, and the builder works around each (probed, not assumed):
 |---|---|---|
 | `<marker>` arrowheads | attribute accepted, **nothing drawn** | computes the head polygon from the path's end tangent (filled + open heads) |
 | `rgba(...)` fills | parsed as **solid black** | hex fills with a separate `fill-opacity` / `stroke-opacity` |
-| `letter-spacing` | ignored | tracked runs (zone eyebrows, tags) emitted one `<text>` per character at the CSS advance |
-| `text-anchor` | ignored — everything left-aligned at `x` | centred runs emitted one `<text>` per glyph, placed by the calibrated advance |
+| `letter-spacing` | ignored | tracked runs (zone eyebrows, tags) are one `<text>` whose *measured* width already carries the advance a browser would add |
+| `text-anchor` | ignored — everything left-aligned at `x` | a centred run is one `<text>` at `x - ink_w/2 + left_bearing`, measured through the same engine |
 | `<pattern>` dot grid | rasterizes to nothing | not emitted (the dotted-paper variant is unavailable) |
 | `<filter>` (turbulence, the browser's sketchy effect) | not rasterized | the sketchy skin computes its wobble as geometry instead (`nanoframes.diagram.sketchy`) |
 

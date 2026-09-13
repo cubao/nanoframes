@@ -18,9 +18,11 @@ JSON the rest of the package already speaks):
 ```
 
 Layout is explicit for ``flow`` (the agent places nodes; the builder owns every
-box, connector, mask and arrowhead) and parametric for ``loop`` (the builder
-computes the ring, the spokes and the canvas). Everything invalid is reported as
-a named warning or error in :class:`SpecError` — never as a silent misdraw.
+box, connector, mask and arrowhead) and computed for ``loop`` (the ring, the
+spokes and the canvas) and ``tree`` (a nested hierarchy, laid out by the
+Reingold–Tilford algorithm in ``nanoframes.diagram.tree``). Everything invalid
+is reported as a named warning or error in :class:`SpecError` — never as a
+silent misdraw.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-KINDS = ("flow", "loop")
+KINDS = ("flow", "loop", "tree")
 NODE_TYPES = ("focal", "backend", "store", "external", "input", "optional", "security")
 EDGE_STYLES = ("default", "accent", "link", "dashed", "async", "return")
 
@@ -61,6 +63,26 @@ class NodeSpec:
     type: str = "backend"
     zone: str | None = None
     focal: bool = False
+
+
+@dataclass
+class TreeNodeSpec:
+    """One box of a hierarchy, plus its reports — no coordinates, ever.
+
+    Same three text slots and node ``type`` vocabulary as :class:`NodeSpec`; the
+    difference is the recursive shape, which is the input its layout algorithm
+    actually needs.
+    """
+
+    id: str
+    label: str
+    sub: str = ""
+    tag: str = ""
+    w: float | None = None
+    h: float | None = None
+    type: str = "backend"
+    focal: bool = False
+    children: list = field(default_factory=list)   # list[TreeNodeSpec], left → right
 
 
 @dataclass
@@ -111,6 +133,9 @@ class Spec:
     zones: list = field(default_factory=list)
     edges: list = field(default_factory=list)
     loop: LoopSpec | None = None
+    tree: TreeNodeSpec | None = None
+    h_gap: float | None = None      # tree: air between two neighbouring subtrees
+    v_gap: float | None = None      # tree: air below a row of boxes
 
 
 def parse_spec(data: dict) -> Spec:
@@ -188,7 +213,7 @@ def parse_spec(data: dict) -> Spec:
 
     seen: set[str] = set()
     for i, raw in enumerate(data.get("nodes", []) or []):
-        node = _parse_node(raw, i, problems)
+        node = _parse_node(raw, f"nodes[{i}]", problems)
         if node is None:
             continue
         if node.id in seen:
@@ -213,25 +238,41 @@ def parse_spec(data: dict) -> Spec:
                 if ref not in seen:
                     problems.append(f'edge {i} ("{endpoint}": {ref!r}) references no node')
             spec.edges.append(edge)
-    else:
+    elif kind == "loop":
         spec.loop = _parse_loop(data.get("loop"), problems)
+    else:
+        # The tree grammar's two layout knobs, next to the header like `margin`.
+        for field_name in ("h_gap", "v_gap"):
+            value = data.get(field_name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                problems.append(f'"{field_name}" must be positive (got {value!r})')
+                continue
+            setattr(spec, field_name, float(value))
+        spec.tree = _parse_tree(data.get("tree"), problems)
 
     if problems:
         raise SpecError(problems)
     return spec
 
 
-def _parse_node(raw, index: int, problems: list) -> NodeSpec | None:
+def _parse_node(raw, where: str, problems: list) -> NodeSpec | None:
+    """One node object, validated. ``where`` names it in every message.
+
+    The caller supplies the path (``nodes[2]``, ``tree.children[0]``) so a bad
+    node is reported where the author can see it, in the grammar's own words.
+    """
     if not isinstance(raw, dict):
-        problems.append(f"nodes[{index}] must be an object")
+        problems.append(f"{where} must be an object")
         return None
     label = raw.get("label")
     if not isinstance(label, str) or not label.strip():
-        problems.append(f"nodes[{index}] needs a non-empty \"label\"")
+        problems.append(f'{where} needs a non-empty "label"')
         return None
     nid = raw.get("id")
     if nid is not None and not isinstance(nid, str):
-        problems.append(f"nodes[{index}].id must be a string")
+        problems.append(f"{where}.id must be a string")
         return None
     node = NodeSpec(id=nid or _slug(label), label=label.strip())
     node.sub = str(raw.get("sub", ""))
@@ -312,7 +353,7 @@ def _parse_loop(raw, problems: list) -> LoopSpec:
         problems.append('"loop.stations" must be a non-empty list')
         return loop
     for i, raw_station in enumerate(stations):
-        node = _parse_node(raw_station, i, problems)
+        node = _parse_node(raw_station, f"loop.stations[{i}]", problems)
         if node is None:
             continue
         if node.x is not None or node.y is not None:
@@ -326,6 +367,41 @@ def _parse_loop(raw, problems: list) -> LoopSpec:
     if not loop.hub_label:
         problems.append('a loop needs "loop.hub.label" (the shared state in the middle)')
     return loop
+
+
+def _parse_tree(raw, problems: list) -> TreeNodeSpec | None:
+    """The hierarchy: one nested node, children in reading order."""
+    if not isinstance(raw, dict):
+        problems.append(
+            'a "tree" diagram needs a "tree" object: a node with a "label" and'
+            ' optional "children"'
+        )
+        return None
+    return _parse_tree_node(raw, "tree", problems, set())
+
+
+def _parse_tree_node(raw, where: str, problems: list, ids: set) -> TreeNodeSpec | None:
+    node = _parse_node(raw, where, problems)
+    if node is None:
+        return None
+    if node.x is not None or node.y is not None:
+        problems.append(f"tree node {node.id!r}: positions are computed — drop x/y")
+    if node.id in ids:
+        # Ids name the groups and key the layout, so two boxes cannot share one.
+        problems.append(f'duplicate tree id {node.id!r} — give one of them an "id"')
+    ids.add(node.id)
+    children: list = []
+    raw_children = raw.get("children") or []
+    if not isinstance(raw_children, list):
+        problems.append(f'{where}."children" must be a list')
+    else:
+        for i, child in enumerate(raw_children):
+            parsed = _parse_tree_node(child, f"{where}.children[{i}]", problems, ids)
+            if parsed is not None:
+                children.append(parsed)
+    return TreeNodeSpec(id=node.id, label=node.label, sub=node.sub, tag=node.tag,
+                        w=node.w, h=node.h, type=node.type, focal=node.focal,
+                        children=children)
 
 
 def _slug(label: str) -> str:

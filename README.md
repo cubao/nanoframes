@@ -33,10 +33,13 @@ boxes from measured text, routes orthogonal connectors with rounded corners,
 fans attach points, masks arrow labels, draws arrowheads as polygons, and holds
 the design system's 4px grid and complexity budgets. The design system and
 layout grammars come from [diagram-design](https://github.com/cathrynlavery/diagram-design)
-(MIT); two grammars ship — explicit `flow` layout and the parametric `loop`
-ring (stations on a circle, circular-arc flow, dashed radial write-backs). With
+(MIT); the shipped grammars are explicit `flow` layout, the parametric `loop`
+ring (stations on a circle, circular-arc flow, dashed radial write-backs), and
+`nanoframes tree` — a **hierarchy** (org chart, taxonomy) written as a nested
+node list with no coordinates in it at all, laid out by Reingold–Tilford. With
 `"reveal": true` the diagram assembles itself along the timeline. See
-[docs/diagram.md](docs/diagram.md) and the runnable `examples/*.nf.json`.
+[docs/diagram.md](docs/diagram.md), [docs/tree.md](docs/tree.md) and the
+runnable `examples/*.nf.json`.
 
 `--scale F` renders a **draft** at a fraction of the composition size. The
 canvas *and* every embedded `<image>` shrink together — ThorVG re-resamples each
@@ -105,22 +108,29 @@ tests/            unit + render + snapshot + CLI tests
 - [Text capabilities](docs/text-capabilities.md) — measured chips/wrap/curve/fit, bundled CJK font, `text_handler` escape hatch.
 - [Lottie import](docs/lottie.md) — render Lottie JSON scenes to MP4 (`nanoframes lottie`).
 - [Diagram specs](docs/diagram.md) — build editorial diagrams from JSON (`nanoframes diagram`).
+- [Tree specs](docs/tree.md) — compile a hierarchy (org chart, taxonomy) from a nested node list (`nanoframes tree`).
 - [Determinism](docs/determinism.md) — what a frame is a function of, and the ledger that says which input moved.
 
-`docs/` and `skills/` also ship inside the pip wheel (`nanoframes/docs`,
-`nanoframes/skills`); running `nanoframes` with no arguments — or
-`nanoframes --help` — prints where the docs and the agent skill live, repo
-checkout or installed package alike.
+`docs/`, `skills/` and the `examples/` corpus also ship inside the pip wheel
+(`nanoframes/docs`, `nanoframes/skills`, `nanoframes/examples`); running
+`nanoframes` with no arguments — or `nanoframes --help` — prints where they
+live, repo checkout or installed package alike. An installed reader can build
+the shipped specs straight from `site-packages/nanoframes/examples/` (add `-o`
+to write outside it).
 
 ## Diagrams
 
 ```bash
-nanoframes diagram examples/architecture.nf.json -o architecture.nf.svg --check
-nanoframes render architecture.nf.svg --t 0 -o architecture.png
-nanoframes video  architecture.nf.svg -o architecture.mp4     # with "reveal": true
+nanoframes diagram examples/architecture.nf.json --check   # -> examples/architecture.nf.svg
+nanoframes render  examples/architecture.nf.svg --t 0 -o architecture.png
+nanoframes video   examples/architecture.nf.svg -o architecture.mp4   # "reveal": true
+
+nanoframes tree examples/org-chart.nf.json --check         # -> examples/org-chart.nf.svg
 ```
 
-Two shipped specs to copy from: `examples/architecture.nf.json` (a zoned flow
-with a dashed async edge) and `examples/loop.nf.json` (a six-station operating
-loop with one focal station). Both build warning-free — the repo holds them to
-that with tests, so the examples and their `.nf.svg` outputs cannot drift.
+Three shipped specs to copy from: `examples/architecture.nf.json` (a zoned flow
+with a dashed async edge), `examples/loop.nf.json` (a six-station operating loop
+with one focal station) and `examples/org-chart.nf.json` (an 11-box hierarchy
+with no coordinate anywhere in the spec). All three build warning-free — the
+repo holds them to that with tests, so the examples and their `.nf.svg` outputs
+cannot drift.

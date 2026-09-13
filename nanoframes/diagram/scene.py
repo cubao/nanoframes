@@ -30,7 +30,7 @@ class Text:
     family: str
     anchor: str = "middle"      # start | middle | end
     kind: str = "label"
-    tracking: float = 0.0       # px; emitted per character (ThorVG ignores letter-spacing)
+    tracking: float = 0.0       # px; folded into the run's measured width
     mask: bool = False          # opaque paper plate behind the run
     opacity: float = 1.0
 

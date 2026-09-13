@@ -1,9 +1,11 @@
 # diagram-flow — layout grammar for `"diagram": "flow"`
 
 Read with `diagram-design.md`. Applies to: architecture, system overview,
-flowchart, process, data flow, deployment, org chart, dependency graph,
-swimlane-ish layouts — anything where you place nodes and the builder routes
-the connectors.
+flowchart, process, data flow, deployment, dependency graph, swimlane-ish
+layouts — anything where you place nodes and the builder routes the connectors.
+A **strict hierarchy** — each child has exactly one parent — is the `tree`
+grammar instead (`diagram-tree.md`): its layout is computed, so there is nothing
+to place.
 
 ## The division of labor
 
@@ -83,8 +85,8 @@ an auto legend (4+ distinct kinds), and the canvas.
   diamond shapes.
 - **Data flow / medallion**: left→right through `store` nodes; use `sub` for
   the table or bucket (`orders`, `s3://raw`).
-- **Org chart**: `backend` boxes, edges down, no zone unless a division is the
-  point.
+- **Org chart**: use the `tree` grammar (`diagram-tree.md`). In `flow` a
+  strict hierarchy means hand-placing coordinates the builder could compute.
 - **Dependency graph**: keep ≤9 nodes and ≤12 edges; if a cycle matters, prefer
   `loop` — it states the cycle far more legibly than a tangled graph.
 

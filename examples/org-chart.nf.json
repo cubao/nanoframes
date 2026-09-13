@@ -1,0 +1,43 @@
+{
+  "diagram": "tree",
+  "preset": "doc-wide",
+  "title": "Platform team",
+  "subtitle": "Three groups, one on-call rotation",
+  "tree": {
+    "id": "platform",
+    "label": "Platform",
+    "sub": "one team",
+    "type": "focal",
+    "children": [
+      {
+        "id": "runtime",
+        "label": "Runtime",
+        "sub": "bake + cache",
+        "children": [
+          {"label": "Frames", "sub": "bake"},
+          {"label": "Cache", "sub": "diskcache"}
+        ]
+      },
+      {
+        "id": "surfaces",
+        "label": "Surfaces",
+        "sub": "agents + people",
+        "children": [
+          {"label": "CLI", "sub": "verbs"},
+          {"label": "Skill", "sub": "routing"},
+          {"label": "Docs", "sub": "contracts"}
+        ]
+      },
+      {
+        "id": "quality",
+        "label": "Quality",
+        "sub": "the gates",
+        "type": "store",
+        "children": [
+          {"label": "Lint", "sub": "markup"},
+          {"label": "Digest", "sub": "frames"}
+        ]
+      }
+    ]
+  }
+}

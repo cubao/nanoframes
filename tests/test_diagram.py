@@ -517,6 +517,22 @@ def test_cli_builds_a_composition(tmp_path):
     assert "<svg" in out.read_text(encoding="utf-8")
 
 
+def test_cli_default_output_does_not_double_the_nf_infix(tmp_path):
+    """`spec.json` and `x.nf.json` both build `<name>.nf.svg`.
+
+    `x.nf.json` is this repo's own naming convention (the composition name plus
+    a spec extension), so the default output has to strip the whole `.nf.json`.
+    """
+    for spec_name in ("spec.json", "spec.nf.json"):
+        spec_path = tmp_path / spec_name
+        spec_path.write_text(json.dumps(flow_spec()), encoding="utf-8")
+        out = tmp_path / "spec.nf.svg"
+        out.unlink(missing_ok=True)
+        proc = run_cli("diagram", str(spec_path))
+        assert proc.returncode == 0, proc.stderr
+        assert out.exists(), f"{spec_name} defaulted somewhere else: {proc.stdout}"
+
+
 def test_cli_reports_spec_errors_without_writing(tmp_path):
     spec_path = tmp_path / "bad.json"
     spec_path.write_text(json.dumps({"diagram": "flow", "nodes": [{"label": "A"}]}),

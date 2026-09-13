@@ -27,6 +27,16 @@ def q4(value: float) -> float:
     return round(value / GRID) * GRID
 
 
+def ceil4(value: float) -> float:
+    """Round *up* to the 4px grid — for a size that must only ever grow.
+
+    A box sized from measured ink, or a canvas floor derived from content, must
+    not round down onto the thing it has to contain; ``q4`` is the nearest grid
+    point and belongs to authored coordinates.
+    """
+    return float(int((value + 3.9999) // 4) * 4)
+
+
 def r2(value: float) -> float:
     return round(value + 0.0, 2)
 

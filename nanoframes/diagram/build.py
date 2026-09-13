@@ -1,6 +1,9 @@
-"""Build a :class:`Scene` from a parsed diagram spec.
+"""The explicit-layout diagram grammars: ``flow`` and ``loop``.
 
-Two kinds, both fully deterministic:
+A grammar is one compiler — its spec plus its data→geometry algorithm — that
+produces a :class:`~nanoframes.diagram.scene.Scene`. Both compile to the same
+IR through the same page machinery (``nanoframes.diagram.canvas``), so they
+inherit the grid, measured text, reveal clock and emitter unchanged:
 
 * ``flow`` — explicit node positions; the builder owns box sizing, orthogonal
   connector routing with per-edge port fanning, masked arrow labels, zones and
@@ -8,6 +11,10 @@ Two kinds, both fully deterministic:
 * ``loop`` — the source's parametric ring (``type-loop.md`` §2): stations are
   placed on a circle, ring connectors are circular arcs cut against the station
   boxes, write-back spokes are radial and dashed, and the canvas is derived.
+
+The third grammar — the computed hierarchy — lives beside this file
+(``nanoframes.diagram.tree``) and is registered with these two in the package's
+grammar table (:data:`nanoframes.diagram.GRAMMARS`).
 
 Paint order is the source's (§5): background → zones → connectors → labels →
 nodes → hub → legend. The reveal clock is a single pass in that same order, so
@@ -19,252 +26,29 @@ from __future__ import annotations
 import math
 
 from nanoframes.diagram import geometry as geo
-from nanoframes.diagram import scene as scene_mod
 from nanoframes.diagram import sketchy
 from nanoframes.diagram import text as txt
+from nanoframes.diagram.canvas import (
+    REVEAL_FADE,
+    Canvas,
+    box_parts,
+    connector_path,
+    legend_space,
+    node_size,
+    rough,
+    type_items,
+    wants_legend,
+)
 from nanoframes.diagram.scene import Group, Path, Rect, Scene, Text
 from nanoframes.diagram.spec import BUDGET_EDGES, BUDGET_NODES, HARD_NODES, Spec
-from nanoframes.diagram.tokens import FONT_MONO, FONT_SANS, FONT_SERIF, PRESETS, Tokens
+from nanoframes.diagram.tokens import FONT_MONO, PRESETS, Tokens
 
-REVEAL_FADE = 0.35
-REVEAL_STEP = 0.16
 # Visible clearance between an arrow label's ink and its connector stroke
 # (source SKILL.md §6 rule 2: 6–10px). Measured from the ink's descent, so a
 # CJK label — whose glyphs sit lower than Latin ones — keeps the same gap.
 ARROW_GAP = 8.0
-LEGEND_H = 60.0
 ZONE_PAD = 16.0
 ZONE_HEAD = 32.0
-# Only a preset-sized canvas (or an explicit one) is worth centring
-# a small figure in; below this much slack the figure just sits at the top.
-CENTRE_MIN_SLACK = 320.0
-
-
-class _Builder:
-    """Shared scaffolding: reveal clock, warnings, and canvas bookkeeping."""
-
-    def __init__(self, spec: Spec, tokens: Tokens, measurer):
-        self.spec = spec
-        self.tokens = tokens
-        self.measurer = measurer
-        self.node_font = FONT_SANS
-        self.sub_font = FONT_MONO
-        self.warnings: list = []
-        self._clock = 0.0
-
-    # -- reveal clock ---------------------------------------------------------
-    def slice(self, fade: float = 0.0) -> tuple:
-        """Next ``(start, fade)`` in the reveal sequence; ``(0, 0)`` when static."""
-        if not self.spec.reveal:
-            return 0.0, 0.0
-        start = round(self._clock, 2)
-        self._clock += REVEAL_STEP
-        return start, fade
-
-    # -- shared pieces --------------------------------------------------------
-    def background(self, width: float, height: float) -> Group:
-        """The paper plate. It is never emitted — ``render`` writes ``#bg`` — but it
-        carries the fill, and it must not contribute to the content bounds."""
-        g = Group(name="background", start=0.0, fade=0.0)
-        g.parts.append(Rect(x=0, y=0, w=width, h=height, fill=self.tokens.paper,
-                            fill_opacity=1.0, weight="background"))
-        return g
-
-    def title_block(self) -> list:
-        """Left-aligned serif title and sans subtitle — the source's page header."""
-        t = self.tokens
-        out = []
-        x = self.spec.margin
-        body_top = self.spec.margin
-        if self.spec.title:
-            out.append(Text(x=x, y=body_top + t.ramp["title"] * 0.78,
-                            content=self.spec.title, size=t.ramp["title"],
-                            fill=t.ink, family=FONT_SERIF, anchor="start", kind="title"))
-        if self.spec.subtitle:
-            out.append(Text(x=x, y=body_top + t.ramp["title"] + 22,
-                            content=self.spec.subtitle, size=t.ramp["sub"] + 1,
-                            fill=t.muted, family=FONT_SANS, anchor="start", kind="sub"))
-        return out
-
-    def header_height(self) -> float:
-        """Height of the title band laid out above the figure (see `header_height`)."""
-        return header_height(self.spec)
-
-    def legend(self, width: float, items: list):
-        """Horizontal legend strip at the bottom (never floating inside the art).
-
-        The strip hangs off the canvas bottom, which is only known once content
-        is measured — so this returns a placer the Builder calls at the end.
-        """
-        if not items:
-            return None
-
-        def place(scene: Scene) -> None:
-            t = self.tokens
-            g = Group(name="legend", start=0.0, fade=0.0)
-            top = scene.height - LEGEND_H + 20
-            g.parts.append(Rect(x=self.spec.margin, y=top - 8,
-                                w=max(0.0, scene.width - 2 * self.spec.margin),
-                                h=0.8, fill=t.rule, fill_opacity=0.12, weight="line"))
-            x = self.spec.margin
-            for label, fill, stroke, dash in items:
-                g.parts.append(Rect(x=x, y=top + 2, w=16, h=10, fill=fill,
-                                    fill_opacity=0.9, stroke=stroke, stroke_width=0.8,
-                                    rx=2, dash=dash, weight="chip"))
-                g.parts.append(Text(x=x + 24, y=top + 11, content=label,
-                                    size=t.ramp["tag"] + 1, fill=t.muted,
-                                    family=FONT_MONO, anchor="start", kind="tag"))
-                width_est = txt.measure(self.measurer, label, FONT_MONO, "400",
-                                        t.ramp["tag"] + 1).width
-                x += 24 + width_est + 32
-            scene.groups.append(g)
-
-        return place
-
-    def to_scene(self, groups: list, minimum: tuple | None = None,
-                 place=None, centre_on: tuple | None = None) -> Scene:
-        scene = Scene(width=0.0, height=0.0, fps=self.spec.fps,
-                      duration=self.duration(), background=self.tokens.paper)
-        scene.groups = groups
-        scene.warnings = list(self.warnings)
-        _finish(scene, self.spec, minimum, centre_on=centre_on)
-        if place is not None:
-            place(scene)
-        return scene
-
-    def duration(self) -> float:
-        if self.spec.duration is not None:
-            return self.spec.duration
-        if not self.spec.reveal:
-            return 1.0
-        return round(max(1.0, self._clock + REVEAL_FADE + 0.2), 2)
-
-
-def _finish(scene: Scene, spec: Spec, minimum: tuple | None = None,
-            centre_on: tuple | None = None) -> Scene:
-    # `centre_on` is the ideal hub centre the ring was authored around; the
-    # figure is re-centred on the drawn hub once the canvas width is known.
-    """Place the content on its margin and normalize the canvas size.
-
-    The shift applied here is *only* what is needed to keep content inside the
-    margin (rounded onto the 4px grid), so a spec authored on the grid keeps its
-    alignment — an author's coordinates are honoured, not re-based. An explicit
-    canvas is a *minimum*: content that would spill past its edge resizes it, and
-    says so. A loop passes ``centre_on`` to have its hub — the figure's visual
-    centre — sit on the canvas centre instead.
-    """
-    x0, y0, x1, y1 = scene_mod.union_bounds(scene)
-    # Minimal shift: pin the content edge onto the margin only when it would
-    # otherwise fall outside it, so authored grid coordinates stay grid coords.
-    dx = 0.0 if x0 >= spec.margin else round(spec.margin - x0, 1)
-    dy = 0.0 if y0 >= spec.margin else round(spec.margin - y0, 1)
-    scene_mod.translate(scene, dx, dy)
-    x0, x1 = x0 + dx, x1 + dx
-    min_w = (minimum or (0.0, 0.0))[0]
-    min_h = (minimum or (0.0, 0.0))[1]
-    scene.width = max(min_w, geo.q4(x1 + spec.margin))
-    scene.height = max(min_h, geo.q4(y1 + spec.margin))
-    header = header_height(spec)
-    figure_top = y0 + dy
-    slack = min_h - (header + (y1 + dy - figure_top) + 2 * spec.margin)
-    if slack > CENTRE_MIN_SLACK and figure_top >= header + spec.margin - 1:
-        # A preset (or taller explicit canvas) leaves vertical slack: centre the
-        # *figure* in the space below the title band rather than parking it at
-        # the top with one large void underneath. The header stays put.
-        scene_mod.translate(scene, 0.0, round(slack / 2.0, 1))
-    if centre_on is not None:
-        # A loop centres its *drawn* hub (the box snap can move it a pixel or
-        # two off the ideal centre the geometry was built around) on the canvas.
-        drawn_x = _drawn_hub_x(scene)
-        if drawn_x is not None:
-            shift = round(scene.width / 2.0 - drawn_x, 1)
-        else:
-            shift = round((scene.width - (x0 + x1)) / 2.0, 1)
-        scene_mod.translate(scene, shift, 0.0)
-    if scene.width > min_w + 0.01 or scene.height > min_h + 0.01:
-        if spec.canvas:
-            scene.warnings.append(
-                f"content needs {scene.width:g}x{scene.height:g} but the canvas is"
-                f" {min_w:g}x{min_h:g} — grew the canvas instead of clipping"
-            )
-    scene.groups = [g for g in scene.groups if g.name != "background"]
-    return scene
-
-
-def header_height(spec: Spec) -> float:
-    """Height of the title band laid out above the figure.
-
-    A spec-level question, so both the builder and `_finish`'s centring step ask
-    this one function instead of keeping two copies of the arithmetic in sync.
-    """
-    if not spec.title and not spec.subtitle:
-        return 0.0
-    ramp = resolve_ramp(spec)
-    h = ramp["title"] + 12
-    if spec.subtitle:
-        h += 26
-    return h + 16
-
-
-def resolve_ramp(spec: Spec) -> dict:
-    from nanoframes.diagram.tokens import resolve
-
-    return resolve(spec.skin, spec.preset).ramp
-
-
-# ---------------------------------------------------------------------------
-# sketchy (hand-drawn) shapes
-# ---------------------------------------------------------------------------
-
-
-def _rough(tokens: Tokens) -> bool:
-    """Whether this skin draws with hand-drawn strokes."""
-    return tokens.skin == "sketchy"
-
-
-def _box_parts(x: float, y: float, w: float, h: float, name: str, style: dict,
-               tokens: Tokens, rx: float = 6.0, weight: str = "box") -> list:
-    """A node box: a crisp ``Rect``, or a plate plus hand-drawn outline.
-
-    One place decides what "this skin draws a box" means, so a new skin changes
-    it once instead of in every caller.
-    """
-    if not _rough(tokens):
-        return [Rect(x=x, y=y, w=w, h=h, rx=rx, weight=weight, **style)]
-    parts = [Rect(x=x, y=y, w=w, h=h, rx=rx, weight=weight,
-                  fill=style["fill"], fill_opacity=style["fill_opacity"])]
-    parts += _sketchy_paths(x, y, w, h, name, _sketchy_style(style), tokens)
-    return parts
-
-
-def _sketchy_paths(x: float, y: float, w: float, h: float, name: str, style: dict,
-                   tokens: Tokens) -> list:
-    """A hand-drawn rectangle outline, styled like the ``Rect`` it replaces."""
-    out = []
-    for i, d in enumerate(sketchy.rough_rect(x, y, w, h, name)):
-        # The second pass is lighter, like a re-traced edge.
-        width = style["stroke_width"] * (0.7 if i >= 4 else 1.0)
-        out.append(Path(d=d, stroke=style["stroke"], stroke_width=width,
-                        dash=style.get("dash"), opacity=style.get("stroke_opacity", 1.0)))
-    return out
-
-
-def _sketchy_style(style: dict) -> dict:
-    """``node_style``'s dict as a stroke style for a rough outline."""
-    return {"stroke": style["stroke"],
-            "stroke_opacity": style["stroke_opacity"],
-            "stroke_width": style.get("stroke_width", 1.0) + 0.9,
-            "dash": style.get("dash")}
-
-
-def _wants_legend(spec: Spec) -> bool:
-    if spec.legend is not None:
-        return spec.legend
-    return len({n.type for n in spec.nodes}) >= 2
-
-
-def _legend_space(spec: Spec) -> float:
-    return LEGEND_H if _wants_legend(spec) else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +57,7 @@ def _legend_space(spec: Spec) -> float:
 
 
 def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
-    b = _Builder(spec, tokens, measurer)
+    b = Canvas(spec, tokens, measurer)
     t = tokens
     if len(spec.nodes) > HARD_NODES:
         raise ValueError(
@@ -296,7 +80,7 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
     # -- resolve geometry -----------------------------------------------------
     boxes: dict = {}
     for node in spec.nodes:
-        size = _node_size(b, node)
+        size = node_size(b.measurer, node, t.ramp, b.node_font, b.sub_font)
         x, y = geo.q4(node.x or 0.0), geo.q4(node.y or 0.0)
         if not (geo.on_grid(node.x or 0.0) and geo.on_grid(node.y or 0.0)):
             b.warnings.append(
@@ -311,7 +95,7 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
     bottom = max(by + bh for _, by, _, bh in boxes.values())
     content_w = right - left + 2 * spec.margin
     content_h = (bottom - top + 2 * spec.margin
-                 + b.header_height() + _legend_space(spec))
+                 + b.header_height() + legend_space(spec, spec.nodes))
     minimum = (spec.canvas or
                ((max(PRESETS[spec.preset][0], geo.q4(content_w)),
                  max(PRESETS[spec.preset][1], geo.q4(content_h)))
@@ -341,13 +125,13 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
         g = Group(name=f"node:{node.id}")
         g.start, g.fade = b.slice(REVEAL_FADE)
         style = t.node_style(node.type)
-        g.parts += _box_parts(x, y, w, h, f"node:{node.id}", style, t)
+        g.parts += box_parts(x, y, w, h, f"node:{node.id}", style, t)
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, node.label, node.sub, node.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=node.focal)
         if node.tag:
             g.parts += txt.tag_chip(x, y, f"tag:{node.id}", style["stroke"],
-                                    rough=_rough(t))
+                                    rough=rough(t))
         groups.append(g)
 
     groups += labels
@@ -360,19 +144,12 @@ def build_flow(spec: Spec, tokens: Tokens, measurer) -> Scene:
 
 
 def _legend_items(spec: Spec) -> list:
-    if not _wants_legend(spec):
+    if not wants_legend(spec, spec.nodes):
         return []
     from nanoframes.diagram.tokens import resolve
 
     t = resolve(spec.skin, spec.preset)
-    items = []
-    seen = []
-    for node in spec.nodes:
-        if node.type in seen:
-            continue
-        seen.append(node.type)
-        style = t.node_style(node.type)
-        items.append((node.type.upper(), style["fill"], style["stroke"], style.get("dash")))
+    items = type_items(spec.nodes, t)
     styles: list = []
     for edge in spec.edges:
         if edge.style == "default" or edge.style in styles:
@@ -383,7 +160,7 @@ def _legend_items(spec: Spec) -> list:
     return items
 
 
-def _node_size(b: _Builder, node) -> tuple:
+def _node_size(b: Canvas, node) -> tuple:
     t = b.tokens
     w, h = txt.box_size(b.measurer, node.label, node.sub, node.tag, t.ramp,
                         b.node_font, b.sub_font)
@@ -432,7 +209,7 @@ def _opposite(side: str, dx: float, dy: float) -> str:
     return ("up" if dy >= 0 else "down")
 
 
-def _route_edge(b: _Builder, spec: Spec, boxes: dict, edge) -> Path:
+def _route_edge(b: Canvas, spec: Spec, boxes: dict, edge) -> Path:
     """Route one connector: port fanning, rounded elbow path, explicit arrowhead."""
     t = b.tokens
     a_side, b_side = _choose_ports(boxes[edge.source], boxes[edge.target], edge)
@@ -446,29 +223,10 @@ def _route_edge(b: _Builder, spec: Spec, boxes: dict, edge) -> Path:
     z = _port_point(boxes[edge.target], b_side, b_ratio)
     points, _ = geo.elbow(a, z, a_side)
     style = t.edge_style(edge.style)
-    if _rough(t):
-        # Hand-drawn connectors: each leg bows, corners stay on the elbow points.
-        name = f"edge:{edge.source}->{edge.target}"
-        d = ""
-        for i in range(len(points) - 1):
-            (x1, y1), (x2, y2) = points[i], points[i + 1]
-            d += sketchy.wobbly_line(x1, y1, x2, y2, sketchy._seed(name), i)
-        path = Path(d=d, stroke=style["stroke"], stroke_width=style["width"] + 0.4,
-                    dash=style["dash"], points=points)
-    else:
-        path = Path(d=geo.path_d(points), stroke=style["stroke"],
-                    stroke_width=style["width"], dash=style["dash"], points=points)
-    if style["head"] == "filled":
-        path.head, path.head_at = geo.arrowhead(points)
-        path.head_fill = style["stroke"]
-    else:
-        path.head = geo.open_head(points)
-        path.head_fill = None
-        path.head_at = geo.end_tangent(points)
-    return path
+    return connector_path(points, style, t, f"edge:{edge.source}->{edge.target}")
 
 
-def _edge_label_group(b: _Builder, path: Path, edge, start: float, fade: float) -> Group:
+def _edge_label_group(b: Canvas, path: Path, edge, start: float, fade: float) -> Group:
     """Masked arrow label with the source's mandatory 6–10px stroke clearance."""
     t = b.tokens
     g = Group(name=f"label:{edge.source}->{edge.target}", start=start, fade=fade)
@@ -490,7 +248,7 @@ def _edge_label_group(b: _Builder, path: Path, edge, start: float, fade: float) 
 # -- zones -------------------------------------------------------------------
 
 
-def _zone_group(b: _Builder, spec: Spec, node, boxes: dict):
+def _zone_group(b: Canvas, spec: Spec, node, boxes: dict):
     """The zone group for ``node``'s zone (built once, when its first member is seen)."""
     if not node.zone:
         return None
@@ -509,7 +267,7 @@ def _zone_group(b: _Builder, spec: Spec, node, boxes: dict):
     x, y = geo.q4(x0), geo.q4(y0)
     w, h = geo.q4(x1 - x), geo.q4(y1 - y)
     g = Group(name=f"zone:{zone.id}")
-    g.parts += _box_parts(
+    g.parts += box_parts(
         x, y, w, h, f"zone:{zone.id}",
         {"fill": t.zone_fill[0], "fill_opacity": t.zone_fill[1],
          "stroke": t.zone_stroke[0], "stroke_opacity": t.zone_stroke[1],
@@ -533,7 +291,7 @@ def _zone_group(b: _Builder, spec: Spec, node, boxes: dict):
 
 
 def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
-    b = _Builder(spec, tokens, measurer)
+    b = Canvas(spec, tokens, measurer)
     t = tokens
     loop = spec.loop
     stations = loop.stations
@@ -561,9 +319,9 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
                geo.q4(top + 2 * radius + max_st_h / 2.0 + spec.margin))
     minimum = spec.canvas or (
         (max(PRESETS[spec.preset][0], content[0]),
-         max(PRESETS[spec.preset][1], content[1] + _legend_space(spec)))
+         max(PRESETS[spec.preset][1], content[1] + legend_space(spec, spec.nodes)))
         if spec.preset and spec.preset in PRESETS
-        else (content[0], content[1] + _legend_space(spec))
+        else (content[0], content[1] + legend_space(spec, spec.nodes))
     )
     cx, cy = centre
 
@@ -591,7 +349,7 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
             continue
         phi_end = math.atan2(p_entry[1] - cy, p_entry[0] - cx) - 1.2 / radius
         end = (cx + radius * math.cos(phi_end), cy + radius * math.sin(phi_end))
-        if _rough(t):
+        if rough(t):
             start_deg = math.degrees(math.atan2(p_exit[1] - cy, p_exit[0] - cx))
             arc = Path(d=sketchy.rough_arc(cx, cy, radius, start_deg,
                                            math.degrees(phi_end), f"ring:{here.id}"),
@@ -642,7 +400,7 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
     hub_x, hub_y = geo.q4(cx - hub_w / 2.0), geo.q4(cy - hub_h / 2.0)
     hub_style = {"fill": t.ink, "fill_opacity": 1.0, "stroke": t.ink,
                  "stroke_opacity": 1.0, "stroke_width": 1.0}
-    hub.parts += _box_parts(hub_x, hub_y, hub_w, hub_h, "hub", hub_style, t, rx=8.0)
+    hub.parts += box_parts(hub_x, hub_y, hub_w, hub_h, "hub", hub_style, t, rx=8.0)
     hub.parts += txt.node_texts(b.measurer, hub_x, hub_y, hub_w, hub_h,
                                 loop.hub_label, loop.hub_sub, "", t.ramp,
                                 b.node_font, b.sub_font, t.paper, t.paper, t.paper, t.accent)
@@ -653,13 +411,13 @@ def build_loop(spec: Spec, tokens: Tokens, measurer) -> Scene:
         g = Group(name=f"node:{st.id}")
         g.start, g.fade = b.slice(REVEAL_FADE)
         style = t.node_style("focal" if st.focal else "backend")
-        g.parts += _box_parts(x, y, w, h, f"node:{st.id}", style, t)
+        g.parts += box_parts(x, y, w, h, f"node:{st.id}", style, t)
         g.parts += txt.node_texts(
             b.measurer, x, y, w, h, st.label, st.sub, st.tag, t.ramp,
             b.node_font, b.sub_font, t.ink, t.muted, t.soft, t.accent, focal=st.focal)
         if st.tag:
             g.parts += txt.tag_chip(x, y, f"tag:{st.id}", style["stroke"],
-                                    rough=_rough(t))
+                                    rough=rough(t))
         groups.append(g)
 
     items = [("STATION", "#ffffff" if t.skin == "light" else t.paper_2, t.ink, None),
@@ -753,15 +511,3 @@ def _head_at(tip: tuple, deg: float) -> tuple:
     p2 = (base[0] - nx * geo.ARROW_HALF, base[1] - ny * geo.ARROW_HALF)
     pts = " ".join(f"{geo.r2(p[0])},{geo.r2(p[1])}" for p in (tip_pt, p1, p2))
     return pts, (tip_pt[0], tip_pt[1], deg)
-
-
-def build_scene(spec: Spec, measurer=None) -> Scene:
-    """Build the scene for any spec kind."""
-    from nanoframes.diagram.tokens import resolve
-
-    tokens = resolve(spec.skin, spec.preset)
-    if spec.kind == "flow":
-        return build_flow(spec, tokens, measurer)
-    if spec.kind == "loop":
-        return build_loop(spec, tokens, measurer)
-    raise ValueError(f"unknown diagram kind {spec.kind!r}")

@@ -378,6 +378,26 @@ MP4 export, and an agent-facing skill.
   the corpus, 145 of 750 frames move, all of them in the three compositions that
   window or fade text or pictures; `verify` on `title-card` goes from 2 warnings
   to 0, and on `master-demo` from 4 to 2.
+- **0.2.10 (2026-09)** — the grammar boundary, and the first *computed* layout
+  beyond the ring. The diagram package had grown two grammars inside one builder,
+  sharing the page by proximity; it now has an explicit **grammar table** and a
+  shared page (a grammar is its own spec plus its own data→geometry algorithm,
+  producing the same `Scene`). The extraction is provably a no-op: all nine
+  shipped examples rebuild to their exact bytes and every ledger digest is
+  unchanged — only the ledger's *toolchain* field moved, which is what that
+  field is for (it fingerprints the package's own modules). Then the third
+  grammar, `nanoframes tree`: a nested hierarchy (org chart, taxonomy) whose
+  spec carries no coordinate at all, laid out by Reingold–Tilford in Buchheim et
+  al.'s linear-time form, with the page's tokens, grid, measured text, legend,
+  reveal clock and emitter inherited rather than re-derived. It is the batch's
+  own point in miniature: the presentation half already existed and was already
+  decoupled, so the work was the algorithm half. Writing its invariant tests
+  found a real bug on the first run (the connector landed on the child's
+  top-left corner, not its top centre — wrong by half a box, and not obvious by
+  eye at 80px wide). One `flow` rule is deliberately relaxed: siblings share the
+  connector trunk, which in a tree *is* the relation. A chart grammar (scales,
+  ticks, stacking) is the next one, and its primitives are the ones this batch
+  proved are missing.
 - **0.2.0 (2026-09)** — the media and verification batch. Two things a model cannot
   check for itself, made first-class. **Verification:** every lint finding gained a
   stable `code`, with `check --json` / `debug --json` for programmatic consumption;
@@ -399,9 +419,10 @@ MP4 export, and an agent-facing skill.
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); Lottie markers surfaced in the CLI;
-  remaining recipe ports (product-promo, ui-microinteractions, diagram types
-  beyond flow/loop, visual-effects); blending modes, speed ramps and multi-track
+  remaining recipe ports (product-promo, ui-microinteractions, the `chart`
+  grammar, visual-effects); blending modes, speed ramps and multi-track
   audio (see [media.md](media.md#determinism-and-limits)).
 
-`docs/` and `skills/` ship inside the pip wheel as `nanoframes/docs` and
-`nanoframes/skills`; `nanoframes` (no args, or `--help`) prints their installed locations.
+`docs/`, `skills/` and `examples/` ship inside the pip wheel as
+`nanoframes/docs`, `nanoframes/skills` and `nanoframes/examples`; `nanoframes`
+(no args, or `--help`) prints their installed locations.

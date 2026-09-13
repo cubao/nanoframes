@@ -7,14 +7,15 @@ built by `nanoframes diagram` — **never** hand-author boxes and connectors in 
 
 Adapted from [diagram-design](https://github.com/cathrynlavery/diagram-design)
 (MIT, (c) 2025 Cathryn Lavery). The full source library covers 40 visual types;
-this repo implements the two layout grammars that carry most of them, `flow`
-and `loop`. Contract and spec keys: [docs/diagram.md](../../docs/diagram.md).
-Route by shape:
+this repo implements the three layout grammars that carry most of them, `flow`,
+`loop` and `tree`. Contracts: [docs/diagram.md](../../docs/diagram.md) for
+`flow`/`loop`, [docs/tree.md](../../docs/tree.md) for `tree`. Route by shape:
 
 | the task | read |
 |---|---|
-| architecture, system map, flowchart, process, pipeline, org chart, deployment | `diagram-flow.md` |
+| architecture, system map, flowchart, process, pipeline, deployment | `diagram-flow.md` |
 | loop, flywheel, cycle, self-improving system | `diagram-loop.md` |
+| org chart, hierarchy, reporting line, taxonomy, decomposition | `diagram-tree.md` |
 
 ## The one rule that matters
 

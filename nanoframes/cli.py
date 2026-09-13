@@ -12,6 +12,7 @@ Commands
   fonts       list/add/verify/install   CJK font toolbox
   lottie      <file.json>       render a Lottie JSON scene offline to MP4
   diagram     <spec.json>       build a .nf.svg composition from a diagram spec
+  tree        <spec.json>       lay out a hierarchy spec (no coordinates in it)
   walkthrough [-o DIR]          generate the one-take walkthrough
 """
 
@@ -231,6 +232,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--check", action="store_true",
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_diagram)
+
+    sp = sub.add_parser("tree", help="lay out a hierarchy spec into a .nf.svg (no coordinates in it)")
+    sp.add_argument("spec", help="path to a tree spec JSON (a nested node list)")
+    sp.add_argument("-o", "--out", default=None,
+                    help="output composition path (default <spec>.nf.svg)")
+    sp.add_argument("--check", action="store_true",
+                    help="build, then lint the composition; exit 1 on lint errors")
+    sp.set_defaults(handler=cmd_tree)
 
     sp = sub.add_parser("digest", help="per-frame digest: record it, or check it against a ledger")
     sp.add_argument("composition", nargs="?", help="path to a .nf.svg composition")
@@ -620,6 +629,35 @@ def cmd_lottie(args: argparse.Namespace) -> int:
 
 def cmd_diagram(args: argparse.Namespace) -> int:
     """Build a diagram spec into a composition (and optionally lint it)."""
+    return _build_composition(args, kinds=("flow", "loop"))
+
+
+def cmd_tree(args: argparse.Namespace) -> int:
+    """Build a hierarchy spec into a composition — the tree grammar's verb."""
+    return _build_composition(args, kinds=("tree",))
+
+
+def _default_out(spec_path: str) -> str:
+    """Where a spec builds to when ``-o`` is not given: ``<stem>.nf.svg``.
+
+    ``x.nf.json`` is the naming convention this repo's own examples use, and it
+    is the *composition* name with a spec extension — so the ``.nf`` is not part
+    of the stem. Stripping it is what keeps ``examples/architecture.nf.json``
+    building to ``examples/architecture.nf.svg`` rather than doubling the infix.
+    """
+    stem = os.path.splitext(spec_path)[0]
+    if stem.endswith(".nf"):
+        stem = stem[: -len(".nf")]
+    return stem + ".nf.svg"
+
+
+def _build_composition(args: argparse.Namespace, kinds: tuple) -> int:
+    """Shared body of `diagram` and `tree`: spec in, composition out.
+
+    One verb per grammar (they are different input shapes and different
+    algorithms) over one code path, so the flags, the warnings, the lint gate
+    and the printed next steps cannot drift between them.
+    """
     from nanoframes.diagram import build_scene, load_spec, render
     from nanoframes.diagram.spec import SpecError
 
@@ -636,13 +674,19 @@ def cmd_diagram(args: argparse.Namespace) -> int:
         print(f"nanoframes: {exc}", file=sys.stderr)
         return 2
 
+    if spec.kind not in kinds:
+        other = "nanoframes diagram" if spec.kind in ("flow", "loop") else "nanoframes tree"
+        print(f'nanoframes: this is a "{spec.kind}" spec — build it with `{other}`',
+              file=sys.stderr)
+        return 2
+
     m = measurer()
     try:
         scene = build_scene(spec, measurer=m)
     except ValueError as exc:
         print(f"nanoframes: {exc}", file=sys.stderr)
         return 1
-    out = args.out or os.path.splitext(args.spec)[0] + ".nf.svg"
+    out = args.out or _default_out(args.spec)
     name = os.path.splitext(os.path.basename(out))[0]
     svg = render(scene, composition_id=name, measurer=m)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
@@ -850,44 +894,51 @@ def _frame_dest(doc, out, t: float) -> str:
     return f"{name}_t{t:g}.png"
 
 
-def _resource_dirs() -> tuple[str, str] | None:
-    """Absolute (docs_dir, skills_dir) — repo checkout first, then package copy.
+def _resource_dirs() -> tuple | None:
+    """Absolute (docs_dir, skills_dir, examples_dir) — repo checkout first, then
+    the package copy.
 
-    In a repo checkout the docs/skills sit next to the package
-    (``<repo>/docs``, ``<repo>/skills``); in a wheel install they are embedded
-    inside the package (``nanoframes/docs``, ``nanoframes/skills``).
+    In a repo checkout the docs/skills/examples sit next to the package
+    (``<repo>/docs``, ``<repo>/skills``, ``<repo>/examples``); in a wheel install
+    they are embedded inside it (``nanoframes/docs``, ``nanoframes/skills``,
+    ``nanoframes/examples``).
     """
     pkg = os.path.dirname(os.path.abspath(__file__))
     for base in (os.path.dirname(pkg), pkg):
         docs = os.path.join(base, "docs")
         skills = os.path.join(base, "skills", "nanoframes")
         if os.path.isdir(docs) and os.path.isdir(skills):
-            return docs, skills
+            return docs, skills, os.path.join(base, "examples")
     return None
 
 
 def _resource_lines() -> list[str]:
-    """The docs/skill pointer block, shared by the bare guide and the --help epilog."""
+    """The docs/skill/examples pointer block, shared by the bare guide and --help."""
     found = _resource_dirs()
     if not found:
         return ["  (docs/skills not found next to this install)"]
-    docs, skills = found
-    return [
+    docs, skills, examples = found
+    lines = [
         f"  composition contract ... {os.path.join(docs, 'composition.md')}",
         f"  architecture ............ {os.path.join(docs, 'architecture.md')}",
         f"  media (image/video/nested) {os.path.join(docs, 'media.md')}",
         f"  text capabilities ....... {os.path.join(docs, 'text-capabilities.md')}",
         f"  lottie import ........... {os.path.join(docs, 'lottie.md')}",
         f"  diagram spec ............ {os.path.join(docs, 'diagram.md')}",
+        f"  tree spec ............... {os.path.join(docs, 'tree.md')}",
         f"  agent skill ............. {os.path.join(skills, 'SKILL.md')}",
     ]
+    if os.path.isdir(examples):
+        lines.append(f"  worked examples ......... {examples}")
+    return lines
 
 
 def guide_text() -> str:
-    """Point users (agents) at the docs and agent skill shipped with the package."""
+    """Point users (agents) at the docs, skill and examples shipped with the package."""
     lines = [
         "nanoframes — SVG-first, browserless, deterministic frame rendering on ThorVG.",
-        "Docs and the agent skill ship with the package; read them before composing:",
+        "Docs, the agent skill and the worked examples ship with the package;"
+        " read them before composing:",
         "",
     ]
     lines += _resource_lines()

@@ -7,8 +7,8 @@ fits its label in the layout pass also fits it in the render.
 Two ThorVG behaviors shape this module:
 
 * ``letter-spacing`` is accepted and ignored, so tracked text (eyebrows, zone
-  labels, tags — the source's mono-uppercase register) is emitted as one
-  ``<text>`` per character, with the advance a CSS tracking factor would give.
+  labels, tags — the source's mono-uppercase register) is one ``<text>`` whose
+  measured width carries the advance a CSS tracking factor would give.
 * ``rgba()`` colors paint solid black, so masks are ``paper`` hex at full
   opacity (never a translucent plate).
 
@@ -21,6 +21,8 @@ math independent of host fonts.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from nanoframes.diagram import geometry as geo
 
 _MONO_USER = ("mono", "monospace", "sarasa", "tofu", "等宽", "console", "fixedsys", "courier")
 
@@ -133,11 +135,7 @@ def box_size(measurer, label: str, sub: str, tag: str, ramp: dict,
     half = label_m.bottom + LABEL_SUB_GAP + (-sub_m.top) / 2.0
     tall = (-label_m.top) + 2 * half + sub_m.bottom if sub else label_m.height
     h = tall + 2 * PAD_Y + tag_reserve(tag, ramp)
-    return float(max(80.0, _ceil4(w))), float(max(ramp["min_box_h"], _ceil4(h)))
-
-
-def _ceil4(value: float) -> float:
-    return float(int((value + 3.9999) // 4) * 4)
+    return float(max(80.0, geo.ceil4(w))), float(max(ramp["min_box_h"], geo.ceil4(h)))
 
 
 def node_texts(measurer, x: float, y: float, w: float, h: float, label: str,
