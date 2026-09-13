@@ -144,12 +144,26 @@ _PAIR_RE = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 
 
 def translate(scene: Scene, dx: float, dy: float) -> Scene:
-    """Shift the whole scene by ``(dx, dy)`` — the page margin, applied once."""
+    """Shift everything the scene draws by ``(dx, dy)`` — the page margin, applied once.
+
+    Everything *drawn* moves; the one exception is the paper plate
+    (``weight="background"``), which **is** the page: it is sized to the final
+    canvas and anchored at the origin, so shifting it would move the paper rather
+    than the figure on it (``union_bounds`` skips it for the same reason, and
+    ``finish`` drops it before the emitter runs).
+
+    Every other part moves, whatever its weight — a rule, a zone plate or a
+    composition's own chips as much as a node box. Enumerating the weights that
+    move is how a zone plate used to stay behind when the page had to make room
+    for the content, landing off-canvas and detached from its own label and
+    nodes; a shift is a property of the page, not of a shape's role.
+    """
     if dx == 0 and dy == 0:
         return scene
     for group in scene.groups:
         for part in group.parts:
-            if isinstance(part, Rect) and part.weight in ("box", "chip") or isinstance(part, Text):
+            if isinstance(part, Text) or (
+                    isinstance(part, Rect) and part.weight != "background"):
                 part.x += dx
                 part.y += dy
             elif isinstance(part, Path):

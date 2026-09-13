@@ -447,6 +447,27 @@ MP4 export, and an agent-facing skill.
   And no pixel changes: the corpus and the walkthrough are clean of all three
   idioms (`url(#…)` everywhere paints a gradient), the ledger re-records with the
   same digests, and the check is diagnostics only.
+- **0.2.17 (2026-09)** — two fields of the scene IR that only one code path
+  honoured. Building the chart grammar forced the question of what carries a
+  rule (a `Path`), and the answer hid two latent drops. `Scene.translate` moved
+  only `Rect`s whose `weight` was `box` or `chip` (plus text and paths), so when
+  the page had to make room for its content — a node authored at the origin, or
+  the title band's 6.2px ink overhang — a **zone plate stayed behind** while its
+  nodes *and its own label* moved: one node at (0,0) in one zone put the plate at
+  (-16,-32) with its label chip at (52,44), and its horizontal edges were drawn
+  inside the 40px left margin (80 non-paper px in columns 0..38). `check` was
+  silent, because the zone *group* still contained a label on canvas. And
+  `emit._path_attrs` never wrote `Path.opacity`, the field the sketchy register
+  uses for the lighter second pass of a hand-drawn outline — so a sketchy tag
+  chip's outline was drawn at full strength while its crisp twin's
+  `stroke-opacity` was honoured. Both are fixed at the source: a `weight` is a
+  shape's role, not a licence to ignore the page (only the paper plate is
+  exempt, because it *is* the page), and the emitter writes every field the IR
+  carries. ThorVG honours `opacity` on a `<path>` (measured: 0.4 on a 12px black
+  stroke draws (153,153,153), the same as `stroke-opacity`). Neither defect is in
+  the corpus — no shipped composition draws a zone or a sketchy tag — so the
+  ledger's twelve digests are unchanged, and the proof is the repro tests: the
+  IR's plate coordinates, and `0` px of ink strictly inside the margin band.
 - **0.2.11 (2026-09)** — the last silent gap in the motion model, named. A clip
   window or a `data-fade` on a `<tspan>` was written into the mark-up and then
   ignored, and every arithmetic reading agreed with the mark-up: `lint`'s

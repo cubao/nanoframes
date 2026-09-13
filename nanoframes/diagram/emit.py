@@ -56,6 +56,13 @@ def _path_attrs(path: Path) -> str:
              ("stroke-width", _fmt(path.stroke_width))]
     if path.dash:
         pairs.append(("stroke-dasharray", path.dash))
+    if path.opacity < 1.0:
+        # A `Path` carries its own opacity (the sketchy register uses it for the
+        # lighter second pass of a hand-drawn outline), and ThorVG honours it on
+        # a `<path>` — measured: opacity="0.4" on a black 12px stroke draws
+        # (153,153,153), the same as `stroke-opacity`. Dropping it here silently
+        # drew that second pass at full strength.
+        pairs.append(("opacity", _fmt(path.opacity)))
     return _attrs(pairs)
 
 

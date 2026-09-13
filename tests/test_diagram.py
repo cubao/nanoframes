@@ -346,6 +346,56 @@ def test_zones_group_their_members(measure):
     assert "PRIVATE" in "".join(t.content for t in scene.texts("eyebrow"))
 
 
+def test_a_zone_plate_takes_the_page_shift_with_its_members(measure):
+    """The page shift moves every drawn rect, whatever its weight.
+
+    A zone plate used to be left behind: `Scene.translate` moved only the
+    `box`/`chip` weights (and text), so when the content had to make room for the
+    margin — a node authored at the origin, or the title band's ink overhang —
+    the plate stayed put while its nodes *and its own label* moved. Measured on a
+    900x400 flow with one node at (0,0) in one zone: the plate came out at
+    (-16,-32) with its label chip at (52,44), i.e. one whole page shift away, and
+    the plate's horizontal edges were drawn inside the 40px left margin (80
+    non-paper px in columns 0..38). A `weight` is a shape's role, not a licence
+    to ignore the page.
+    """
+    spec = flow_spec(canvas={"width": 900, "height": 400},
+                     nodes=[{"id": "a", "label": "A", "x": 0, "y": 0, "zone": "z"}],
+                     edges=[],
+                     zones=[{"id": "z", "label": "Zone", "nodes": ["a"]}])
+    spec.pop("title")
+    scene = build_scene(parse_spec(spec), measurer=measure)
+    zone = next(g for g in scene.groups if g.name == "zone:z")
+    plate = next(p for p in zone.parts if isinstance(p, Rect) and p.weight == "zone")
+    node = next(p for p in scene.rects("box"))
+    label = next(t for t in scene.texts("eyebrow"))
+    assert plate.x >= 40 and plate.y >= 40          # inside the page margin
+    assert geo.rect_contains((node.x, node.y, node.w, node.h),
+                             (plate.x, plate.y, plate.w, plate.h))
+    assert plate.x <= label.x <= plate.x + plate.w
+    assert plate.y <= label.y <= plate.y + plate.h, \
+        "the zone's own label left the plate behind"
+
+
+def test_a_zone_plate_is_not_drawn_inside_the_margin(measure):
+    """And the fix is provable in pixels: no ink strictly inside the margin band."""
+    import numpy as np
+
+    from nanoframes.diagram import render
+    from nanoframes.render import render_svg
+
+    spec = flow_spec(canvas={"width": 900, "height": 400},
+                     nodes=[{"id": "a", "label": "A", "x": 0, "y": 0, "zone": "z"}],
+                     edges=[],
+                     zones=[{"id": "z", "label": "Zone", "nodes": ["a"]}])
+    spec.pop("title")
+    svg = render(build_scene(parse_spec(spec), measurer=measure), measurer=measure)
+    img = np.asarray(render_svg(svg, 900, 400).convert("RGB")).astype(int)
+    paper = np.array([245, 245, 245])
+    inside = np.abs(img[:, 0:38, :] - paper).max(-1) > 6
+    assert not inside.any(), f"{int(inside.sum())} px of ink inside the left margin"
+
+
 def test_unknown_zone_reference_is_a_spec_error():
     spec = flow_spec()
     spec["nodes"][0]["zone"] = "nope"
@@ -705,6 +755,23 @@ def test_sketchy_draws_outlines_as_wobbly_paths(measure):
         boxes = [p for p in group.parts if isinstance(p, Rect) and p.weight == "box"]
         assert boxes and all(b.stroke is None for b in boxes), \
             "a sketchy box must not also emit a straight outline"
+
+
+def test_a_paths_own_opacity_reaches_the_markup(measure):
+    """The sketchy tag chip asks for a lighter outline; the emitter has to draw it.
+
+    `scene.Path` carries `opacity`, and this loader honours it on a `<path>` —
+    measured: `opacity="0.4"` on a 12px black stroke draws (153,153,153), exactly
+    what `stroke-opacity="0.4"` draws. The emitter used to drop the field, so the
+    tag chip's hand-drawn outline was painted at full strength while its crisp
+    twin (a `Rect`'s `stroke-opacity`) was not — an IR field that only one of the
+    two shapes could express.
+    """
+    spec = flow_spec()
+    spec["nodes"][1]["tag"] = "core"
+    svg = compose(spec | {"skin": "sketchy"}, measurer=measure)
+    chip = [line for line in svg.splitlines() if "<path" in line and 'opacity="0.4"' in line]
+    assert chip, "the tag chip's lighter outline never reached the markup"
 
 
 def test_sketchy_upholds_the_warm_paper_canvas(measure):
