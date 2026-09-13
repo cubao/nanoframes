@@ -4,7 +4,13 @@ Each case here is a composition that renders *something valid and wrong* (or a
 budget the author asked to be held to) and the finding that has to name it.
 """
 
-from nanoframes.lint import lint_string
+import glob
+import os
+
+from nanoframes.lint import lint_path, lint_string
+
+EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "examples")
 
 CANVAS = ('<svg xmlns="http://www.w3.org/2000/svg" data-width="200" data-height="100"'
           ' data-fps="30" data-duration="4.0"{extra}>')
@@ -311,6 +317,141 @@ def test_a_span_under_an_off_canvas_text_is_still_reported():
                 if f.code == "geometry.never_on_canvas").element == "#host"
 
 
+# --- paint the renderer degrades: black, headless, or gone -------------------
+#
+# The third family. `visibility` is drawn anyway, text properties change nothing,
+# and these three come out *differently painted*: an alpha colour is blacked, a
+# marked path loses its head, a patterned element disappears. The numbers quoted
+# in each docstring are the probe behind the finding (200x120 white plate, ink
+# pixel counts through the same ThorVG path `render` uses).
+
+def _paint(body: str) -> str:
+    """A canvas holding one painted shape — the shape every case below varies."""
+    return CANVAS.format(extra="") + body + "</svg>"
+
+
+def _degraded(findings) -> list:
+    return [f for f in findings if f.code == "render.degraded_paint"]
+
+
+def test_every_alpha_spelling_is_reported_as_solid_black():
+    """Measured: 12 800 px of (0,0,0) — the count `fill="#000"` also gives.
+
+    The opaque spellings of the same colours are fine (`rgb(255,0,0)` and
+    `#ff0000` both paint red, 12 800 px), so it is the alpha that fails, at any
+    value — including 1, which is why this is not "translucency is ignored": the
+    loader cannot parse the value at all and falls back to black.
+    """
+    for value in ("rgba(255,0,0,0.25)", "rgba(255,0,0,1)", "hsla(0,100%,50%,0.3)",
+                  "hsl(0,100%,50%,0.3)", "rgb(255 0 0 / 0.25)", "#ff000080", "#f00f"):
+        findings = lint_string(_paint(f'<rect id="r" width="10" height="10" fill="{value}"/>'))
+        finding = next(f for f in _degraded(findings) if value in f.message)
+        assert finding.element == "#r"
+        assert "solid black" in finding.message and "fill-opacity" in finding.message
+
+
+def test_the_keyword_transparent_is_reported_as_solid_black():
+    """`transparent` is an alpha of zero, and it paints opaque black — not nothing."""
+    findings = lint_string(_paint('<rect id="r" width="10" height="10" fill="transparent"/>'))
+    assert "solid black" in next(iter(_degraded(findings))).message
+
+
+def test_alpha_anywhere_a_paint_goes_is_reported():
+    """`stroke` and a gradient's `stop-color` take the same fallback."""
+    svg = ('<defs><linearGradient id="g"><stop offset="0" stop-color="rgba(0,0,0,0.5)"/>'
+           '<stop offset="1" stop-color="#0000ff"/></linearGradient></defs>'
+           '<rect id="r" width="10" height="10" fill="url(#g)" stroke="rgba(0,0,0,0.2)"/>')
+    findings = _degraded(lint_string(_paint(svg)))
+    assert any("stop-color" in f.message for f in findings)
+    assert any("stroke=" in f.message for f in findings)
+
+
+def test_the_opaque_colour_spellings_are_not_reported():
+    """Red, hex, named and `hsl()` without alpha all paint what they say."""
+    for value in ("rgb(255,0,0)", "#ff0000", "red", "hsl(0,100%,50%)", "#fff"):
+        assert not _degraded(lint_string(
+            _paint(f'<rect id="r" width="10" height="10" fill="{value}"/>'))), value
+
+
+def test_a_marker_reference_is_reported():
+    """Measured: the path draws with zero red pixels — pixel-identical to no marker."""
+    for attr in ("marker-start", "marker-mid", "marker-end"):
+        svg = ('<defs><marker id="m"><circle cx="3" cy="3" r="3" fill="#ff0000"/></marker></defs>'
+               f'<path id="p" d="M 10,10 L 90,10" stroke="#000" {attr}="url(#m)"/>')
+        findings = _degraded(lint_string(_paint(svg)))
+        assert len(findings) == 1 and findings[0].element == "#p"
+        assert "rasterizes no <marker>" in findings[0].message and attr in findings[0].message
+
+
+def test_a_marker_attribute_asking_for_nothing_is_not_reported():
+    """`none` is the initial value: no marker was requested, so none is missing."""
+    for attr in ("marker-start", "marker-mid", "marker-end"):
+        svg = (f'<path id="p" d="M 10,10 L 90,10" stroke="#000" {attr}="none"/>')
+        assert not _degraded(lint_string(_paint(svg))), attr
+    assert not _degraded(lint_string(
+        _paint('<path id="p" d="M 10,10 L 90,10" stroke="#000"/>')))
+
+
+def test_a_pattern_paint_is_reported_as_drawing_nothing():
+    """Measured: 0 non-white px — the element vanishes, exactly as with `fill="none"`."""
+    svg = ('<defs><pattern id="dots" width="4" height="4" patternUnits="userSpaceOnUse">'
+           '<rect width="4" height="4" fill="#00ff00"/></pattern></defs>'
+           '<rect id="r" width="10" height="10" fill="url(#dots)"/>')
+    finding = next(iter(_degraded(lint_string(_paint(svg)))))
+    assert finding.element == "#r"
+    assert "rasterizes no <pattern>" in finding.message
+    assert "solid black" not in finding.message     # a different failure, said differently
+
+
+def test_a_dangling_paint_reference_is_reported():
+    """An id that resolves to nothing leaves the element unpainted as well."""
+    finding = next(iter(_degraded(lint_string(
+        _paint('<rect id="r" width="10" height="10" fill="url(#nope)"/>')))))
+    assert "id 'nope'" in finding.message
+
+
+def test_gradients_are_not_reported():
+    """Measured: a `<linearGradient>` and a `<radialGradient>` both rasterize.
+
+    The corpus paints with gradients, so a check that fired on `url(#…)` as such
+    would condemn `nanoframes`' own output — the target is what decides.
+    """
+    svg = ('<defs>'
+           '<linearGradient id="g"><stop offset="0" stop-color="#ff0000"/>'
+           '<stop offset="1" stop-color="#0000ff"/></linearGradient>'
+           '<radialGradient id="r"><stop offset="0" stop-color="#ff0000"/>'
+           '<stop offset="1" stop-color="#0000ff"/></radialGradient></defs>'
+           '<rect width="10" height="10" fill="url(#g)" stroke="url(#r)"/>')
+    assert not _degraded(lint_string(_paint(svg)))
+
+
+def test_the_legal_ways_to_draw_nothing_are_not_reported():
+    """`none` and `opacity="0"` really do draw nothing: they ask and get it."""
+    assert not _degraded(lint_string(
+        _paint('<rect id="r" width="10" height="10" fill="none" stroke="none"/>')))
+    assert not _degraded(lint_string(
+        _paint('<rect id="r" width="10" height="10" fill="#f00" opacity="0"/>')))
+
+
+def test_the_three_degradations_are_named_separately():
+    """Blacked, headless and gone are three failures, and one wording cannot say all three.
+
+    Nor may any of them borrow the inert family's sentence: there the frame is
+    *right* and the declaration is dead, here the frame is wrong.
+    """
+    svg = ('<defs><marker id="m"><circle cx="3" cy="3" r="3" fill="#f00"/></marker>'
+           '<pattern id="dots" width="4" height="4"><rect width="4" height="4" fill="#0f0"/>'
+           '</pattern></defs>'
+           '<rect id="a" width="10" height="10" fill="rgba(255,0,0,0.25)"/>'
+           '<path id="b" d="M 10,10 L 90,10" stroke="#000" marker-end="url(#m)"/>'
+           '<rect id="c" width="10" height="10" fill="url(#dots)"/>')
+    findings = _degraded(lint_string(_paint(svg)))
+    assert len(findings) == 3
+    assert {f.element for f in findings} == {"#a", "#b", "#c"}
+    assert len({f.message for f in findings}) == 3
+    assert not any("is ignored by ThorVG" in f.message for f in findings)
+
+
 # --- font-family that selects no loaded face ---------------------------------
 
 def _text(attrs: str = "") -> str:
@@ -398,3 +539,22 @@ def test_a_font_family_on_a_group_is_not_reported():
            + '<g font-family="Arial, sans-serif"><text x="10" y="50" font-size="20">HI'
              "</text></g></svg>")
     assert "render.unresolved_font_family" not in _codes(lint_string(svg))
+
+
+# --- the shipped corpus is clean under every check ---------------------------
+
+def test_the_shipped_corpus_lints_clean():
+    """`check` must not condemn `nanoframes`' own output.
+
+    The corpus is where the renderer gaps overlap with real markup: `url(#…)`
+    paints are all over the diagram examples and every one of them is a gradient,
+    which does rasterize — so a check that fired on the *form* rather than the
+    resolved target would have flagged the package's own examples. The count is
+    asserted so a composition cannot quietly drop out of the sweep, and every
+    finding here is a bug in the check or in the example, never a tolerated one.
+    """
+    examples = sorted(glob.glob(os.path.join(EXAMPLES, "*.nf.svg")))
+    assert len(examples) >= 12
+    for path in examples:
+        findings = lint_path(path)
+        assert not findings, f"{os.path.basename(path)}: {[str(f) for f in findings]}"

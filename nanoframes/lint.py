@@ -232,6 +232,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_inert_attributes(doc, findings)
     _check_inert_text_props(doc, findings)
     _check_inert_tspan(doc, findings)
+    _check_degraded_paint(doc, findings)
     _check_font_family(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
@@ -556,9 +557,10 @@ def _check_inert_text_props(doc: Document, findings: list[Finding]) -> None:
     either one asked for a moved or widened run and got neither, silently.
 
     The two are reported separately because they are two different claims, and
-    neither is the same failure as the gap table's other two entries: ``<marker>``
-    and ``<pattern>`` draw *nothing*, ``rgba()`` draws black, these two draw the
-    run unchanged. See docs/diagram.md's ThorVG gap table for all four.
+    neither is the same failure as the rest of the gap table: ``<marker>`` and
+    ``<pattern>`` draw *nothing*, ``rgba()`` draws black, these two draw the run
+    unchanged. See docs/diagram.md's ThorVG gap table for the whole set, and
+    ``_check_degraded_paint`` below for the drawn-wrong half.
 
     Reported only where glyphs are in scope — the declaration sits on a node with
     a ``<text>`` on or under it — because on a node with no text below it the
@@ -648,6 +650,135 @@ def _check_inert_tspan(doc: Document, findings: list[Finding]) -> None:
                 code="render.inert_tspan", element=bounds.label(node),
             ))
             break  # one finding per animation, however many spans it matches
+
+
+# The three spellings of "this paint has an alpha channel": the `rgba()`/`hsla()`
+# functions, the `rgb(… / a)` slash form, and the 4- or 8-digit hex literal.
+_COLOUR_FUNCTION_RE = re.compile(r"(rgba|hsla|rgb|hsl)\s*\((.*)\)$", re.IGNORECASE | re.S)
+_HEX_ALPHA_RE = re.compile(r"#(?:[0-9a-f]{4}|[0-9a-f]{8})$", re.IGNORECASE)
+_URL_REF_RE = re.compile(r"url\(\s*['\"]?#([^)'\"]+)['\"]?\s*\)$", re.IGNORECASE)
+_MARKER_ATTRS = ("marker-start", "marker-mid", "marker-end")
+# Paint attributes a paint *server* is normally written on. `stop-color` is left
+# out of the server check on purpose: a `<pattern>` there is a different claim
+# ("this stop is missing") and the message below would name the wrong element.
+_SERVER_ATTRS = ("fill", "stroke")
+
+
+def _carries_alpha(value: str) -> bool:
+    """Whether a paint value asks for an alpha this loader cannot honour.
+
+    Measured, not assumed: every one of these forms paints **solid black**
+    (12 800 px of ``(0,0,0)`` on a 200×120 white plate, the same count as
+    ``fill="#000000"``) — ``rgba(255,0,0,0.25)``, ``rgba(255,0,0,1)``,
+    ``hsla(0,100%,50%,0.3)``, ``hsl(0,100%,50%,0.3)``, ``rgb(255 0 0 / 0.25)``,
+    ``#ff000080``, ``#f00f``, and the keyword ``transparent``. The opaque
+    spellings of the same colours are fine (``rgb(255,0,0)`` and ``#ff0000``
+    both paint red), so what fails is the *alpha*, at any value including 1 —
+    the loader is not ignoring the channel, it is failing to parse the value and
+    falling back to black.
+    """
+    text = value.strip().lower()
+    if text == "transparent":
+        return True
+    if _HEX_ALPHA_RE.match(text):
+        return True
+    match = _COLOUR_FUNCTION_RE.match(text)
+    if not match:
+        return False
+    name, args = match.group(1).lower(), match.group(2)
+    if name in ("rgba", "hsla"):
+        return True
+    if "/" in args:                                   # rgb(255 0 0 / 0.25)
+        return True
+    return len([part for part in args.split(",") if part.strip()]) >= 4
+
+
+def _check_degraded_paint(doc: Document, findings: list[Finding]) -> None:
+    """Warn where a paint declaration is silently *not what it says*.
+
+    The third family of renderer gaps, and the one with the least obvious
+    failure: ``visibility`` is ignored (the element is drawn), text properties
+    are ignored (the run is unchanged), and these are **painted wrong** or
+    **painted not at all**. Probed on this build, on a 200×120 white plate:
+
+    * ``fill="rgba(255,0,0,0.25)"`` → 12 800 px of **solid black**; the
+      ``#ff0000 fill-opacity="0.25"`` spelling of the same request → 12 800 px
+      of ``(255,191,191)``. Every alpha spelling fails the same way, including
+      ``rgba(…,1)`` and the keyword ``transparent`` (see ``_carries_alpha``).
+    * ``marker-end="url(#m)"`` (a red circle in ``<defs>``) → the path is drawn
+      with **zero** red pixels, pixel-identical to the same path without the
+      attribute. This loader rasterizes no ``<marker>`` at all, so a head, a
+      tail or a mid-vertex glyph never appears.
+    * ``fill="url(#p)"`` (a 4×4 green ``<pattern>``) → **zero** non-white
+      pixels: the element vanishes entirely, exactly as if ``fill="none"``.
+      An unresolvable ``url(#nope)`` does the same. A ``<linearGradient>`` or
+      ``<radialGradient>`` is *not* affected — both rasterize correctly — so only
+      a ``<pattern>`` target (or a dangling id) is reported.
+
+    Reported as three differently-worded findings rather than one, because they
+    are three different failures — painted black, drawn without its head, not
+    drawn at all — and an author fixes each differently. ``fill="none"``,
+    ``stroke="none"`` and ``opacity="0"`` are the legal ways to draw nothing and
+    are not touched here.
+
+    ``<filter>`` is deliberately **not** checked: probing shows the loader does
+    rasterize ``feGaussianBlur`` (a blur widens a 12 800 px rect to 17 488
+    non-white px, on a ``<rect>`` and on a ``<text>`` alike) while
+    ``feTurbulence``, ``feOffset`` and ``feColorMatrix`` leave the frame
+    pixel-identical. What the renderer supports is a subset with no documented
+    membership, and a probe of four primitives is not a criterion — so the gap
+    is written down in docs/composition.md instead of guessed at here.
+    """
+    ids = {node.get("id"): node for node in doc.root.iter() if node.get("id")}
+    for node in doc.root.iter():
+        label = bounds.label(node)
+        for attr in _PAINT_ATTRS:
+            raw = node.get(attr)
+            if raw is None:
+                continue
+            if _carries_alpha(raw):
+                findings.append(Finding(
+                    "warning",
+                    f"{label}: {attr}={raw!r} carries an alpha this loader drops —"
+                    f" the element is painted solid black, not translucent; write the"
+                    f' colour as a hex literal with a separate {attr}-opacity.',
+                    code="render.degraded_paint", element=label,
+                ))
+            elif attr in _SERVER_ATTRS:
+                reason = _unpaintable_server(raw, ids)
+                if reason:
+                    findings.append(Finding(
+                        "warning",
+                        f"{label}: {attr}={raw!r} paints nothing — {reason}, so the"
+                        f" element disappears entirely (it is not drawn black, or"
+                        f" grey, or at all); give it a hex fill instead.",
+                        code="render.degraded_paint", element=label,
+                    ))
+        for attr in _MARKER_ATTRS:
+            raw = node.get(attr)
+            if raw is None or not _URL_REF_RE.match(raw.strip()):
+                continue
+            findings.append(Finding(
+                "warning",
+                f"{label}: {attr}={raw!r} asks for a marker and gets none — this"
+                f" loader rasterizes no <marker>, so the path keeps its stroke and"
+                f" loses its head; draw the shape as its own element (a computed"
+                f" polygon, which is what `nanoframes diagram` emits).",
+                code="render.degraded_paint", element=label,
+            ))
+
+
+def _unpaintable_server(raw: str, ids: dict) -> str | None:
+    """Why a ``url(#id)`` paint value draws nothing, or ``None`` when it draws."""
+    match = _URL_REF_RE.match(raw.strip())
+    if not match:
+        return None
+    target = ids.get(match.group(1))
+    if target is None:
+        return f"no element in this document has id {match.group(1)!r}"
+    if local_name(target.tag) == "pattern":
+        return "this loader rasterizes no <pattern>"
+    return None
 
 
 _FONT_NAMES: list | None = None

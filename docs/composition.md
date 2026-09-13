@@ -218,6 +218,43 @@ SVG meaning but only within that subset.
   fully transparent — no error, no exception. Rendering prints a warning to
   stderr when that happens; run `nanoframes debug` to see which element is to
   blame.
+- **Alpha colours are painted solid black.** Probed on a 200x120 white plate by
+  ink count and pixel colour: `fill="rgba(255,0,0,0.25)"` paints 12 800 px of
+  **(0,0,0)** — the same count `fill="#000000"` gives — while the
+  `fill="#ff0000" fill-opacity="0.25"` spelling of the same request paints 12 800
+  px of (255,191,191). Every alpha spelling fails the same way:
+  `rgba(255,0,0,1)` (so this is not "the channel is ignored" — the value does not
+  parse at all and falls back to black), `hsla()`, `hsl()` with a fourth
+  argument, `rgb(255 0 0 / 0.25)`, the 8-digit `#ff000080`, the 4-digit `#f00f`,
+  and the keyword `transparent`. The *opaque* spellings are fine — `rgb(255,0,0)`,
+  `hsl(0,100%,50%)`, `#ff0000` and `red` all paint red — as is a gradient whose
+  stops are opaque hex. `check` names it as `render.degraded_paint`, and the
+  rewrite is always available: a hex fill plus `fill-opacity` / `stroke-opacity`.
+- **`<marker>` is never drawn.** Probed: `marker-end="url(#m)"` — a red circle in
+  `<defs>` — leaves the path with **zero** red pixels, pixel-identical to the
+  same path without the attribute. Start, mid and end are all affected, so a
+  head, a tail or a per-vertex glyph never appears. `check` names any `url(#…)`
+  marker reference as `render.degraded_paint`; a `marker-*` that is absent or
+  `none` asked for nothing and stays silent. The remedy is a real element: a
+  computed polygon from the path's end tangent, which is what `nanoframes
+  diagram` emits for every arrowhead.
+- **A `<pattern>` paint draws nothing at all.** Probed: `fill="url(#p)"` against a
+  4x4 green pattern leaves **zero** non-white pixels — the element vanishes
+  entirely, exactly as if it were `fill="none"` (and so does an unresolvable
+  `url(#nope)`). This is *not* true of paint servers in general: a
+  `<linearGradient>` and a `<radialGradient>` both rasterize correctly, and the
+  shipped corpus paints with them. So `check` reports the specific case — a
+  target that is a `<pattern>`, or an id that resolves to nothing — as
+  `render.degraded_paint`, and leaves gradients alone. `fill="none"`,
+  `stroke="none"` and `opacity="0"` are the legal ways to draw nothing and are
+  never reported.
+- **`<filter>` support is partial, and unchecked.** Probed: `feGaussianBlur` *is*
+  rasterized (a 12 800 px rect becomes 17 488 non-white px, on a `<rect>` and on
+  a `<text>` alike), while `feTurbulence`, `feOffset` and `feColorMatrix` leave
+  the frame pixel-identical to no filter at all. The renderer documents no
+  membership list for that subset and four probes are not a criterion, so `check`
+  says nothing about filters — they are neither reported nor relied upon, and the
+  sketchy skin computes its wobble as geometry rather than filtering for it.
 - **`visibility` is ignored.** Probed, not assumed: `visibility="hidden"` and
   `visibility="collapse"` leave the element in the picture. `display="none"` is
   what hides, and it is honoured — on shapes and groups. `check` warns when it

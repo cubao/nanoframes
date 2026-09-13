@@ -116,6 +116,8 @@ that render as *something valid and wrong*:
 | `transform.value_invalid` / `animation.transform_shape_mixed` | values bake cannot express, or shapes the interpolator cannot blend |
 | `asset.missing` / `image.bad_aspect` / `media.*` | a missing asset, an unknown `data-aspect`, a video without ffmpeg or mapped past its source |
 | `render.inert_attribute` / `render.inert_tspan` | an attribute this loader accepts and ignores: `visibility`, `text-anchor`, `letter-spacing`, or timing and animation written on a `<tspan>` |
+| `render.degraded_paint` | a paint the loader draws *wrong* rather than ignores: an alpha colour (`rgba()`, `#rrggbbaa`, `transparent`, …) painted solid black, a `marker-*` reference drawn without its marker, a `<pattern>` paint (or a dangling `url(#…)`) that makes the element disappear |
+| `render.unresolved_font_family` | a `font-family` that cannot select any loaded face, so the run draws with the fallback |
 | `clip.*`, `canvas.*`, `animation.keyframe_out_of_range` | timing and canvas metadata that is out of range |
 
 Two checks are **opt-in**, declared on the root `<svg>`, because they encode taste rather than
@@ -418,6 +420,33 @@ MP4 export, and an agent-facing skill.
   because a band's *centre* is where its bar and tick mark go. Stacking, a
   logarithmic axis and a second value axis are out of scope on purpose: the
   grammar compiles one plot, and a figure that needs more is two charts.
+- **0.2.16 (2026-09)** — the drawn-wrong half of the renderer gaps, named. The
+  text face closed in 0.2.13/0.2.14; what remained were the gaps where the frame
+  is not merely *unaffected* by a declaration but **painted differently**, and
+  they lived only in a documentation table — which is the one place an author
+  does not read, and exactly what `check` exists for. Re-probed rather than
+  carried over, on a 200×120 white plate by ink count and pixel colour: an alpha
+  colour is painted **solid black** (12 800 px of `(0,0,0)`, the count
+  `fill="#000000"` gives, where `#ff0000` + `fill-opacity="0.25"` gives 12 800 px
+  of `(255,191,191)`), and *every* alpha spelling fails — `rgba(…)` at any alpha
+  including 1, `hsla()`, `rgb(a b c / d)`, `#rrggbbaa`, `#rgba`, `transparent` —
+  while the opaque ones (`rgb()`, `hsl()`, hex, named) are fine, so the value is
+  not being parsed and then ignored, it is failing to parse and falling back to
+  black. A `marker-*` reference draws **nothing** (zero red pixels for a red
+  circle marker: pixel-identical to no marker). A `<pattern>` paint makes the
+  element **disappear** (zero non-white px, indistinguishable from
+  `fill="none"`), but gradients — linear and radial — rasterize correctly, which
+  the probe corrected a doc claim about; only a `<pattern>` target or a dangling
+  id is reported. One new check, `render.degraded_paint`, with three separately
+  worded messages, because blacked, headless and gone are three failures an
+  author fixes three ways. Two things were deliberately *not* done. `<filter>` is
+  left unchecked: probing shows `feGaussianBlur` **is** rasterized (and the
+  reference sketchy look is a turbulence filter, which is not), so the supported
+  subset is real but undocumented, and four probes are not a criterion — the
+  finding is written into docs/composition.md instead of guessed at in code.
+  And no pixel changes: the corpus and the walkthrough are clean of all three
+  idioms (`url(#…)` everywhere paints a gradient), the ledger re-records with the
+  same digests, and the check is diagnostics only.
 - **0.2.11 (2026-09)** — the last silent gap in the motion model, named. A clip
   window or a `data-fade` on a `<tspan>` was written into the mark-up and then
   ignored, and every arithmetic reading agreed with the mark-up: `lint`'s

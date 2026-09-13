@@ -149,17 +149,22 @@ grammar of its own with its own command and page: [docs/chart.md](chart.md).
 
 ## ThorVG gaps
 
-This renderer is an SVG Tiny 1.2 rasterizer, not a browser. Four source idioms
-do not survive, and the builder works around each (probed, not assumed):
+This renderer is an SVG Tiny 1.2 rasterizer, not a browser. These source idioms
+do not survive it, and each is either **named by `check`** (probed, not assumed —
+[composition.md](composition.md#known-thorvg-behaviors) carries the ink counts
+behind every row) or deliberately left unchecked with the reason written down:
 
-| source | ThorVG behavior | what the builder does instead |
-|---|---|---|
-| `<marker>` arrowheads | attribute accepted, **nothing drawn** | computes the head polygon from the path's end tangent (filled + open heads) |
-| `rgba(...)` fills | parsed as **solid black** | hex fills with a separate `fill-opacity` / `stroke-opacity` |
-| `letter-spacing` | ignored | tracked runs (zone eyebrows, tags) are one `<text>` whose *measured* width already carries the advance a browser would add |
-| `text-anchor` | ignored — everything left-aligned at `x` | a centred run is one `<text>` at `x - ink_w/2 + left_bearing`, measured through the same engine |
-| `<pattern>` dot grid | rasterizes to nothing | not emitted (the dotted-paper variant is unavailable) |
-| `<filter>` (turbulence, the browser's sketchy effect) | not rasterized | the sketchy skin computes its wobble as geometry instead (`nanoframes.diagram.sketchy`) |
+| source | ThorVG behavior | `check` code | what the builder does instead |
+|---|---|---|---|
+| `<marker>` arrowheads | attribute accepted, **nothing drawn** | `render.degraded_paint` | computes the head polygon from the path's end tangent (filled + open heads) |
+| `rgba(...)` fills, and every other alpha spelling (`#rrggbbaa`, `transparent`, `rgb(a b c / d)`) | parsed as **solid black**, not translucent | `render.degraded_paint` | hex fills with a separate `fill-opacity` / `stroke-opacity` |
+| `<pattern>` paint | rasterizes to nothing — the element **disappears** (`fill="none"` looks the same) | `render.degraded_paint` | not emitted (the dotted-paper variant is unavailable) |
+| `visibility="hidden"` | ignored — the element is drawn anyway | `render.inert_attribute` | never emitted; `display="none"` is what hides |
+| `letter-spacing` | ignored | `render.inert_attribute` | tracked runs (zone eyebrows, tags) are one `<text>` whose *measured* width already carries the advance a browser would add |
+| `text-anchor` | ignored — everything left-aligned at `x` | `render.inert_attribute` | a centred run is one `<text>` at `x - ink_w/2 + left_bearing`, measured through the same engine |
+| timing or a fade on a `<tspan>` | dropped — a `<text>` is drawn as **one unit**, so every attribute on a span is inert | `render.inert_tspan` | timing goes on the `<text>`; multi-line text is one `<text>` per line, never spans |
+| `font-family` stacks | the whole value is one name, matched exactly; no list, no fallback chain | `render.unresolved_font_family` | every run names the bundled face, which is where the stack landed anyway |
+| `<filter>` (turbulence, the browser's sketchy effect) | **partial**: `feGaussianBlur` rasterizes, `feTurbulence`/`feOffset`/`feColorMatrix` do nothing | — (unchecked: the supported subset is undocumented and four probes are not a criterion) | the sketchy skin computes its wobble as geometry instead (`nanoframes.diagram.sketchy`) |
 
 Consequences worth knowing:
 
