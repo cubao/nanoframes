@@ -48,8 +48,8 @@ Meaning-driven word motion (semantic rule): *fall* drops, *rise* lifts,
 5. **wordmark-cascade** — letters/words assemble into the lockup, then the
    whole lockup settles (used by the logo recipe too).
 6. **numeric-pop** — the number is the focal: big mono value scales
-   `0.85 → 1.0` with a settle-back; label and unit enter after it resolves
-   (see `recipe-data-stats.md`).
+   `0.85 → 1.0` with `ease-out-back` (a settle-back, in one keyframe); label and
+   unit enter after it resolves (see `recipe-data-stats.md`).
 
 ## Timing (seconds)
 
@@ -58,7 +58,7 @@ Meaning-driven word motion (semantic rule): *fall* drops, *rise* lifts,
 | short title (≤ 6 words) | 0.75 – 2 s total reveal |
 | long quote | 1.5 – 4 s total, line stagger ≈ 0.15 – 0.35 s |
 | subline / attribution | 0.3 – 0.6 s after the headline settles |
-| settle-back pop | main move ~0.35 s + settle-back keyframes ~0.15 s |
+| settle-back pop | main move ~0.35 – 0.5 s on one segment (`ease-out-back` — the overshoot is inside the curve, not extra keyframes) |
 
 ## Construction notes (nanoframes mechanics)
 

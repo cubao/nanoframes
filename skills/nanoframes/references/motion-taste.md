@@ -35,6 +35,14 @@ Anything a reference table gives you goes in as its numbers:
 and that freedom is what lets a curve overshoot. The names above live in
 `nanoframes/ease.py`.
 
+**"Settle-back" means this curve.** The recipe library names the *shape* — a pop
+that overshoots its target and settles — in a lot of places. Build it with
+`ease-out-back` on the landing keyframe: one attribute, with the overshoot inside
+the curve. Reach for explicit keyframes only when you want a *damped
+multi-bounce* (`0.5 → 1.05 → 0.98 → 1.0`), which a single bezier cannot express;
+the second rebound costs two more keyframes to keep in sync, so want it on
+purpose.
+
 **Overshoot is budgeted.** It reads as energy, so spend it where energy is the
 point: celebration 15–25 %, success 5–10 %, press/hover feedback 2–5 %, and
 **0 % for errors** (an error that bounces feels unserious) as well as for a

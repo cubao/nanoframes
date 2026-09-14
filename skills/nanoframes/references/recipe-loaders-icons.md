@@ -28,8 +28,10 @@ badges, empty-state nudges, progress indicators.
    icon is a `<path>` (no trim-path animation in ThorVG SVG: approximate with
    a per-segment cascade — hand-split the path into segments, each with a
    `data-start` ~0.06 s apart, fading in with a tiny translate).
-4. **check-complete** — success: circle scales in (settle-back), check
-   segments cascade, then the whole state holds ≥ 0.5 s. Calm `ease-out`.
+4. **check-complete** — success: circle scales in with `ease-out-back` (the
+   settle-back is the curve's own overshoot), check segments cascade, then the
+   whole state holds ≥ 0.5 s. A mild one — this is confirmation, not a
+   celebration.
 5. **error-shake** — error: icon fades in, a short horizontal translate
    shake (2–3 cycles of ±4 px, damped, ~0.5 s total), then hold; no bounce
    on the way in.

@@ -41,8 +41,10 @@ structural modules:
 4. **wordmark-cascade** — wordmark letters/words cascade in (per-word
    `<text>` elements, stagger ≈ 0.12 s), mark pops with a settle-back as the
    last word lands.
-5. **splash-pop** — playful: mark scales from `0.5 → 1.05 → 0.98 → 1.0` over
-   ~0.6 s (`ease-out` + authored settle-backs); wordmark slides up under it.
+5. **splash-pop** — playful: mark scales from `0.5 → 1.0` over ~0.5 s with
+   `ease-out-back` (the overshoot is in the curve); the wordmark slides up
+   under it. For a *damped second rebound* — the `1.05 → 0.98 → 1.0` version —
+   hand-author those keyframes instead; one bezier cannot express two bounces.
 
 ## Timing (seconds)
 
@@ -50,7 +52,8 @@ structural modules:
 |---|---|
 | mark only | 0.75 – 1.25 s |
 | mark + wordmark | 1.25 – 2 s |
-| premium settle | 0.3 – 0.5 s main move; settle-back ≤ 0.15 s; **no bounce** for premium |
+| entry, playful | 0.3 – 0.5 s on one segment with `ease-out-back` (overshoot inside the curve); a damped second rebound adds ~0.15 s |
+| entry, premium | same 0.3 – 0.5 s but `gentle` or plain `ease-out` — **no overshoot at all** |
 | final hold | ≥ 0.3 s still before clip end |
 
 **Do not show the full answer too early**: the mark should be readable before

@@ -25,8 +25,9 @@ job is to direct attention to the insight, not to entertain.
 ## Presets (behavior briefs)
 
 1. **hero-number** — one giant value is the whole frame: it scales in
-   (`0.9 → 1.0`, settle-back allowed), then label + unit + source line enter
-   beneath after it resolves.
+   (`0.9 → 1.0`, with `ease-out-back` when the register permits a settle-back —
+   no bounce for serious data), then label + unit + source line enter beneath
+   after it resolves.
 2. **kpi-grid** — 2–4 stat cards; each card's number reveals as the card
    enters (stagger ≈ 0.15 s), bars/indicators fill, labels last.
 3. **bar-compare** — bars grow from the baseline: each bar is a rect scaled
