@@ -611,6 +611,52 @@ def test_a_composition_with_no_ease_anywhere_is_clean():
     assert "animation.inert_ease" not in codes
 
 
+# --- an alpha outside the range the renderer can express ----------------------
+
+def _plate(static: str) -> str:
+    return (CANVAS.format(extra="")
+            + f'<rect id="r" x="10" y="10" width="20" height="20" fill="#000" {static}/>'
+            + "</svg>")
+
+
+def test_an_out_of_range_opacity_is_reported():
+    """`opacity="1.087"` paints ~0.08 — nearly transparent — not opaque."""
+    findings = [f for f in lint_string(_plate('opacity="1.087"'))
+                if f.code == "render.out_of_range_alpha"]
+    assert len(findings) == 1
+    assert "opacity='1.087'" in findings[0].message
+    assert "0.08" in findings[0].message       # what it actually paints
+    assert "1.00" in findings[0].message       # what it was asking for
+
+
+def test_a_negative_alpha_is_reported_in_both_directions():
+    for static in ('opacity="-0.05"', 'fill-opacity="-1"', 'stroke-opacity="1.5"'):
+        codes = _codes(lint_string(_plate(static)))
+        assert "render.out_of_range_alpha" in codes, static
+
+
+def test_an_alpha_the_renderer_can_express_is_clean():
+    for static in ('opacity="0"', 'opacity="1"', 'opacity="0.5"',
+                   'fill-opacity="1"', 'stroke-opacity="0.25"'):
+        codes = _codes(lint_string(_plate(static)))
+        assert "render.out_of_range_alpha" not in codes, static
+
+
+def test_a_percentage_alpha_is_not_reported():
+    """`opacity="50%"` parses and honours its own range (probed at 0.5020)."""
+    assert "render.out_of_range_alpha" not in _codes(lint_string(_plate('opacity="50%"')))
+
+
+def test_a_non_numeric_alpha_is_left_alone():
+    """An unparsable value is the renderer's business, not a range finding."""
+    assert "render.out_of_range_alpha" not in _codes(lint_string(_plate('opacity="dense"')))
+
+
+def test_only_the_attribute_that_is_out_of_range_is_reported():
+    codes = _codes(lint_string(_plate('opacity="0.5" fill-opacity="2"')))
+    assert codes.count("render.out_of_range_alpha") == 1
+
+
 # --- the shipped corpus is clean under every check ---------------------------
 
 def test_the_shipped_corpus_lints_clean():

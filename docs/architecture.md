@@ -555,8 +555,12 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
-- **0.2.20 (2026-09)** — the easing declaration made true, and the curve vocabulary
-  it was missing. Absorbed from `LottieFiles/motion-design-skill` (MIT): the industry
+- **0.3.0 (2026-09)** — the easing declaration made true, and the curve vocabulary
+  it was missing. A **minor** bump rather than a patch, because it is a semantic
+  break for anything already written against the old reading: an `ease` used to
+  govern the segment *leaving* its keyframe, so a composition that put one on an
+  interior keyframe renders with a different curve afterwards. Absorbed from
+  `LottieFiles/motion-design-skill` (MIT): the industry
   curve table — Material 3 standard/emphasized/accelerate/decelerate, Apple HIG, the
   premium float, and the overshoot pair — plus the direction rules that make it a
   *choice* rather than a lookup. The skill's UI-only half (hover/press latency,
@@ -583,6 +587,24 @@ MP4 export, and an agent-facing skill.
   master-demo, nested-card, title-card). 8 snapshot baselines regenerated
   (master-demo ×7, title-card ×1) and inspected: the deltas are the eased
   positions, inside the canvas, with no element lost.
+
+  The batch closes with the one gap the new curves made reachable. `bake` wrote
+  the timeline's computed opacity straight through whenever it was below 1.0,
+  with no clamp — and ThorVG does not clamp an out-of-range alpha either, it
+  **wraps** it at 8 bits, painting `(value × 255 mod 256) / 255`. So a `0 → 1`
+  fade-in using the newly-available `ease-in-back` computed −0.075 early on, and
+  the element appeared at **93 % opacity at the start of its own entrance**, where
+  the curve had asked for invisible. `bake` now clamps what the timeline computes,
+  so an overshoot saturates at the endpoint instead of wrapping around. Probing it
+  turned up two neighbours in the same three lines: `fill-opacity` and
+  `stroke-opacity` wrap identically — and `fill-opacity` is precisely the spelling
+  the docs recommend for alpha — while the `if opacity < 1.0` guard meant a
+  timeline landing on exactly 1.0 wrote nothing at all, so an element authored
+  `opacity="0.3"` and animated to full sat at 0.30 for its whole life. `check`
+  names a literal out-of-range value as `render.out_of_range_alpha`. Evidence: 12
+  new tests (595 total, ruff clean); the whole corpus is **byte-identical** —
+  re-recording the ledger moved only the `identity` field on all 12 entries and
+  left every digest unchanged — and `check` reports nothing new on any example.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); Lottie markers surfaced in the CLI;
   remaining recipe ports (product-promo, ui-microinteractions, the `chart`

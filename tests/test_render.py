@@ -1,6 +1,7 @@
 """Render end-to-end tests (bake -> thorvg -> Pillow)."""
 
 import os
+import re
 
 import pytest
 
@@ -200,3 +201,83 @@ def test_display_none_written_in_the_source_hides_text_and_image():
         "</svg>"
     )
     assert _ink(render_frame(doc, t=0.5)) == 0
+
+
+# --- opacity: clamped, because the renderer wraps instead --------------------
+
+def _plate(static: str, script: str = "") -> str:
+    return ('<svg xmlns="http://www.w3.org/2000/svg" data-width="200" data-height="120"'
+            ' data-fps="30" data-duration="2.0">'
+            '<rect x="0" y="0" width="200" height="120" fill="#ffffff"/>'
+            f'<rect id="r" x="40" y="30" width="120" height="60" fill="#ff0000" {static}/>'
+            + (f'<script type="application/nanoframes+json"><![CDATA[{script}]]></script>'
+               if script else "")
+            + "</svg>")
+
+
+def _rect_tag(static: str, t: float, script: str = "") -> str:
+    """The baked frame's `<rect id="r">`, for asserting what bake wrote down."""
+    baked = bake.bake_svg(parse_string(_plate(static, script)), t)
+    return re.search(r'<rect[^>]*id="r"[^>]*>', baked).group(0)
+
+
+def _painted_alpha(static: str, t: float = 0.0, script: str = "") -> float:
+    """The alpha the frame actually carries at the plate's centre (1.0 = opaque)."""
+    img = render_frame(parse_string(_plate(static, script)), t=t).convert("RGB")
+    return (255 - img.getpixel((100, 60))[1]) / 255
+
+
+def test_the_renderer_wraps_an_out_of_range_opacity_rather_than_clamping_it():
+    """The measured truth `bake._clamp_opacity` exists for.
+
+    Probed through the same loader that rasterizes the frames, the painted alpha
+    is `(value * 255 mod 256) / 255`. So 1.087 does not saturate at opaque, it
+    comes out at ~0.08 — nearly transparent. If ThorVG ever starts clamping,
+    this is the test that says so.
+    """
+    assert _painted_alpha('opacity="0.5"') == pytest.approx(0.5, abs=0.01)
+    assert _painted_alpha('opacity="1.087"') == pytest.approx(0.08, abs=0.02)
+    assert _painted_alpha('opacity="-0.05"') == pytest.approx(0.95, abs=0.02)
+
+
+def test_an_anticipating_fade_saturates_at_invisible_instead_of_wrapping():
+    """`ease-in-back` reads below its start; a fade must land on 0, not on ~0.95."""
+    script = ('{"animations": [{"target": "#r", "keyframes": ['
+              '{"t": 0.0, "opacity": 0.0}, '
+              '{"t": 1.0, "opacity": 1.0, "ease": "ease-in-back"}]}]}')
+    # the wind-up is the whole point of the curve, and it computes below zero
+    assert 'opacity="0.0000"' in _rect_tag("", 0.2, script)
+    assert _painted_alpha("", 0.2, script) == 0.0
+
+
+def test_a_fade_that_overshoots_lands_on_full_opacity():
+    script = ('{"animations": [{"target": "#r", "keyframes": ['
+              '{"t": 0.0, "opacity": 0.0}, '
+              '{"t": 1.0, "opacity": 1.0, "ease": "ease-out-back"}]}]}')
+    assert _painted_alpha("", 0.7, script) == pytest.approx(1.0, abs=0.01)
+
+
+def test_a_stale_authored_opacity_does_not_outlive_the_timeline():
+    """An animation *replaces* an authored opacity, so reaching full must say so.
+
+    With `opacity="0.3"` on an element the timeline takes to 1.0, a guard that
+    only writes values below 1.0 leaves the authored 0.30 in place for the
+    element's whole life: the animation runs and the frame never moves.
+    """
+    script = ('{"animations": [{"target": "#r", "keyframes": ['
+              '{"t": 0.0, "opacity": 0.0}, {"t": 1.0, "opacity": 1.0}]}]}')
+    assert 'opacity="1.0000"' in _rect_tag('opacity="0.3"', 1.5, script)
+    assert _painted_alpha('opacity="0.3"', 1.5, script) == pytest.approx(1.0, abs=0.01)
+
+
+def test_an_element_the_timeline_does_not_touch_keeps_its_authored_opacity():
+    """The other half of the rule: with no animation, the attribute is the author's."""
+    assert 'opacity="0.3"' in _rect_tag('opacity="0.3"', 1.0)
+    assert _painted_alpha('opacity="0.3"') == pytest.approx(0.3, abs=0.01)
+
+
+def test_a_clip_and_fade_alone_still_materialize_below_full():
+    """The clamp must not disturb what clip/fade already wrote correctly."""
+    doc = parse_string(_plate('data-start="1.0" data-duration="0.5" data-fade="0.25"'))
+    img = render_frame(doc, t=1.125).convert("RGB")
+    assert (255 - img.getpixel((100, 60))[1]) / 255 == pytest.approx(0.5, abs=0.02)

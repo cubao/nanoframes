@@ -262,6 +262,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_inert_text_props(doc, findings)
     _check_inert_tspan(doc, findings)
     _check_degraded_paint(doc, findings)
+    _check_out_of_range_alpha(doc, findings)
     _check_font_family(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
@@ -849,6 +850,50 @@ def loaded_font_names() -> tuple[set[str], str | None]:
             names.update(aliases)
         _FONT_NAMES = [names, fallback]
     return _FONT_NAMES[0], _FONT_NAMES[1]
+
+
+_ALPHA_ATTRS = ("opacity", "fill-opacity", "stroke-opacity")
+
+
+def _wrapped_alpha(value: float) -> float:
+    """What ThorVG paints for an out-of-range alpha (measured: an 8-bit wrap)."""
+    return (int(value * 255.0) % 256) / 255.0
+
+
+def _check_out_of_range_alpha(doc: Document, findings: list[Finding]) -> None:
+    """An ``opacity`` / ``fill-opacity`` / ``stroke-opacity`` outside ``0..1``.
+
+    Not a style rule — the renderer has no range check either, so the value is
+    not refused, it is **wrapped**: measured through the same loader that
+    rasterizes the frames, the alpha painted is ``(value * 255 mod 256) / 255``,
+    so ``1.087`` comes out at ≈0.08 (nearly transparent) and ``-0.05`` at
+    ≈0.95 (nearly opaque). The element is drawn, at the wrong transparency,
+    with no error — which is why this is named rather than left to the eye.
+
+    A percentage is silent: ``opacity="50%"`` parses and honours its own range
+    (probed at 0.5020). ``bake`` separately clamps what the *timeline* computes,
+    so an overshooting ease saturates at the endpoint instead of wrapping; this
+    check is about values written down in the markup.
+    """
+    for node in doc.root.iter():
+        for attr in _ALPHA_ATTRS:
+            raw = node.get(attr)
+            if raw is None:
+                continue
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                continue  # a percentage or junk: not a number in this range's terms
+            if 0.0 <= value <= 1.0:
+                continue
+            findings.append(Finding(
+                "warning",
+                f"{bounds.label(node)}: {attr}={raw!r} is outside 0..1 — the renderer"
+                " wraps the value instead of clamping it, so the element paints at"
+                f" about {_wrapped_alpha(value):.2f} rather than"
+                f" {0.0 if value < 0.0 else 1.0:.2f}",
+                code="render.out_of_range_alpha", element=node.get("id"),
+            ))
 
 
 def _check_font_family(doc: Document, findings: list[Finding]) -> None:

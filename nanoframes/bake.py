@@ -110,6 +110,45 @@ def _set_opacity(node: ET.Element, opacity: float,
         node.set("opacity", value)
 
 
+def _clamp_opacity(value: float) -> float:
+    """Clamp a computed opacity into the range the renderer can express.
+
+    ThorVG does not range-check this one, it **wraps** it: measured through the
+    same loader that rasterizes the frames, the alpha it paints is
+    ``(value * 255 mod 256) / 255``. So ``1.087`` draws at ≈0.08 — nearly
+    transparent — and ``-0.05`` at ≈0.95, nearly opaque, both with no error.
+
+    Saturating at the endpoints is therefore not a nicety: `nanoframes.ease`
+    can express a curve that overshoots its target (``ease-out-back``) or dips
+    below its start (``ease-in-back``), and an overshoot on a fade has to land
+    on fully opaque, not wrap around to nearly invisible.
+    """
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
+def _pins_below_full(node: ET.Element) -> bool:
+    """Whether the node carries its own ``opacity`` that is not already full.
+
+    An animation *replaces* an authored opacity rather than blending with it,
+    so a value left here would outlive an animation that reaches full opacity:
+    an element authored ``opacity="0.3"`` and animated to 1.0 would sit at 0.30
+    for its whole life. This asks whether there is such a value to replace —
+    and says no when the attribute is absent, so nothing gets wrapped in a
+    ``<g>`` merely to write down the 1.0 that was already implied.
+    """
+    raw = node.get("opacity")
+    if raw is None:
+        return False
+    try:
+        return float(raw) != 1.0
+    except ValueError:
+        return True  # unparsable: the timeline's value is the better one
+
+
 def _node_element(node: ET.Element, comp: Composition) -> Element:
     """Rebuild a lightweight Element from tree attrs (bake keeps nodes separate)."""
     fade = float_attr(node, "data-fade", 0.0)
@@ -273,9 +312,14 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
         for tp in targeted:
             if node_el.matches(tp.target):
                 by_selector.update(tp.props)
+        timeline_opacity = by_selector.get("opacity")
         final_props[node] = {
             "visible": visible,
-            "opacity": clip_op * float(by_selector.get("opacity", 1.0)),
+            "opacity": clip_op * (1.0 if timeline_opacity is None else float(timeline_opacity)),
+            # Whether the timeline supplied this node's opacity, as opposed to
+            # the value being clip/fade alone. Only an animated node's authored
+            # attribute is the timeline's to overwrite (see _pins_below_full).
+            "opacity_owned": timeline_opacity is not None,
             "transform": by_selector.get("transform"),
             "fill": by_selector.get("fill"),
             "stroke": by_selector.get("stroke"),
@@ -294,8 +338,8 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
         if not props["visible"] or node.get("display") == "none":
             _hide(node, parents)
             continue
-        opacity = props["opacity"]
-        if opacity < 1.0:
+        opacity = _clamp_opacity(props["opacity"])
+        if opacity < 1.0 or (props["opacity_owned"] and _pins_below_full(node)):
             _set_opacity(node, opacity, parents)
         tf = element_transform(node, props["transform"], measurer)
         if tf:

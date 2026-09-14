@@ -79,7 +79,11 @@ colors interpolate RGB; anything non-interpolable holds the earlier keyframe.
 `x1` and `x2` must lie in `0..1` — that is what keeps the curve a function of
 time. `y` is free, which is how overshoot is expressed: the values above 1 (and
 below 0) are *not* clamped, so a bezier can pass its target and come back
-instead of the author hand-building the bounce out of extra keyframes.
+instead of the author hand-building the bounce out of extra keyframes. Where a
+property has a range of its own the overshoot **saturates at the endpoint**
+rather than being refused: a fade driven past 1.0 stays fully opaque and one
+driven below 0 stays invisible, so an overshooting curve is as safe on `opacity`
+as it is on `scale`.
 
 Direction is the whole of the choice, in practice: **an entrance decelerates
 into its landing (`ease-out` family), an exit accelerates away (`ease-in`
@@ -280,6 +284,19 @@ SVG meaning but only within that subset.
   `hsl(0,100%,50%)`, `#ff0000` and `red` all paint red — as is a gradient whose
   stops are opaque hex. `check` names it as `render.degraded_paint`, and the
   rewrite is always available: a hex fill plus `fill-opacity` / `stroke-opacity`.
+- **An alpha outside `0..1` is wrapped, not clamped.** Probed by pixel colour on
+  the 200x120 plate: the painted alpha is exactly `(value × 255 mod 256) / 255`,
+  so `opacity="1.087"` paints **(255,234,234)** — alpha 0.082, nearly
+  transparent — where the author asked for fully opaque, and `opacity="-0.05"`
+  paints (255,12,12), alpha 0.953, nearly opaque. `1.5` lands at 0.494 and `2`
+  at 0.996, so the error is not even monotonic: a value can look right by luck.
+  The same holds for `fill-opacity` and `stroke-opacity`, which is the spelling
+  the bullet above recommends. Two consequences: **`bake` clamps what the
+  timeline computes** (so an overshooting ease saturates at the endpoint instead
+  of wrapping around — `ease-out-back` on a fade lands on fully opaque), and
+  `check` names a literal out-of-range value in the markup as
+  `render.out_of_range_alpha`. A *percentage* is silent: `opacity="50%"` parses
+  and honours its own range (probed at 0.5020).
 - **`<marker>` is never drawn.** Probed: `marker-end="url(#m)"` — a red circle in
   `<defs>` — leaves the path with **zero** red pixels, pixel-identical to the
   same path without the attribute. Start, mid and end are all affected, so a
