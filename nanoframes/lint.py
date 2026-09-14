@@ -852,7 +852,7 @@ def loaded_font_names() -> tuple[set[str], str | None]:
     return _FONT_NAMES[0], _FONT_NAMES[1]
 
 
-_ALPHA_ATTRS = ("opacity", "fill-opacity", "stroke-opacity")
+_ALPHA_ATTRS = ("opacity", "fill-opacity", "stroke-opacity", "stop-opacity")
 
 
 def _wrapped_alpha(value: float) -> float:
@@ -861,7 +861,8 @@ def _wrapped_alpha(value: float) -> float:
 
 
 def _check_out_of_range_alpha(doc: Document, findings: list[Finding]) -> None:
-    """An ``opacity`` / ``fill-opacity`` / ``stroke-opacity`` outside ``0..1``.
+    """An ``opacity`` / ``fill-opacity`` / ``stroke-opacity`` / ``stop-opacity``
+    outside ``0..1``.
 
     Not a style rule — the renderer has no range check either, so the value is
     not refused, it is **wrapped**: measured through the same loader that
@@ -869,6 +870,11 @@ def _check_out_of_range_alpha(doc: Document, findings: list[Finding]) -> None:
     so ``1.087`` comes out at ≈0.08 (nearly transparent) and ``-0.05`` at
     ≈0.95 (nearly opaque). The element is drawn, at the wrong transparency,
     with no error — which is why this is named rather than left to the eye.
+
+    All four attributes are the same `<alpha-value>` to this loader and all four
+    wrap identically (probed per attribute), so the check covers the family
+    rather than the ones that came up first — `stop-opacity` is how a gradient
+    stop is made translucent, and gradients are what the corpus paints with.
 
     A percentage is silent: ``opacity="50%"`` parses and honours its own range
     (probed at 0.5020). ``bake`` separately clamps what the *timeline* computes,

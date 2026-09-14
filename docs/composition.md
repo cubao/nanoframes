@@ -290,11 +290,12 @@ SVG meaning but only within that subset.
   transparent — where the author asked for fully opaque, and `opacity="-0.05"`
   paints (255,12,12), alpha 0.953, nearly opaque. `1.5` lands at 0.494 and `2`
   at 0.996, so the error is not even monotonic: a value can look right by luck.
-  The same holds for `fill-opacity` and `stroke-opacity`, which is the spelling
-  the bullet above recommends. Two consequences: **`bake` clamps what the
-  timeline computes** (so an overshooting ease saturates at the endpoint instead
-  of wrapping around — `ease-out-back` on a fade lands on fully opaque), and
-  `check` names a literal out-of-range value in the markup as
+  The same holds for `fill-opacity`, `stroke-opacity` and `stop-opacity` (the
+  whole `<alpha-value>` family, probed per attribute) — and `fill-opacity` is
+  the spelling the bullet above recommends. Two consequences: **`bake` clamps
+  what the timeline computes** (so an overshooting ease saturates at the endpoint
+  instead of wrapping around — `ease-out-back` on a fade lands on fully opaque),
+  and `check` names a literal out-of-range value in the markup as
   `render.out_of_range_alpha`. A *percentage* is silent: `opacity="50%"` parses
   and honours its own range (probed at 0.5020).
 - **`<marker>` is never drawn.** Probed: `marker-end="url(#m)"` — a red circle in

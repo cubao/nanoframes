@@ -601,7 +601,9 @@ MP4 export, and an agent-facing skill.
   the docs recommend for alpha — while the `if opacity < 1.0` guard meant a
   timeline landing on exactly 1.0 wrote nothing at all, so an element authored
   `opacity="0.3"` and animated to full sat at 0.30 for its whole life. `check`
-  names a literal out-of-range value as `render.out_of_range_alpha`. Evidence: 12
+  names a literal out-of-range value as `render.out_of_range_alpha` — over the
+  whole `<alpha-value>` family, since `stop-opacity` wraps identically and is how
+  a gradient stop is made translucent. Evidence: 14
   new tests (595 total, ruff clean); the whole corpus is **byte-identical** —
   re-recording the ledger moved only the `identity` field on all 12 entries and
   left every digest unchanged — and `check` reports nothing new on any example.

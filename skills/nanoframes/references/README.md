@@ -68,7 +68,7 @@ left behind. The curves themselves are implemented in `nanoframes/ease.py`.
    inside `0..1`: the renderer **wraps** an out-of-range one rather than
    clamping it (`opacity="1.087"` paints at ≈0.08, nearly transparent), so
    `bake` saturates what the timeline computes and `check` names a literal
-   out-of-range `opacity`/`fill-opacity`/`stroke-opacity`
+   out-of-range `opacity`/`fill-opacity`/`stroke-opacity`/`stop-opacity`
    (`render.out_of_range_alpha`).
 5. **Every animation target must exist** — the linter enforces it; keep
    keyframes inside `[0, data-duration]`.

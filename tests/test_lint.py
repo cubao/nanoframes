@@ -635,6 +635,29 @@ def test_a_negative_alpha_is_reported_in_both_directions():
         assert "render.out_of_range_alpha" in codes, static
 
 
+def test_an_out_of_range_gradient_stop_opacity_is_reported():
+    """The whole `<alpha-value>` family wraps, so the check covers all of it.
+
+    `stop-opacity` was the easy one to miss, and it is how a gradient stop is
+    made translucent — which is the paint the corpus and the docs recommend.
+    """
+    svg = (CANVAS.format(extra="")
+           + '<defs><linearGradient id="g"><stop offset="0" stop-color="#000"'
+             ' stop-opacity="1.5"/><stop offset="1" stop-color="#000"/></linearGradient></defs>'
+           + '<rect id="r" x="10" y="10" width="20" height="20" fill="url(#g)"/>'
+           + "</svg>")
+    assert "render.out_of_range_alpha" in _codes(lint_string(svg))
+
+
+def test_a_gradient_stop_opacity_in_range_is_clean():
+    svg = (CANVAS.format(extra="")
+           + '<defs><linearGradient id="g"><stop offset="0" stop-color="#000"'
+             ' stop-opacity="0.4"/></linearGradient></defs>'
+           + '<rect id="r" x="10" y="10" width="20" height="20" fill="url(#g)"/>'
+           + "</svg>")
+    assert "render.out_of_range_alpha" not in _codes(lint_string(svg))
+
+
 def test_an_alpha_the_renderer_can_express_is_clean():
     for static in ('opacity="0"', 'opacity="1"', 'opacity="0.5"',
                    'fill-opacity="1"', 'stroke-opacity="0.25"'):
