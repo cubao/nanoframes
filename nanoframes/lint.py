@@ -15,7 +15,7 @@ import os
 import re
 from dataclasses import dataclass
 
-from nanoframes import bake, bounds, media, refs, timeline
+from nanoframes import bake, bounds, ease, media, refs, timeline
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document, ParseError, parse_file, parse_string
 from nanoframes.xmlutil import local_name
@@ -97,6 +97,34 @@ def _check_animations(comp: Composition, findings: list[Finding]) -> None:
                 f" ({', '.join(sorted(forms))}); the interpolator can only blend matching"
                 " shapes and holds the earlier value otherwise",
                 code="animation.transform_shape_mixed", element=anim.target,
+            ))
+
+
+def _check_easing(comp: Composition, findings: list[Finding]) -> None:
+    """The two ways a written ``ease`` does not govern what it appears to.
+
+    Both interpolate fine and in silence — the motion simply is not the one the
+    author declared. Same family as ``render.inert_attribute``: the declaration
+    is named, rather than quietly given a different meaning.
+    """
+    for anim in comp.animations:
+        kfs = sorted(anim.keyframes, key=lambda k: k.t)
+        for kf in kfs:
+            if kf.ease and kf.ease != "linear" and not ease.known(kf.ease):
+                findings.append(Finding(
+                    "warning",
+                    f"{anim.target}: unknown ease {kf.ease!r} at t={kf.t:g} — the renderer"
+                    " has no such curve and interpolates linearly; use ease-in, ease-out,"
+                    " ease-in-out, a named curve, or a cubic-bezier(x1,y1,x2,y2) literal",
+                    code="animation.unknown_ease", element=anim.target, t=kf.t,
+                ))
+        if kfs and kfs[0].ease and kfs[0].ease != "linear" and ease.known(kfs[0].ease):
+            findings.append(Finding(
+                "warning",
+                f"{anim.target}: ease {kfs[0].ease!r} on the first keyframe (t={kfs[0].t:g})"
+                " shapes no segment — an ease belongs to the keyframe the motion arrives at,"
+                " and nothing arrives at the first one; move it to the keyframe it lands on",
+                code="animation.inert_ease", element=anim.target, t=kfs[0].t,
             ))
 
 
@@ -224,6 +252,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     findings: list[Finding] = []
     _check_canvas(doc.composition, findings)
     _check_animations(doc.composition, findings)
+    _check_easing(doc.composition, findings)
     _check_animation_windows(doc, findings)
     _check_transform_values(doc.composition, findings)
     _check_clips(doc.composition, findings)

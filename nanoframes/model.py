@@ -28,7 +28,10 @@ class Keyframe:
 
     t: float
     props: dict[str, Any] = field(default_factory=dict)
-    ease: str = "linear"  # linear | ease-in | ease-out | ease-in-out
+    # The curve of the segment arriving at this keyframe: linear | ease-in |
+    # ease-out | ease-in-out | a named bezier | "cubic-bezier(a,b,c,d)".
+    # See nanoframes/ease.py; the first keyframe's ease shapes no segment.
+    ease: str = "linear"
 
 
 @dataclass

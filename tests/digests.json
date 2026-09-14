@@ -7,18 +7,18 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "821ef2c70aee47ce28028a8f4497db1fc8e87704be49d65d9d1a5bde57efe3bf",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
     "examples/badge.nf.svg": {
-      "digest": "7a43aa37d584d0d4917d233ac92cbea9fb92add36fb5659890bb254d32e14d5f",
+      "digest": "27b02411c5087d70f126fb3f90ed1619e9ccdb0fcdd5e5110f8896305c6aecbf",
       "frames": 60,
       "identity": {
         "fonts": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "media": "none",
         "source": "bac363d18fb180f00da64d24afb076d5debb6e43950ad389bebe0ea01c5a7a45",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -29,7 +29,7 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "af47660d0fbfdf0dbf62ca154c21d39514c0d1d3709715f5efa51aecc20dbc86",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -40,29 +40,29 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "7d88075011e4d500375206d9b9f82dbcadbfc395c75eb64081ac6f3ea78cad7e",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
     "examples/master-demo.nf.svg": {
-      "digest": "5598564d07dc0024934c29e431be94342e9f0dadaceac7fca3ce341718085f47",
+      "digest": "8922644b0d5618ce5f5bbd19ee4f8171cf0323ad2c3992129684da6e53a6f800",
       "frames": 180,
       "identity": {
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "7875c81225153125b89c7f70f2ca68a3b2883b1120b1d4175615661b14c34f09",
         "source": "808ba1d305f1a87d1c4cd7b453b88732c29d2deac8d3fdaddc39d6a57a3d5caf",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
     "examples/nested-card.nf.svg": {
-      "digest": "f517e7a93d8f49a7b5dfb200ba79b3d942cfa113e9c7c0c61c3a3b998d644bfe",
+      "digest": "e33eaf311e5602c76c4cd244a6b94fa1b48c3ee964ccf1a98404cb7e6a685077",
       "frames": 120,
       "identity": {
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "5e72bebdccea73af5e86f8b8b28a0df5bfb86f146507dc90a1e5941e0a76d54d",
         "source": "ffc28ac0947b75a77a264066d226f1447f040ce4a21727f7764aa11f79f8a617",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -73,7 +73,7 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "752273b9293d6395072edc2d62521e803888e1b8e3a10bc0caf625f6e38c62d5",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -84,7 +84,7 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "163475b8290ff081e7a535497d9a7601a3656343762e9ceda12073bcf2c2aaf5",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -95,7 +95,7 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "13ab7659cf1a5d88700ca474621a0e2ecdf5ea11ec0a6e94685285b6cb8d266f",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -106,7 +106,7 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "cb0c0c80e5db1155d319ae8922ea6b37da5c551e371469ef1ca4aa7dcc357e08",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
@@ -117,18 +117,18 @@
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "5ae04b80d4a00b2a1d6791df1185e6416d124c5ad38705945317035254640f6c",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     },
     "examples/title-card.nf.svg": {
-      "digest": "1f4677b1c48eae58954ecefc7fe61407d05ec481805a98d22c943311ee5bca26",
+      "digest": "3948a5928a009cec8a5a1a4b3131572d2507fd4998bb2be4822f7f91b443b921",
       "frames": 120,
       "identity": {
         "fonts": "1c50310e7e0feeb8298e253a7b1808aa50b89be8412e597595cc739488361b0b",
         "media": "none",
         "source": "3bc4388a0c116192000875d7f3feee0c35f768792537ca8f0ad033a5d9ade243",
-        "toolchain": "2610dd882b02ccfd943a57f622ee67e6eec3e0bac99a5f528dce4376d62e18e0"
+        "toolchain": "7ae3d315f1e12b44c924c29d5309eae49176894bf1c52358ef6c53a764860603"
       },
       "sampled": false
     }

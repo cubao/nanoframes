@@ -112,8 +112,13 @@ visible, default = comp duration), `data-fade` (fade seconds at clip start —
 **Animation** `<script type="application/nanoframes+json">` (wrap in `CDATA`):
 one `animations` array. Each entry has a CSS `target` (`#id`, `.class`, or tag)
 and ordered `keyframes`. A keyframe is `{ "t": sec, "<prop>": value, "ease":
-"linear|ease-in|ease-out|ease-in-out" }`. Numeric props interpolate (with
-easing), hex colors interpolate RGB.
+"…" }`, where `ease` names the curve of the segment **arriving at** that
+keyframe (so you mark the *landing* one) — `ease-in`, `ease-out`,
+`ease-in-out`, a named curve such as `standard` / `ease-out-back` / `gentle`, or
+a `cubic-bezier(x1,y1,x2,y2)` literal. Omit it for linear. Numeric props
+interpolate (with easing), hex colors interpolate RGB. `check` reports an
+`ease` that resolves to no curve (`animation.unknown_ease`) and one parked on
+the first keyframe, where it can never apply (`animation.inert_ease`).
 
 Supported animated props:
 - `opacity` (0..1)

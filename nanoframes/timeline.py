@@ -9,6 +9,9 @@ Supported animated properties:
 - ``transform``          : dict {"translate":[x,y], "scale":[sx,sy], "rotate":deg}
 - ``fill`` / ``stroke``  : "#RRGGBB" (or "#RRGGBBAA") color interpolation
 Anything else is stepped (holds the earlier keyframe until the next one).
+
+Each keyframe's ``ease`` is the curve of the segment that arrives at it (see
+`nanoframes.ease` for the vocabulary); the default is linear.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from nanoframes import ease as easing
 from nanoframes.model import Composition, Element, Keyframe
 
 _HEX_RE = re.compile(r"^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$")
@@ -35,13 +39,13 @@ class TargetedProps:
 
 
 def _ease(ease: str, u: float) -> float:
-    if ease == "ease-in":
-        return u * u
-    if ease == "ease-out":
-        return 1.0 - (1.0 - u) ** 2
-    if ease == "ease-in-out":
-        return 3.0 * u * u - 2.0 * u * u * u
-    return u  # linear and anything unknown
+    """Evaluate an ``ease`` value at fraction ``u``.
+
+    The vocabulary and the curves live in `nanoframes.ease`; an unknown name
+    falls back to linear there, and `check` reports it
+    (``animation.unknown_ease``) rather than leaving the fallback silent.
+    """
+    return easing.eased(ease, u)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +122,12 @@ def _evaluate_animation(keyframes: list[Keyframe], t: float) -> dict[str, object
         if ka.t <= t <= kb.t:
             span = kb.t - ka.t
             u = 1.0 if span == 0 else (t - ka.t) / span
-            u = _ease(ka.ease, u)
+            # The ease belongs to the keyframe the motion *arrives at* (kb), the
+            # CSS/Lottie/GSAP convention: `{t: 0, …}, {t: 0.7, …, ease: "ease-out"}`
+            # is an entrance that decelerates into its landing. ka.ease shapes no
+            # segment — nothing arrives at the first keyframe — and `check` names
+            # it as animation.inert_ease.
+            u = _ease(kb.ease, u)
             props: dict[str, object] = {}
             for key in list(dict.fromkeys([*ka.props, *kb.props])):
                 va, vb = _keyframe_value(ka, key), _keyframe_value(kb, key)

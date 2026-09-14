@@ -541,6 +541,76 @@ def test_a_font_family_on_a_group_is_not_reported():
     assert "render.unresolved_font_family" not in _codes(lint_string(svg))
 
 
+# --- the ease a keyframe declares --------------------------------------------
+
+def _box_anim(keyframes: str) -> str:
+    return (CANVAS.format(extra="")
+            + '<rect id="box" x="10" y="10" width="20" height="20" fill="#000"/>'
+            + _script('{"target": "#box", "keyframes": [' + keyframes + "]}") + "</svg>")
+
+
+def test_an_unknown_ease_is_reported():
+    """`ease: "ease-out-quint"` reads like a curve and renders as linear."""
+    findings = lint_string(_box_anim('{"t": 0, "opacity": 0},'
+                                     ' {"t": 1, "opacity": 1, "ease": "ease-out-quint"}'))
+    unknown = [f for f in findings if f.code == "animation.unknown_ease"]
+    assert len(unknown) == 1
+    assert "'ease-out-quint'" in unknown[0].message
+    assert unknown[0].element == "#box"
+    assert unknown[0].t == 1.0
+
+
+def test_the_named_curves_and_a_bezier_literal_are_accepted():
+    for spec in ("standard", "ease-out-back", "cubic-bezier(0.4, 0, 0.2, 1)"):
+        codes = _codes(lint_string(_box_anim(
+            '{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1, "ease": "%s"}' % spec)))
+        assert "animation.unknown_ease" not in codes, spec
+
+
+def test_a_bezier_that_would_run_backwards_is_reported():
+    """x1/x2 outside 0..1 cannot be evaluated at a single time."""
+    codes = _codes(lint_string(_box_anim(
+        '{"t": 0, "opacity": 0},'
+        ' {"t": 1, "opacity": 1, "ease": "cubic-bezier(1.5, 0, 0, 1)"}')))
+    assert "animation.unknown_ease" in codes
+
+
+def test_an_ease_on_the_first_keyframe_is_reported_as_inert():
+    """An ease belongs to the keyframe the motion arrives at; none arrives at t=0."""
+    codes = _codes(lint_string(_box_anim(
+        '{"t": 0, "opacity": 0, "ease": "ease-out"}, {"t": 1, "opacity": 1}')))
+    assert "animation.inert_ease" in codes
+
+
+def test_an_ease_on_the_landing_keyframe_is_clean():
+    codes = _codes(lint_string(_box_anim(
+        '{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1, "ease": "ease-out"}')))
+    assert "animation.inert_ease" not in codes
+    assert "animation.unknown_ease" not in codes
+
+
+def test_an_unknown_ease_on_the_first_keyframe_is_reported_once():
+    """`unknown_ease` already explains that keyframe — don't also call it inert."""
+    codes = _codes(lint_string(_box_anim(
+        '{"t": 0, "opacity": 0, "ease": "wobble"}, {"t": 1, "opacity": 1}')))
+    assert codes.count("animation.unknown_ease") == 1
+    assert "animation.inert_ease" not in codes
+
+
+def test_linear_and_the_four_originals_need_no_report():
+    for spec in ("linear", "ease-in", "ease-out", "ease-in-out"):
+        codes = _codes(lint_string(_box_anim(
+            '{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1, "ease": "%s"}' % spec)))
+        assert "animation.unknown_ease" not in codes, spec
+        assert "animation.inert_ease" not in codes, spec
+
+
+def test_a_composition_with_no_ease_anywhere_is_clean():
+    codes = _codes(lint_string(_box_anim('{"t": 0, "opacity": 0}, {"t": 1, "opacity": 1}')))
+    assert "animation.unknown_ease" not in codes
+    assert "animation.inert_ease" not in codes
+
+
 # --- the shipped corpus is clean under every check ---------------------------
 
 def test_the_shipped_corpus_lints_clean():

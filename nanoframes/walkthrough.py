@@ -451,7 +451,10 @@ def _render_readme(out_dir, frames, determinism, cold_ms, warm_ms, video_path, p
     md.append("## 3 · The timeline contract (this is the 'motion')\n")
     md.append("Instead of GSAP/CSS in a browser, motion lives in a tiny declarative JSON. Each animation targets")
     md.append("a CSS selector (`#id`, `.class`, or tag) and has ordered keyframes; between keyframes values")
-    md.append("interpolate linearly (optional easing), deterministically. Supported animated properties: `opacity`,")
+    md.append("interpolate linearly unless the keyframe names an `ease` — the curve of the segment")
+    md.append("arriving at *that* keyframe (`ease-out` on the landing key lands the motion), and it may be")
+    md.append("a `cubic-bezier(…)` literal or a named curve. Everything is deterministic. Supported")
+    md.append("animated properties: `opacity`,")
     md.append("`transform` (`translate`/`scale`/`rotate`, with `\"center\"` anchoring the rotate/scale pivot"
               " — SVG's own shorthand acts on the canvas origin), and `fill`/`stroke` color.\n")
     md.append("```json")

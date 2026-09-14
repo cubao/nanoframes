@@ -71,7 +71,12 @@ keyframe JSON timeline evaluated by `seek(t)`:
 - supported animated properties: `opacity`, `transform` (`translate`, `scale`, `rotate`),
   `fill`, `stroke` (interpolated color).
 - keyframes are `{ "t": <sec>, <props>: value }`; between keyframes we interpolate linearly,
-  optionally eased (`linear`, `ease-in`, `ease-out`, `ease-in-out`).
+  optionally eased. A keyframe's `ease` governs the segment that **arrives at** it (the
+  CSS / Lottie / GSAP convention), and the vocabulary is the four originals plus a named
+  bezier table and `cubic-bezier(x1,y1,x2,y2)` literals. The curves live in
+  [`nanoframes/ease.py`](../nanoframes/ease.py), and `check` names both a name that
+  resolves to nothing (`animation.unknown_ease`) and an ease parked on the first
+  keyframe, where no segment arrives (`animation.inert_ease`).
 - clip + fade is folded into effective opacity so visibility, fade and animation compose into a
   single `opacity` / `transform` baked value per frame.
 
@@ -550,6 +555,34 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.2.20 (2026-09)** — the easing declaration made true, and the curve vocabulary
+  it was missing. Absorbed from `LottieFiles/motion-design-skill` (MIT): the industry
+  curve table — Material 3 standard/emphasized/accelerate/decelerate, Apple HIG, the
+  premium float, and the overshoot pair — plus the direction rules that make it a
+  *choice* rather than a lookup. The skill's UI-only half (hover/press latency,
+  reduced-motion, DOM layout cost) describes a browser and was deliberately not
+  absorbed; this renderer has no CSS layout to jank and no user to interrupt.
+  `nanoframes/ease.py` is new: **`cubic-bezier(x1,y1,x2,y2)` literals** (a bisection
+  solver, chosen over Newton because it uses only `+ * /` and comparisons and so keeps
+  the cross-architecture determinism claim honest) and a **named curve table**, both of
+  which the temporal model simply could not express before — an overshoot was
+  unreachable except by hand-authoring extra keyframes. The four original names keep
+  their exact arithmetic, so nothing that already used them moves by a bit.
+  The semantic half is the real defect. `ease` used to govern the segment *leaving*
+  its keyframe; it now governs the segment **arriving at** it, the CSS/Lottie/GSAP
+  convention. Under the old reading an ease on the *last* keyframe was dead code —
+  and that is exactly where `docs/composition.md`'s own example and most of the
+  shipped corpus put it, so those entrances were silently linear. No example's JSON
+  was edited to make this true: `check` now names both remaining silences as
+  `animation.unknown_ease` (a name resolving to no curve, including a
+  `cubic-bezier` whose x control points leave `0..1`) and `animation.inert_ease`
+  (an ease parked on the first keyframe). Evidence: 28 new tests (583 total, ruff
+  clean); of the 12 example compositions, **8 kept byte-identical digests** — only
+  their recorded identity moved, because the engine's `.py` files changed — and the
+  **4 whose digest changed are precisely the 4 that declare an `ease`** (badge,
+  master-demo, nested-card, title-card). 8 snapshot baselines regenerated
+  (master-demo ×7, title-card ×1) and inspected: the deltas are the eased
+  positions, inside the canvas, with no element lost.
 - **Deferred** optional binary tree-pack cache; CLI bridge for `text_handler`
   (it is a library-API feature by design); Lottie markers surfaced in the CLI;
   remaining recipe ports (product-promo, ui-microinteractions, the `chart`

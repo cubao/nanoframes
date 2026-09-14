@@ -72,6 +72,42 @@ def test_ease_in_out_differs_from_linear():
     assert evaluate(comp([Animation("#x", kfs2)]), 0.25)[0].props["opacity"] != 0.25
 
 
+def test_the_ease_belongs_to_the_keyframe_the_motion_arrives_at():
+    """`ease-out` on the landing keyframe decelerates the approach, as in CSS."""
+    a = Animation("#x", [Keyframe(0.0, {"opacity": 0.0}),
+                         Keyframe(1.0, {"opacity": 1.0}, ease="ease-out")])
+    # ease-out covers most of the distance early: at a quarter of the time the
+    # value is already 1 - (1 - 0.25)^2, not 0.25
+    assert evaluate(comp([a]), 0.25)[0].props["opacity"] == 1.0 - 0.75 ** 2
+
+
+def test_an_ease_on_the_first_keyframe_shapes_no_segment():
+    """Nothing arrives at the first keyframe, so its ease cannot apply."""
+    with_ease = Animation("#x", [Keyframe(0.0, {"opacity": 0.0}, ease="ease-out"),
+                                 Keyframe(1.0, {"opacity": 1.0})])
+    without_ease = Animation("#x", [Keyframe(0.0, {"opacity": 0.0}),
+                                    Keyframe(1.0, {"opacity": 1.0})])
+    for t in (0.25, 0.5, 0.75):
+        assert (evaluate(comp([with_ease]), t)[0].props["opacity"]
+                == evaluate(comp([without_ease]), t)[0].props["opacity"])
+
+
+def test_an_overshooting_curve_passes_its_target_inside_the_segment():
+    """A bezier's y axis is free, so the value may exceed the target and settle."""
+    a = Animation("#x", [Keyframe(0.0, {"opacity": 0.0}),
+                         Keyframe(1.0, {"opacity": 1.0}, ease="ease-out-back")])
+    peak = max(evaluate(comp([a]), i / 100)[0].props["opacity"] for i in range(101))
+    assert peak > 1.0
+    assert evaluate(comp([a]), 1.0)[0].props["opacity"] == 1.0
+
+
+def test_an_unknown_ease_interpolates_linearly():
+    """The silent fallback is kept; `check` is what names it."""
+    a = Animation("#x", [Keyframe(0.0, {"opacity": 0.0}),
+                         Keyframe(1.0, {"opacity": 1.0}, ease="ease-out-quint")])
+    assert evaluate(comp([a]), 0.25)[0].props["opacity"] == 0.25
+
+
 def test_effective_opacity_clip_and_fade():
     el = Element(element_id="x", tag="text", clip_start=1.0, clip_duration=2.0, fade_in=0.5)
     vis, op = effective_opacity(el, 0.5)

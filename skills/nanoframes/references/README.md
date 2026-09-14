@@ -23,14 +23,23 @@ gallery as an image-generation prompt catalog this renderer cannot draw.
 two layout grammars, re-expressed as specs for the `nanoframes diagram`
 generator rather than as browser HTML.
 
+`motion-taste.md`'s easing vocabulary and its personality/overshoot budgets
+also absorb
+[LottieFiles/motion-design-skill](https://github.com/LottieFiles/motion-design-skill)
+(MIT license) — its industry curve table (Material 3, Apple HIG, the overshoot
+pair) and direction rules. That skill targets UI animation in a browser; the
+parts that describe a live DOM (hover/press latency budgets, `prefers-reduced-motion`,
+layout-triggering properties) do not apply to an offline SVG timeline and were
+left behind. The curves themselves are implemented in `nanoframes/ease.py`.
+
 ## Translation conventions (Lottie → nanoframes)
 
 | Lottie world | nanoframes world |
 |---|---|
 | frames @ 60 fps | seconds (canvas `data-fps`, default 30; divide frame counts by 60) |
 | layer in/out `ip`/`op` | `data-start` / `data-duration` / `data-fade` (seconds) |
-| keyframed property + bezier ease | keyframe JSON: `{ "t": sec, prop: value, "ease": ... }` — `linear`/`ease-in`/`ease-out`/`ease-in-out` only |
-| overshoot / anticipation bezier | author explicit settle-back / anticipate keyframes |
+| keyframed property + bezier ease | keyframe JSON: `{ "t": sec, prop: value, "ease": ... }` — the ease belongs to the keyframe the motion *arrives at*, and is one of the four originals, a named curve (`standard`, `emphasized`, `ease-out-back`, `gentle`…), or a `cubic-bezier(x1,y1,x2,y2)` literal |
+| overshoot / anticipation bezier | `"ease": "ease-out-back"` (passes the target, settles back) or `"ease": "ease-in-back"` (winds up first) — or hand-author explicit settle-back / anticipate keyframes when you want a shape of your own |
 | trim-path draw-on, mask wipes | **not animatable** — use opacity/transform choreography, per-line `data-start` reveals, or chip reveals |
 | native text layer (`ty:5`) + slots | `<text>` with a real font (bundled `Sarasa Mono SC` for CJK, mono-deterministic); `data-wrap`/`data-bg`/`data-fit`/`data-curve-*` auto-layout |
 | camera (parented group transforms) | animate a wrapper `<g>` transform — a zoom-in past the canvas edge simply clips, and a pan can start off-screen; keep the *intent* readable |
@@ -58,9 +67,15 @@ generator rather than as browser HTML.
    interpolates; text *content* is not a keyframeable property.
 5. **Every animation target must exist** — the linter enforces it; keep
    keyframes inside `[0, data-duration]`.
-6. **Monospace CJK is free**: `font-family="Sarasa Mono SC"` gives
+6. **An `ease` belongs to the keyframe the motion arrives at.** So the
+   *landing* keyframe is the one to mark (`{"t": 0.7, …, "ease": "ease-out"}`),
+   and an ease on the first keyframe can never apply — `check` names both that
+   (`animation.inert_ease`) and a name that resolves to no curve
+   (`animation.unknown_ease`). Omitting `ease` means linear, which is a
+   legitimate declaration for rotation and progress, not a mistake.
+7. **Monospace CJK is free**: `font-family="Sarasa Mono SC"` gives
    deterministic-width Chinese; use it for any columnar/digit layout so
    nothing jitters.
-7. **A loop closes at `duration - 1/fps`** (the last rendered frame), not at
+8. **A loop closes at `duration - 1/fps`** (the last rendered frame), not at
    `duration` — finish the cycle by then, hold it, and check the seam with
    `nanoframes debug <comp> --loop`.

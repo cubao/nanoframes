@@ -8,21 +8,58 @@ monotony).
 
 ## Easing — behavior language over curve names
 
-nanoframes keyframes carry one of `linear | ease-in | ease-out | ease-in-out`.
+An `ease` belongs to the keyframe the motion **arrives at** (the CSS/Lottie
+convention), so the *landing* keyframe is the one you mark. An ease on the first
+keyframe shapes nothing — `check` reports it as `animation.inert_ease` — and a
+name resolving to no curve falls back to linear, reported as
+`animation.unknown_ease`.
+
 Pick by the *behavior* you want, not by habit:
 
 | behavior you want | keyframe ease | notes |
 |---|---|---|
-| entrance that starts fast and lands (elements arriving) | `ease-out` | the default for entrances; motion is fastest at the start, settles as it arrives |
+| entrance that starts fast and lands (elements arriving) | `ease-out` (or `ease-out-cubic`) | the default for entrances; motion is fastest at the start, settles as it arrives |
 | exit / dismissal | `ease-in` | accelerates away — pair with a preceding settle so it doesn't feel cut |
 | continuous travel, camera-like glide | `ease-in-out` | symmetric; used when an element moves between two held states |
 | mechanical (rotation, progress, loop cycle) | `linear` | only when motion is truly constant-speed |
-| **pop / overshoot** (a springy settle, a "snap") | `ease-out` + **author a settle-back keyframe** | e.g. scale `0.6 → 1.0` (ease-out) → `0.94` → `1.0`; overshoot reads as energy, never as default |
-| **anticipation** (wind-up before action) | author an explicit reverse keyframe | e.g. translate `y 0 → 12` over ~0.08 s, then the real move |
+| **pop / overshoot** (a springy settle, a "snap") | `ease-out-back` | the curve passes the target and comes back — scale `0.6 → 1.0` overshoots to ~1.08 around the 60 % mark |
+| **anticipation** (wind-up before action) | `ease-in-back` | dips below the start value, then leaves |
+| a decisive on-screen move | `standard` | Material 3's `(0.2, 0, 0, 1)` — most of the distance is covered early |
+| attention, emphasis, a hero entrance | `emphasized` | Material 3's entrance curve |
+| ambient / background / "premium" | `gentle` | `(0.4, 0, 0.2, 1)` — slow and even, never demands attention |
+| a sharp energetic deceleration | `ease-out-expo` | the "energetic" register |
+
+Anything a reference table gives you goes in as its numbers:
+`"ease": "cubic-bezier(0.175, 0.885, 0.32, 1.275)"`. `x1`/`x2` must lie in
+`0..1` — that is what keeps the curve a function of time — while `y` is free,
+and that freedom is what lets a curve overshoot. The names above live in
+`nanoframes/ease.py`.
+
+**Overshoot is budgeted.** It reads as energy, so spend it where energy is the
+point: celebration 15–25 %, success 5–10 %, press/hover feedback 2–5 %, and
+**0 % for errors** (an error that bounces feels unserious) as well as for a
+premium or corporate register.
 
 No uniform ease for every layer: derive per-element ease from the element's
 role. Only the focal element gets the strongest personality; supporting
 elements use calmer variants of the same behavior.
+
+## One register, held
+
+Consistency is most of what makes motion read as *designed* rather than
+assembled, so pick one register for the piece and let its curves and overshoot
+budget stay put. A compact palette:
+
+| register | signature ease | overshoot | also |
+|---|---|---|---|
+| playful | `ease-out-back` | 10–20 % | arcs, a squash on impact, varied stagger |
+| premium | `gentle` | 0 % | slow fades, subtle scale (98 % → 100 %), generous holds |
+| corporate | `standard` | 0–3 % | straight paths, uniform stagger, clear state changes |
+| energetic | `ease-out-expo` | 15–30 % | large displacement, fast colour, accelerating stagger |
+
+Borrow a second register for *one* moment at most — a corporate dashboard's
+success pop — and ease into the shift rather than snapping to it. If everything
+is exaggerated, nothing is.
 
 ## Timing defaults (seconds)
 
@@ -42,7 +79,9 @@ frame grid: multiples of `1/fps`).
 
 Staging rule: **enter fast-ish, settle slower, hold.** The hold is where the
 message registers — after the last element settles, keep a clean still for at
-least ~0.4–0.8 s before the clip ends or the next beat starts.
+least ~0.4–0.8 s before the clip ends or the next beat starts. Over a longer
+clip that reads as roughly a fifth of the time setting up, a third on the
+action, and the rest resolving and holding.
 
 ## Choreography
 
@@ -58,6 +97,16 @@ least ~0.4–0.8 s before the clip ends or the next beat starts.
   Locked elements (a persistent header) stay still while the stage changes.
 - A staggered *exit* mirrors the entrance or reverses order — do not cut
   everything at once unless the cut is the point.
+- **Keep the total stagger under ~0.5 s.** Past that the last element lands
+  after the viewer has stopped watching: tighten the step rather than dropping
+  elements.
+- **Follow-through and overlap.** A supporting element — a shadow, a label, an
+  icon reaction — trails the thing it belongs to by 50–150 ms and uses a calmer
+  curve, so the parts of one object do not all stop on the same frame.
+- **The 1/3 rules.** No motion travels more than a third of the canvas without
+  an intermediate keyframe (break the trip with a change of curve or speed), and
+  with three or more animated elements no more than a third should be in active
+  motion at once — stagger so the first has settled as the third starts.
 
 ## Loops (loaders, icons, ambient)
 

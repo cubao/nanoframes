@@ -31,8 +31,13 @@ rasterized). Fade and clip fold into the effective opacity.
 Embedded as `<script type="application/nanoframes+json"><![CDATA[ … ]]></script>`.
 The JSON has one `animations` array; each animation has a CSS `target` (selector
 `#id`, `.class`, or tag) and ordered `keyframes`. Per keyframe: `t` (seconds),
-any animated properties, and an optional `ease` (`linear` | `ease-in` |
-`ease-out` | `ease-in-out`, default `linear`).
+any animated properties, and an optional `ease` (default `linear`).
+
+An `ease` is the curve of the segment that **arrives at** its keyframe — the
+convention CSS transitions, Lottie, GSAP and Framer Motion share. The landing
+keyframe is therefore the one that decides how the motion feels, and an `ease`
+on the *first* keyframe shapes nothing at all: no segment arrives there
+(`check` names it as `animation.inert_ease`).
 
 ```json
 {
@@ -50,6 +55,51 @@ any animated properties, and an optional `ease` (`linear` | `ease-in` |
 
 Between keyframes, numeric properties interpolate **linearly** (after easing);
 colors interpolate RGB; anything non-interpolable holds the earlier keyframe.
+
+### Easing
+
+| `ease` | the curve |
+|---|---|
+| `linear` | constant speed. Legitimate for rotation, progress and loop cycles; it reads mechanical for anything that travels |
+| `ease-in` | starts slow, accelerates away — the exit/dismissal shape |
+| `ease-out` | starts fast, settles on arrival — the default shape for an *entrance* |
+| `ease-in-out` | symmetric; motion between two held states, a camera-like glide |
+| `ease-out-cubic`, `ease-in-out-cubic` | the same two directions, drawn as cubic beziers — a stronger settle |
+| `ease-out-expo` | a sharper deceleration (the "energetic" register) |
+| `ease-out-back` | overshoots past the target and settles back — the bounce, e.g. scale `1.0 → 1.075 → 1.0` |
+| `ease-in-back` | winds up in the opposite direction before leaving (anticipation) |
+| `standard` | Material 3 standard: a decisive on-screen move |
+| `emphasized` | Material 3 emphasized: entrances and moments that ask for attention |
+| `accelerate` | Material 3: exits and dismissals |
+| `decelerate` | Material 3: entering |
+| `apple` | the Apple HIG default |
+| `gentle` | the premium "float"; ambient and background motion |
+| `cubic-bezier(x1, y1, x2, y2)` | any curve, written as the reference tables write it |
+
+`x1` and `x2` must lie in `0..1` — that is what keeps the curve a function of
+time. `y` is free, which is how overshoot is expressed: the values above 1 (and
+below 0) are *not* clamped, so a bezier can pass its target and come back
+instead of the author hand-building the bounce out of extra keyframes.
+
+Direction is the whole of the choice, in practice: **an entrance decelerates
+into its landing (`ease-out` family), an exit accelerates away (`ease-in`
+family), and motion between two held states is symmetric (`ease-in-out`).**
+Only the focal element needs the strongest curve; supporting elements read
+better with calmer variants of the same behavior. `skills/nanoframes/references/motion-taste.md`
+carries the fuller craft, and the named values above are the ones the industry
+motion-design tables give.
+
+An `ease` naming none of these interpolates linearly, exactly as it always has —
+the difference is that `nanoframes check` now reports it
+(`animation.unknown_ease`) instead of leaving you to notice that the motion
+never received the curve you wrote. A misspelled or out-of-range bezier is
+reported the same way (`cubic-bezier(1.5, 0, 0, 1)` cannot be evaluated at a
+single time, so it is not a curve).
+
+**Absent and unknown are not the same thing.** Omitting `ease` asks for linear
+and is never reported; writing a name that resolves to nothing is reported,
+because the two are indistinguishable in the frame and only one of them was
+meant.
 
 ### Supported properties
 
