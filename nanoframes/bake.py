@@ -13,7 +13,7 @@ import os
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
-from nanoframes import media, refs
+from nanoframes import frametext, media, refs
 from nanoframes.model import Composition, Element
 from nanoframes.parse import Document
 from nanoframes.timeline import effective_opacity, evaluate
@@ -349,6 +349,12 @@ def bake_tree(doc: Document, t: float, measurer: "Measurer | None" = None,
                 node.set("fill", str(props["fill"]))
             if props["stroke"] is not None:
                 node.set("stroke", str(props["stroke"]))
+        if tag == "text" and node.get(frametext.ATTRIBUTE) is not None:
+            # Substituted before the auto-layout pass below, so a chip/wrap/curve
+            # measures the words this frame actually draws.
+            node.text = frametext.format_template(node.get(frametext.ATTRIBUTE), comp, t)
+            for child in list(node):
+                node.remove(child)
 
     # Strip all timeline scripts so ThorVG only rasters pure geometry.
     for node in [n for n in root.iter() if local_name(n.tag) == "script"]:

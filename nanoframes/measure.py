@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
+from nanoframes import fonts
 from nanoframes.render import render_svg
 
 _MARK_BASELINE = 256  # baseline y we place glyphs on inside the measurement SVG
@@ -57,7 +57,7 @@ class Measurer:
     """
 
     def __init__(self, extra_font_paths: list[str] | None = None, cache: bool = True):
-        self._fonts: list[str] = list(DEFAULT_FONT_CANDIDATES) + list(extra_font_paths or [])
+        self._fonts: list[str] = list(fonts.font_candidates()) + list(extra_font_paths or [])
         self._cache: dict[tuple, InkMetrics] = {} if cache else None
 
     # -- public ---------------------------------------------------------------

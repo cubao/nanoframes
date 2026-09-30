@@ -122,7 +122,9 @@ that render as *something valid and wrong*:
 | `asset.missing` / `image.bad_aspect` / `media.*` | a missing asset, an unknown `data-aspect`, a video without ffmpeg or mapped past its source |
 | `render.inert_attribute` / `render.inert_tspan` | an attribute this loader accepts and ignores: `visibility`, `text-anchor`, `letter-spacing`, or timing and animation written on a `<tspan>` |
 | `render.degraded_paint` | a paint the loader draws *wrong* rather than ignores: an alpha colour (`rgba()`, `#rrggbbaa`, `transparent`, …) painted solid black, a `marker-*` reference drawn without its marker, a `<pattern>` paint (or a dangling `url(#…)`) that makes the element disappear |
-| `render.unresolved_font_family` | a `font-family` that cannot select any loaded face, so the run draws with the fallback |
+| `render.unresolved_font_family` | a `font-family` that cannot select any loaded face, so the run draws with the fallback (a face answers to the stem of the file it was loaded from) |
+| `text.bad_frame_field` | a `data-frame-text` naming a field the frame does not offer, or using one as an expression |
+| `text.inert_content` | words written inside an element whose content `data-frame-text` replaces, so nothing draws them |
 | `clip.*`, `canvas.*`, `animation.keyframe_out_of_range` | timing and canvas metadata that is out of range |
 
 Two checks are **opt-in**, declared on the root `<svg>`, because they encode taste rather than
@@ -130,6 +132,28 @@ truth and must stay silent until asked for: `data-safe-margin="N"` (text must st
 N-px inset — text only, since a full-bleed background touches every edge by design) and
 `data-palette-budget="N"` (distinct declared paint colors). `check` also follows nested
 compositions, so a defect inside an embedded child surfaces through the parent.
+
+### Rendering across processes
+
+Frames are independent — a frame is a pure function of its time — so a full
+batch is spread over worker *processes* (`nanoframes.parallel`, `-j/--jobs`, and
+auto when the frame count justifies a pool). Processes rather than threads is a
+measurement, not a preference: two threads rendering in one interpreter abort
+the process within a few frames on this ThorVG build, because the engine's font
+cache and teardown are global state the ctypes binding does not serialize.
+
+What a worker gets is the composition's **path**, not a parsed document: each
+process parses the file once and reuses it, so a frame's index and time are the
+only things that cross a process boundary. The cache is opened per worker —
+which is what its SQLite index and atomic renames exist for — and a frame is
+still rendered, saved and measured for blankness in one place, so the pool and
+the sequential loop write the same files by construction.
+
+The property that matters is not speed but *sameness*: a 900-frame render is
+byte-identical at `-j 1` and at `-j 8`, and `tests/test_parallel.py` asserts
+that frame by frame. A media pre-pass or a `text_handler` keeps the batch in one
+process, because neither is picklable and both are per-render state rather than
+per-frame inputs.
 
 ### Frame cache
 
@@ -555,6 +579,39 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.4.0 (2026-09)** — a head-to-head run against
+  [fframes](https://github.com/dmtrKovalenko/fframes) (the same 30s/900-frame
+  composition, rendered by both) turned up six things worth fixing, five of them
+  places where the markup said one thing and the picture did another.
+  **`nanoframes fonts add` was a promise with no implementation**: the command
+  copied a face into `~/.local/share/nanoframes/fonts/` and nothing ever read
+  that directory, so every render fell back to the bundled face while the docs
+  said the family resolved. Measured on the way: the engine does not match a
+  family name at all — `font_load` registers a face under the **stem of the path
+  it was handed** (a copy of `Arial.ttf` named `MyRenamedFace.ttf` stops
+  answering to `Arial`), which is why the fix is a candidate list *and* a naming
+  rule: the bundled face now ships as `Sarasa Mono SC.ttf`, `fonts add` stores a
+  face under its own family name, and `check` reports the stems that would
+  resolve instead of talking about families.
+  **`data-frame-text`** replaces the counter idiom (one windowed `<text>` per
+  frame, ~100x the rest of the composition's markup): a single element whose
+  words are the frame's own numbers, substituted before auto-layout so a chip
+  measures what it draws. Two lint codes came with it (`text.bad_frame_field`,
+  `text.inert_content`).
+  A **frame-time bug** found by that run: the batch walked `t = i * (1/fps)`
+  while `digest` walked `t = i / fps`, so 4 frames of 900 sat a hair outside a
+  window that started exactly at their own time — the ledger and the render
+  disagreed about a frame both claimed to describe. `nanoframes.timeline.frame_times`
+  is now the one definition, a plain division.
+  Two review images an agent can read instead of watching a clip: **`strip`**
+  (a labelled contact sheet) and **`onion`** (frames blended with later ones
+  stronger — a movement's path and its easing in one picture), both pure
+  functions of the frames they sample.
+  And **batches render across processes** (`-j`, auto) — thorvg-python aborts
+  the process when two renders run in one interpreter, so the pool is
+  multi-process by measurement; 900 frames of 1080p go from ~55s to ~6s, byte
+  for byte the same output. `debug` also collapses runs of identical element
+  lines (`x180`) instead of printing one line per element.
 - **0.3.0 (2026-09)** — the easing declaration made true, and the curve vocabulary
   it was missing. A **minor** bump rather than a patch, because it is a semantic
   break for anything already written against the old reading: an `ease` used to

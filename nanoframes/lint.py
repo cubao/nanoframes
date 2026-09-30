@@ -264,6 +264,7 @@ def lint_document(doc: Document, measurer=AUTO, _depth: int = 0) -> list[Finding
     _check_degraded_paint(doc, findings)
     _check_out_of_range_alpha(doc, findings)
     _check_font_family(doc, findings)
+    _check_frame_text(doc, findings)
     _check_media(doc, findings)
     _check_palette(doc, findings)
     _check_nested(doc, measurer, findings, _depth)
@@ -817,36 +818,34 @@ _FONT_NAMES: list | None = None
 def loaded_font_names() -> tuple[set[str], str | None]:
     """``(names that resolve, the face an unresolved family falls back to)``.
 
-    The names are the ones a ``font-family`` value has to equal **exactly** to
-    select a face, and they are built from the candidates the renderer actually
-    loads (``fonts.DEFAULT_FONT_CANDIDATES``, skipping the ones not on this
-    host): a face's family, plus ``family style`` when it is not the regular
-    one, because that is how the loader names the styled face (measured: with
-    ``Arial.ttf`` and ``Arial Bold.ttf`` both loaded, ``Arial`` resolves to the
-    regular and ``Arial Bold`` to the bold).
+    Both are read off the candidates the renderer actually loads
+    (``fonts.font_candidates()``, skipping the ones not on this host) and both
+    are **file stems**, because that is the whole of the engine's rule:
+    ``font_load`` registers a face under the path it was handed, and a
+    ``font-family`` that equals no loaded stem falls back to the first face
+    loaded (``nanoframes.fonts.face_names`` carries the measurement).
 
-    The fallback is the **first** candidate that exists — the one the renderer
-    hands a family it could not resolve. Its name is read off the file rather
-    than written into a message, because which face is first is a property of
-    ``font_candidates``, not of this check.
+    Reading the fallback off the list rather than writing a name into a message
+    keeps this honest when the list changes: which face is first is a property
+    of ``font_candidates``, not of this check.
 
-    Memoised: it opens each candidate once per process, and the answer cannot
+    Memoised: it stats every candidate once per process, and the answer cannot
     change while one runs.
     """
     global _FONT_NAMES
     if _FONT_NAMES is None:
-        from nanoframes.fonts import DEFAULT_FONT_CANDIDATES, face_names
+        from nanoframes import fonts as fonts_module
 
         names: set[str] = set()
         fallback: str | None = None
-        for path in DEFAULT_FONT_CANDIDATES:
+        for path in fonts_module.font_candidates():
             if not os.path.exists(path):
                 continue
-            aliases = face_names(path)
+            aliases = fonts_module.face_names(path)
             if not aliases:
                 continue
             if fallback is None:
-                fallback = aliases[-1]
+                fallback = aliases[0]
             names.update(aliases)
         _FONT_NAMES = [names, fallback]
     return _FONT_NAMES[0], _FONT_NAMES[1]
@@ -902,23 +901,68 @@ def _check_out_of_range_alpha(doc: Document, findings: list[Finding]) -> None:
             ))
 
 
+def _check_frame_text(doc: Document, findings: list[Finding]) -> None:
+    """A ``data-frame-text`` has to be a template bake can evaluate.
+
+    Two failures worth naming, both silent in a frame: a field the frame does
+    not offer (``{seconds}`` for ``{second}``), which bake would refuse at render
+    time — an error the author only meets after the whole clip is queued; and
+    words written inside the element, which the substitution replaces, so what
+    was typed is drawn nowhere.
+
+    The template is checked against the same parser bake uses
+    (``nanoframes.frametext``), so the check and the render cannot disagree
+    about what a valid template is.
+    """
+    from nanoframes import frametext
+
+    for node in doc.root.iter():
+        if local_name(node.tag) != "text":
+            continue
+        template = node.get(frametext.ATTRIBUTE)
+        if template is None:
+            continue
+        label = bounds.label(node)
+        try:
+            frametext.fields_used(template)
+        except frametext.TemplateError as exc:
+            findings.append(Finding(
+                "error", f"{label}: {frametext.ATTRIBUTE} {exc}",
+                code="text.bad_frame_field", element=label,
+            ))
+            continue
+        typed = "".join(node.itertext()).strip()
+        if typed:
+            findings.append(Finding(
+                "warning",
+                f"{label}{_drawn_text(node)}: this element's words are replaced by"
+                f" {frametext.ATTRIBUTE}, so the text inside it is never drawn"
+                f" (it is the frame's numbers that draw); delete it or drop the"
+                f" attribute",
+                code="text.inert_content", element=label,
+            ))
+
+
 def _check_font_family(doc: Document, findings: list[Finding]) -> None:
     """Warn about a ``font-family`` value that cannot select any loaded face.
 
     ThorVG's SVG loader matches the **whole value** against the names of the
     faces it has loaded: there is no CSS list semantics, no per-glyph fallback
-    chain and no quoting, and the comparison is case-sensitive (measured on
-    thorvg-python 1.1.3 — ``Arial`` and ``Arial Bold`` resolve to their faces
-    while ``arial``, ``'Arial'`` and ``Arial, sans-serif`` all render with the
-    bundled Sarasa face; surrounding whitespace is trimmed, so ``" Arial"``
-    still resolves).
+    chain and no quoting (measured on thorvg-python 1.1.3 — ``Arial, sans-serif``
+    and ``'Arial'`` both fall through to the first loaded face; surrounding
+    whitespace is trimmed, so ``" Arial"`` still resolves).
+
+    The name a face answers to is the **stem of the file it was loaded from**,
+    not the family in its name table (measured: ``Arial.ttf`` copied to
+    ``MyRenamedFace.ttf`` stops answering to ``Arial``). So the message names the
+    strings that do resolve rather than talking about families — that is the
+    whole fix an author needs, and it is not guessable from the font.
 
     That makes the corpus's portable-looking CSS stacks
-    (``Arial, 'DejaVu Sans', sans-serif``) inert, and *silently* so: the
-    author reads Arial and gets Sarasa, which is a wrong picture with no error —
-    the failure mode `check` exists to catch. This is the same shape as
-    ``render.inert_attribute``, and like it the warning only reports; the fix is
-    to name one loaded face exactly.
+    (``Arial, 'DejaVu Sans', sans-serif``) inert, and *silently* so: the author
+    reads Arial and gets whatever was loaded first, which is a wrong picture
+    with no error — the failure mode `check` exists to catch. This is the same
+    shape as ``render.inert_attribute``, and like it the warning only reports.
 
     Checked on ``<text>`` only, because that is the element whose glyphs the
     value decides. A ``font-family`` on a ``<g>`` does not reach the text inside
@@ -938,13 +982,15 @@ def _check_font_family(doc: Document, findings: list[Finding]) -> None:
             because = ("so nothing is drawn for this run at all — no face is loaded;"
                        " `nanoframes doctor` names what is missing.")
         else:
-            because = (f"so the text is drawn with {fallback!r} instead; name one loaded"
-                       f" face exactly ({fallback!r} is the default).")
+            available = ", ".join(repr(n) for n in sorted(names)[:6]) or "(none)"
+            because = (f"so the text is drawn with {fallback!r} instead. A face answers to"
+                       f" the name of the file it was loaded from — the ones this machine"
+                       f" loads are {available}, and the first of them is the fallback.")
         findings.append(Finding(
             "warning",
             f"{bounds.label(node)}{_drawn_text(node)}: font-family={raw!r} selects no"
             f" loaded face — this renderer matches the whole value against the faces it"
-            f" has loaded (no CSS list, no per-glyph fallback, case-sensitive), "
+            f" has loaded (no CSS list, no per-glyph fallback), "
             + because,
             code="render.unresolved_font_family", element=bounds.label(node),
         ))

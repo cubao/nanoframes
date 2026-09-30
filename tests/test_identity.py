@@ -17,8 +17,7 @@ import re
 
 import pytest
 
-from nanoframes import identity
-from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
+from nanoframes import fonts, identity
 from nanoframes.parse import parse_file, parse_string
 
 SVG = """<svg xmlns="http://www.w3.org/2000/svg" data-width="320" data-height="180"
@@ -84,7 +83,7 @@ def temp_fonts(tmp_path, monkeypatch):
     font.write_bytes(b"face-one")
 
     def install() -> str:
-        monkeypatch.setattr(identity, "DEFAULT_FONT_CANDIDATES", (str(font),))
+        monkeypatch.setattr(fonts, "font_candidates", lambda: (str(font),))
         identity._FONTS = None  # the fingerprint is memoised per process
         return parse_string(SVG.format(text="hi")).identity
 
@@ -120,7 +119,7 @@ def test_a_change_in_the_renderer_moves_the_identity(monkeypatch):
 def test_a_missing_font_candidate_is_not_an_input(tmp_path, monkeypatch):
     """An absent face cannot have drawn anything, so it cannot be an input."""
     identity._FONTS = None
-    monkeypatch.setattr(identity, "DEFAULT_FONT_CANDIDATES", (str(tmp_path / "nope.ttf"),))
+    monkeypatch.setattr(fonts, "font_candidates", lambda: (str(tmp_path / "nope.ttf"),))
     try:
         empty = identity.font_fingerprint()
     finally:
@@ -146,7 +145,7 @@ def test_a_font_change_misses_the_cache(tmp_path, monkeypatch):
     cache = FrameCache(str(tmp_path / "cache"))
     frame = Image.new("RGBA", (320, 180), (0, 0, 0, 255))
 
-    monkeypatch.setattr(identity, "DEFAULT_FONT_CANDIDATES", (str(font),))
+    monkeypatch.setattr(fonts, "font_candidates", lambda: (str(font),))
     identity._FONTS = None
     try:
         before = parse_file(str(comp)).identity
@@ -172,15 +171,17 @@ def test_identity_is_stable_within_and_across_documents(tmp_path):
 # --- the fonts lane is a resolution, not an inventory -----------------------
 
 def _fonts_with(candidates, *compositions):
-    """The `fonts` component under a given candidate set, with the memo cleared."""
-    original = identity.DEFAULT_FONT_CANDIDATES
-    identity.DEFAULT_FONT_CANDIDATES = tuple(candidates)
+    """The `fonts` component under a given candidate set, with the memos cleared."""
+    original = fonts.font_candidates
+    fonts.font_candidates = lambda: tuple(candidates)
     identity._FACE_NAMES = None
+    identity._FONTS = None
     try:
         return [parse_string(text).identity_components()["fonts"] for text in compositions]
     finally:
-        identity.DEFAULT_FONT_CANDIDATES = original
+        fonts.font_candidates = original
         identity._FACE_NAMES = None
+        identity._FONTS = None
 
 
 def test_the_fonts_component_is_the_face_a_run_resolves_to():
@@ -189,7 +190,7 @@ def test_the_fonts_component_is_the_face_a_run_resolves_to():
     covered every face that *exists* (macOS loads Arial, Linux loads DejaVu, so a
     cross-machine comparison always came back `changed — fonts changed`).
     """
-    bundled = DEFAULT_FONT_CANDIDATES[0]
+    bundled = fonts.font_candidates()[0]
     named = SVG.format(text="hi")          # font-family="Arial" ...
     named = named.replace('font-family="Arial"', 'font-family="Sarasa Mono SC"')
     mac_like = [bundled, "/System/Library/Fonts/Supplemental/Arial.ttf"]
@@ -202,7 +203,7 @@ def test_a_missing_declared_face_is_a_different_resolution():
     fallback, and that is a different face — so its frames can differ and the
     component has to say so.
     """
-    bundled = DEFAULT_FONT_CANDIDATES[0]
+    bundled = fonts.font_candidates()[0]
     arial = "/System/Library/Fonts/Supplemental/Arial.ttf"
     if not os.path.exists(arial):
         pytest.skip("no system Arial on this host to resolve to")
@@ -214,7 +215,7 @@ def test_a_stack_that_matches_nothing_falls_back_like_no_family_at_all():
     """The corpus's CSS stacks are inert: the whole value matches no face, so the run
     draws with the first loaded one — the same as declaring nothing.
     """
-    bundled = DEFAULT_FONT_CANDIDATES[0]
+    bundled = fonts.font_candidates()[0]
     stack = SVG.format(text="hi").replace('font-family="Arial"',
                                           'font-family="Arial, sans-serif"')
     nothing = SVG.format(text="hi").replace(' font-family="Arial"', "")

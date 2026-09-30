@@ -24,12 +24,12 @@ import os
 import subprocess
 import sys
 
-from nanoframes import __version__, envelope, walkthrough
+from nanoframes import __version__, envelope, parallel, timeline, walkthrough
 from nanoframes.cache import DEFAULT_CACHE, FrameCache
 from nanoframes.envelope import EXIT_FAIL, EXIT_OK, EXIT_USAGE
 from nanoframes.lint import has_errors, lint_path, lint_string
 from nanoframes.parse import ParseError, parse_file
-from nanoframes.render import frame_is_blank, measurer, render_frame
+from nanoframes.render import measurer, render_frame
 from nanoframes.video import render_video
 
 TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg"
@@ -73,6 +73,14 @@ def _add_scale(sp: argparse.ArgumentParser) -> None:
     sp.add_argument(
         "--scale", type=float, default=1.0, metavar="F",
         help="draft render at F x the size (e.g. 0.5); faster, for previewing",
+    )
+
+
+def _add_jobs(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "--jobs", "-j", type=int, default=0, metavar="N",
+        help="render frames on N worker processes (0 = decide from the frame count,"
+             " 1 = never leave this process; see `nanoframes doctor`)",
     )
 
 
@@ -154,6 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, default=0.0, help="frame to report (seconds)")
     sp.add_argument("--samples", type=int, default=24, help="frames sampled by the clip scan")
     sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
+    sp.add_argument("--all-elements", action="store_true",
+                    help="print every element line, without collapsing identical runs")
     sp.add_argument("--pixels", action="store_true",
                     help="probe whether hiding each element changes the frame"
                          " (one extra render per element; finds elements that are on"
@@ -170,6 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--t", type=float, default=None, help="render only this time (seconds)")
     sp.add_argument("-o", "--out", default="out", help="output directory or file path")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
+    _add_jobs(sp)
     _add_scale(sp)
     _add_dpi(sp)
     sp.set_defaults(handler=cmd_render)
@@ -191,6 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_scale(sp)
     _add_dpi(sp)
     sp.add_argument("--threads", type=int, default=4)
+    _add_jobs(sp)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
     sp.set_defaults(handler=cmd_video)
@@ -205,8 +217,10 @@ def build_parser() -> argparse.ArgumentParser:
     fsub = sp.add_subparsers(dest="fonts_command", required=True)
     fp = fsub.add_parser("list", help="discover available CJK-capable fonts and family names")
     fp.set_defaults(fhandler=cmd_fonts_list)
-    fp = fsub.add_parser("add", help="copy a font into the nanoframes user font dir")
+    fp = fsub.add_parser("add", help="install a font the renderer will load")
     fp.add_argument("path", help="path to a .ttf/.otf font file")
+    fp.add_argument("--force", action="store_true",
+                    help="install even if the face fails the load check")
     fp.set_defaults(fhandler=cmd_fonts_add)
     fp = fsub.add_parser("verify", help="check a font loads+rasterizes without crashing ThorVG (subprocess)")
     fp.add_argument("path", help="path to a .ttf/.otf font file")
@@ -249,6 +263,36 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--check", action="store_true",
                     help="build, then lint the composition; exit 1 on lint errors")
     sp.set_defaults(handler=cmd_chart)
+
+    sp = sub.add_parser("strip", help="a contact sheet of the motion, one PNG to review")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("-n", "--count", type=int, default=12, help="how many frames to sample")
+    sp.add_argument("--columns", type=int, default=4, help="tiles per row")
+    sp.add_argument("--width", type=int, default=480, help="width of one tile in pixels")
+    sp.add_argument("--from", dest="first", type=float, default=None,
+                    help="start of the range in seconds (default: the clip's start)")
+    sp.add_argument("--to", dest="last", type=float, default=None,
+                    help="end of the range in seconds (default: the clip's end)")
+    sp.add_argument("-o", "--out", default="strip.png", help="output PNG")
+    sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
+    sp.add_argument("--no-cache", action="store_true",
+                    help="disable the fast re-render cache (.nanoframes-cache)")
+    sp.set_defaults(handler=cmd_strip)
+
+    sp = sub.add_parser("onion", help="blend frames into one image to read a movement's path")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("-n", "--count", type=int, default=8, help="how many frames to blend")
+    sp.add_argument("--from", dest="first", type=float, default=None,
+                    help="start of the range in seconds (default: 0)")
+    sp.add_argument("--to", dest="last", type=float, default=None,
+                    help="end of the range in seconds (default: the whole clip)")
+    sp.add_argument("--strength", type=float, default=1.0,
+                    help="how much stronger later frames are (0 = all equal)")
+    sp.add_argument("-o", "--out", default="onion.png", help="output PNG")
+    sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
+    sp.add_argument("--no-cache", action="store_true",
+                    help="disable the fast re-render cache (.nanoframes-cache)")
+    sp.set_defaults(handler=cmd_onion)
 
     sp = sub.add_parser("digest", help="per-frame digest: record it, or check it against a ledger")
     sp.add_argument("composition", nargs="?", help="path to a .nf.svg composition")
@@ -353,25 +397,76 @@ def cmd_measure(args: argparse.Namespace) -> int:
 
 
 def _user_font_dir() -> str:
-    d = os.path.expanduser("~/.local/share/nanoframes/fonts")
+    from nanoframes.fonts import user_font_dir
+
+    d = user_font_dir()
     os.makedirs(d, exist_ok=True)
     return d
 
 
 def cmd_fonts_list(args: argparse.Namespace) -> int:
-    from nanoframes.fonts import discover_fonts
+    """What this machine can draw with, and the exact value that selects each.
+
+    Two lists because they answer two questions: the CJK-capable faces a host
+    happens to have (an authoring hint), and the faces actually *loaded* on
+    every render — which are the only ones a ``font-family`` can select, and
+    which is why the installed ones are named by the value to write.
+    """
+    from nanoframes.fonts import discover_fonts, face_names, font_candidates
 
     fonts = [f for f in discover_fonts() if f.cjk]
     print(f"CJK-capable fonts discovered: {len(fonts)}")
     for f in sorted(fonts, key=lambda x: (not x.mono, x.family)):
         mark = "mono " if f.mono else "     "
         print(f"  {mark}{f.family:<22}{f.style:<10}{os.path.basename(f.path)}")
-    print("\nfont-family uses the font's exact family name above.")
-    print("Not all loads are ThorVG-safe; run `nanoframes fonts verify <path>` on any you rely on.")
+
+    print("\nLoaded on every render (`font-family` must equal one of these exactly):")
+    for path in font_candidates():
+        if not os.path.exists(path):
+            continue
+        names = face_names(path)
+        if not names:
+            continue
+        marker = "  <- the fallback" if path == _fallback_font_path() else ""
+        print(f"  {names[0]!r:<24}{os.path.basename(path)}{marker}")
+    print("\nAnything else falls back to the first face in that list, so a run that"
+          " 'works' can still\nbe drawing a face you did not ask for — `nanoframes check`"
+          " reports those declarations.")
     return 0
 
 
+def _fallback_font_path() -> str | None:
+    """The first candidate that exists: what an unresolved family lands on."""
+    from nanoframes.fonts import font_candidates
+
+    for path in font_candidates():
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _installed_font_name(family: str, style: str, ext: str) -> str:
+    """The file name an added face is stored under: the value that selects it.
+
+    The engine matches ``font-family`` against the file's stem, so the stem *is*
+    the interface — storing ``DMSans-Medium.ttf`` would make the only working
+    value ``DMSans-Medium``. A face is therefore stored under its own family
+    name (plus the style, when it is not the regular one, which is also how a
+    family's faces are told apart), so what an author writes in markup is what
+    the font is called.
+    """
+    stem = family if not style or style.lower() == "regular" else f"{family} {style}"
+    cleaned = "".join(c for c in stem if c not in '\\/:*?"<>|').strip()
+    return (cleaned or "font") + ext
+
+
 def cmd_fonts_add(args: argparse.Namespace) -> int:
+    """Install a face the renderer will load, after checking it is safe to load.
+
+    The check is the point: adding a face puts it in front of every later
+    render on this machine, and some faces abort this ThorVG build at teardown.
+    A face that passes is named exactly in ``font-family`` and resolves.
+    """
     import shutil
 
     from nanoframes.fonts import family_name
@@ -381,12 +476,42 @@ def cmd_fonts_add(args: argparse.Namespace) -> int:
         print(f"no such file: {src}", file=sys.stderr)
         return 2
     family, style = family_name(src)
-    dst = os.path.join(_user_font_dir(), os.path.basename(src))
+    if not family:
+        print(f"nanoframes: cannot read a family name out of {src} — not a"
+              f" .ttf/.otf this build can name, so no `font-family` could select it",
+              file=sys.stderr)
+        return 2
+    if not args.force:
+        verdict = _font_safety(src, family)
+        if verdict is not None:
+            print(f"nanoframes: {src} {verdict}", file=sys.stderr)
+            print("refusing to install it (every later render on this machine would"
+                  " load it); pass --force to install it anyway", file=sys.stderr)
+            return 1
+    name = _installed_font_name(family, style, os.path.splitext(src)[1].lower())
+    dst = os.path.join(_user_font_dir(), name)
     shutil.copyfile(src, dst)
+    selector = os.path.splitext(name)[0]
     print(f"added {src} -> {dst}")
     print(f"family={family!r} style={style!r}")
-    print("verify it is ThorVG-safe with: nanoframes fonts verify " + dst)
+    print(f"the renderer loads it from now on: write font-family=\"{selector}\"."
+          f" This engine matches the")
+    print("whole value against the face's file name (no CSS list, no fallback chain),"
+          " so that exact string is the one that selects it.")
     return 0
+
+
+def _font_safety(path: str, family: str) -> str | None:
+    """``None`` when the face is safe to load, else why it is not."""
+    proc = subprocess.run(
+        [sys.executable, "-m", "nanoframes.scripts.verify_font", path, family],
+        capture_output=True, text=True,
+    )
+    if proc.returncode == 139:
+        return "crashes ThorVG at exit (signal 11)"
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return f"does not load and rasterize (exit {proc.returncode})"
+    return None
 
 
 def cmd_fonts_verify(args: argparse.Namespace) -> int:
@@ -446,6 +571,37 @@ def cmd_fonts_install(args: argparse.Namespace) -> int:
     return 1
 
 
+def _print_elements(elements: list, everything: bool = False) -> None:
+    """One line per element, with a run of identical ones collapsed to a count.
+
+    A composition can hold the same shape a hundred times over — the windowed
+    ``<text>`` stack a counter used to be written as, a chart's ticks — and the
+    elements that are *hidden* at this time are then all identical lines, one
+    per element. Printed in full they bury the three lines that answer the
+    question, which is the failure mode this command exists to prevent. A run is
+    only collapsed when the whole line agrees (depth, label and status), so
+    nothing that differs is ever hidden behind a count; ``--all-elements``
+    prints every line anyway.
+    """
+    def line(el) -> str:
+        return f"  {'  ' * el.depth}{el.label:<16}{el.status_line()}"
+
+    run_start = 0
+    while run_start < len(elements):
+        text = line(elements[run_start])
+        run_end = run_start + 1
+        if not everything:
+            while run_end < len(elements) and line(elements[run_end]) == text:
+                run_end += 1
+        count = run_end - run_start
+        if count > 2:
+            print(f"{text}   x{count}")
+        else:
+            for i in range(run_start, run_end):
+                print(line(elements[i]))
+        run_start = run_end
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     """Lint the contract (geometry checks measure text, so ThorVG may load)."""
     from nanoframes import lint
@@ -488,8 +644,7 @@ def cmd_debug(args: argparse.Namespace) -> int:
         print(f"  alpha coverage: {report.coverage * 100:.1f}% of the canvas")
     if not report.elements:
         print("  (no renderable elements)")
-    for el in report.elements:
-        print(f"  {'  ' * el.depth}{el.label:<16}{el.status_line()}")
+    _print_elements(report.elements, everything=args.all_elements)
     for blank in report.blanks:
         print(f"  ^ {blank.label} paints nothing at this time: its geometry misses the canvas"
               f" — an animated translate that leaves the frame, or a rotate with no pivot"
@@ -561,16 +716,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     # full batch: frame i at t = i/fps, i in 0..frame_count-1
     os.makedirs(out_dir, exist_ok=True)
     prefix = comp.composition_id or os.path.splitext(os.path.basename(args.composition))[0]
-    step = 1.0 / comp.fps
-    blank = []
-    for i in range(comp.frame_count):
-        t = i * step
-        dst = os.path.join(out_dir, f"{prefix}.{i:05d}.png")
-        img = render_frame(doc, t, out_path=dst, threads=args.threads, cache=cache,
-                           scale=scale, dpi=_dpi_of(args), warn_blank=False,
-                           media_resolver=resolver)
-        if frame_is_blank(img):
-            blank.append(t)
+    blank = parallel.render_sequence(
+        doc, args.composition, timeline.frame_times(comp), out_dir, prefix,
+        jobs=args.jobs if resolver is None else 1, threads=args.threads, cache=cache,
+        scale=scale, dpi=_dpi_of(args),
+    )
     print(f"rendered {comp.frame_count} frames to {out_dir}/ ({prefix}.*.png)")
     _report_blank_frames(blank, comp.frame_count, args.composition)
     return 0
@@ -612,7 +762,8 @@ def cmd_video(args: argparse.Namespace) -> int:
     scale = _scale_of(args)
     render_video(doc, args.out, fps=args.fps, scale=scale, threads=args.threads,
                  keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio,
-                 dpi=_dpi_of(args), media_resolver=_media_resolver(doc, scale))
+                 dpi=_dpi_of(args), media_resolver=_media_resolver(doc, scale),
+                 jobs=args.jobs, comp_path=args.composition)
     print(f"wrote {args.out}")
     return 0
 
@@ -742,6 +893,56 @@ def digest_default_ledger() -> str:
 
     root = repo_root()
     return os.path.join(root, digest_mod.LEDGER) if root else digest_mod.LEDGER
+
+
+def _sample_frames(doc, args):
+    """Render the frames a review image asks for, with their labels."""
+    from nanoframes.contact import sample_frames
+
+    comp = doc.composition
+    times = sample_frames(comp, args.count, args.first, args.last)
+    cache = _make_cache(args)
+    scale = _scale_of(args)
+    resolver = _media_resolver(doc, scale)
+    frames = []
+    for t in times:
+        img = render_frame(doc, t, threads=args.threads, cache=cache, scale=scale,
+                           dpi=_dpi_of(args), warn_blank=False, media_resolver=resolver)
+        frames.append((f"frame {round(t * comp.fps)}   {t:.2f}s", img))
+    return frames
+
+
+def cmd_strip(args: argparse.Namespace) -> int:
+    """One image holding the whole movement: the fastest read an agent has."""
+    from nanoframes.contact import strip_image
+
+    doc = _load(args.composition)
+    if has_errors(lint_path(args.composition)):
+        print("nanoframes: refusing to render a composition with lint errors "
+              "(run `nanoframes check`)", file=sys.stderr)
+        return 1
+    frames = _sample_frames(doc, args)
+    strip_image(frames, tile_width=args.width, columns=args.columns).save(args.out)
+    print(f"wrote {args.out} ({len(frames)} frames from {args.composition})")
+    return 0
+
+
+def cmd_onion(args: argparse.Namespace) -> int:
+    """The same frames blended: a movement's path and its easing in one picture."""
+    from nanoframes.contact import onion_image
+
+    doc = _load(args.composition)
+    if has_errors(lint_path(args.composition)):
+        print("nanoframes: refusing to render a composition with lint errors "
+              "(run `nanoframes check`)", file=sys.stderr)
+        return 1
+    frames = _sample_frames(doc, args)
+    # The weights sum to 1, so whatever is in every frame — a background most of
+    # all — comes back at full opacity, and only what *moved* leaves ghosts.
+    # That is the whole picture: the path, and how the frames bunch along it.
+    onion_image(frames, strength=args.strength).convert("RGB").save(args.out)
+    print(f"wrote {args.out} ({len(frames)} frames blended from {args.composition})")
+    return 0
 
 
 def cmd_digest(args: argparse.Namespace) -> int:

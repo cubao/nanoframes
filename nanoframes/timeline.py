@@ -172,6 +172,29 @@ def effective_opacity(element: Element, t: float) -> tuple[bool, float]:
     return True, max(0.0, opacity)
 
 
+def frame_times(comp: Composition) -> list[float]:
+    """The time of every frame: ``t = i / fps``, for ``i`` in ``0..frame_count-1``.
+
+    One division, not a step multiplied back up. ``i * (1.0 / fps)`` rounds
+    twice — once when the step is formed, again on every multiply — and the
+    product lands a bit *below* ``i / fps`` for some frames. That is invisible
+    in a picture and decisive at a boundary: a windowed element whose
+    ``data-start`` is exactly frame ``i``'s time — one per frame, which is how a
+    counter is written — falls outside its own window at the very frame it
+    belongs to, and draws nothing there.
+
+    Measured on a 900-frame clip: 4 of the counter's 900 frames hit it, because
+    ``cli.render`` and ``video.render_video`` walked ``i * step`` while
+    ``digest.read`` walked ``i / fps`` — so the ledger and the render could
+    disagree about a frame both claim to describe. This is the one definition
+    they now share.
+    """
+    rate = comp.fps
+    if rate <= 0:
+        return [0.0] * comp.frame_count
+    return [i / rate for i in range(comp.frame_count)]
+
+
 def last_frame_time(comp: Composition, fps: int | None = None) -> float:
     """The time of the clip's *last* rendered frame.
 

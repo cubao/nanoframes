@@ -27,7 +27,7 @@ def test_every_failing_check_names_a_fix(monkeypatch):
     """The whole point of the command. Force every failure and read the fixes."""
     monkeypatch.setattr(doctor, "has_tool", lambda name: False)
     monkeypatch.setattr(doctor.identity, "dist_version", lambda name: "1.0.0")
-    monkeypatch.setattr(doctor, "DEFAULT_FONT_CANDIDATES", ("/nonexistent/face.ttf",))
+    monkeypatch.setattr(doctor.fonts, "font_candidates", lambda: ("/nonexistent/face.ttf",))
     monkeypatch.setattr(doctor, "TIGHT_DISK_BYTES", 1 << 62)
     monkeypatch.setattr(doctor.shutil, "disk_usage",
                         lambda path: type("U", (), {"free": 1})(), raising=True)
@@ -67,14 +67,14 @@ def test_missing_bundled_face_still_passes_when_a_system_face_exists(monkeypatch
     """
     system = tmp_path / "Arial.ttf"
     system.write_bytes(b"x")
-    monkeypatch.setattr(doctor, "DEFAULT_FONT_CANDIDATES", (str(system), str(tmp_path / "gone.ttf")))
+    monkeypatch.setattr(doctor.fonts, "font_candidates", lambda: (str(system), str(tmp_path / "gone.ttf")))
     check = doctor.check_fonts()
     assert check.ok
     assert "bundled CJK face" in check.detail and check.fix
 
 
 def test_no_face_at_all_is_a_failure(monkeypatch, tmp_path):
-    monkeypatch.setattr(doctor, "DEFAULT_FONT_CANDIDATES", (str(tmp_path / "gone.ttf"),))
+    monkeypatch.setattr(doctor.fonts, "font_candidates", lambda: (str(tmp_path / "gone.ttf"),))
     check = doctor.check_fonts()
     assert not check.ok
     assert "reinstall" in check.fix

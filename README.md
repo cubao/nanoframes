@@ -67,9 +67,26 @@ can appear at speed 1 in one place and looping from its middle in another.
 `check` follows nested compositions, so a defect inside a child surfaces through
 the parent. See [docs/media.md](docs/media.md) and `examples/nested-card.nf.svg`.
 
+Text that changes every frame — a counter, a clock, a progress label — is one
+element, not a stack: `data-frame-text="frame {frame}, {second:.2f}s"` names the
+frame's own numbers, bake substitutes them, and `check` fails on a field the
+frame does not offer (`text.bad_frame_field`) rather than drawing braces. Copy
+is still just SVG `<text>`; auto-layout (`data-bg`, `data-wrap`, `data-curve-d`)
+measures the words actually drawn at that time.
+
 Diagnostics are machine-readable: every finding carries a stable `code`, and
 `nanoframes check --json` / `debug --json` emit the structured form an agent
 branches on instead of parsing prose.
+
+Two review images turn a clip into a picture an agent can read without watching
+it: `nanoframes strip` lays evenly spaced frames out as a labelled contact
+sheet, and `nanoframes onion` blends a range into one image with later frames
+weighted stronger, so a movement's path and its easing are visible at once.
+
+A full batch renders across worker processes (`-j`, automatic when there are
+frames to share): 900 frames of 1080p is ~6s rather than ~55s on an 8-core
+machine, and the frames are byte-identical either way. A media pre-pass or a
+`text_handler` keeps the batch in one process.
 
 Determinism is checked by more than the PNG baselines. `nanoframes digest`
 hashes every frame of a composition (before any encoder sees it) into a ledger,

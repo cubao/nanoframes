@@ -16,8 +16,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 from nanoframes import bake
 from nanoframes.cache import FrameCache
+from nanoframes.fonts import font_candidates
 from nanoframes.parse import parse_string
-from nanoframes.render import DEFAULT_FONT_CANDIDATES, render_frame
+from nanoframes.render import render_frame
 
 NS = "{http://www.w3.org/2000/svg}"
 EXAMPLE = """<svg xmlns="http://www.w3.org/2000/svg" data-width="240" data-height="120"
@@ -49,7 +50,7 @@ def _png_bytes(size=(10, 20), color=(255, 0, 0, 255)) -> bytes:
 
 def _text_png(text: str, color=(0, 255, 0, 255)) -> bytes:
     """Render ``text`` with the bundled Sarasa Mono SC (CJK-safe), cropped to ink."""
-    font = ImageFont.truetype(DEFAULT_FONT_CANDIDATES[0], 32)
+    font = ImageFont.truetype(font_candidates()[0], 32)
     probe = Image.new("RGBA", (8, 8))
     width = ImageDraw.Draw(probe).textlength(text, font=font)
     img = Image.new("RGBA", (max(1, int(width) + 4), 44))

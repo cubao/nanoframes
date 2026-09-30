@@ -37,7 +37,6 @@ import hashlib
 import os
 
 from nanoframes import fonts, refs
-from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
 from nanoframes.xmlutil import local_name
 
 # Attributes only a check reads. They are stripped from the projection, so
@@ -139,7 +138,7 @@ def used_faces(root, extra_paths=()) -> tuple[str, ...]:
     A composition with no `<text>` at all draws no glyphs, so it has no faces and
     a font swap cannot have moved a frame of it.
     """
-    paths = [p for p in (*DEFAULT_FONT_CANDIDATES, *extra_paths) if os.path.exists(p)]
+    paths = [p for p in (*fonts.font_candidates(), *extra_paths) if os.path.exists(p)]
     table = _candidate_names(paths)
     faces: list[str] = []
     for node in root.iter():
@@ -166,9 +165,9 @@ def font_fingerprint(extra_paths=(), root=None) -> str:
     if root is not None:
         return _font_digest(used_faces(root, extra_paths))
     if extra_paths:
-        return _font_digest(tuple(DEFAULT_FONT_CANDIDATES) + tuple(extra_paths))
+        return _font_digest(tuple(fonts.font_candidates()) + tuple(extra_paths))
     if _FONTS is None:
-        _FONTS = _font_digest(DEFAULT_FONT_CANDIDATES)
+        _FONTS = _font_digest(fonts.font_candidates())
     return _FONTS
 
 

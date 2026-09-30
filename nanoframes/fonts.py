@@ -23,6 +23,11 @@ import os
 # Candidate default fonts so text renders even when a composition declares no
 # font file. ThorVG only rasterizes <text> after a font has been loaded (cached
 # globally by path), so the rasterizer registers these on every engine.
+#
+# Each file is named after the value a `font-family` must carry to select it
+# (see `face_names`): the engine answers to the file's stem, so the bundled
+# face is `Sarasa Mono SC.ttf` and `font-family="Sarasa Mono SC"` is a real
+# hit rather than a miss that happens to land on the same face.
 DEFAULT_FONT_CANDIDATES = (
     # Bundled monospace CJK face (Sarasa Mono SC, ligature feature stripped) —
     # FIRST so it is ThorVG's default fallback: any font-family that does not
@@ -31,7 +36,7 @@ DEFAULT_FONT_CANDIDATES = (
     # face. Load-safe and exits cleanly here (AppleGothic crashes this ThorVG
     # build).
     os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                 "fonts", "SarasaMonoSC-Regular-noliga.ttf"),
+                 "fonts", "Sarasa Mono SC.ttf"),
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     r"/System/Library/Fonts/Arial Unicode.ttf",
@@ -51,6 +56,39 @@ _SEARCH_DIRS = [
     "/usr/local/share/fonts",
     r"C:\Windows\Fonts",
 ]
+
+
+def user_font_dir() -> str:
+    """The directory ``nanoframes fonts add`` copies into.
+
+    One definition, because two things have to agree about it: the command that
+    puts a face there, and the renderer that loads what is there.
+    """
+    return os.path.expanduser("~/.local/share/nanoframes/fonts")
+
+
+def font_candidates() -> tuple[str, ...]:
+    """Every face the renderer loads: the built-in candidates, then added ones.
+
+    ``nanoframes fonts add`` promises that the face it copies becomes usable,
+    and this is the half that keeps the promise. The defaults stay **first**, so
+    the bundled CJK face is still what an unresolved ``font-family`` falls back
+    to; added faces follow in sorted order, so one directory always produces the
+    same load sequence.
+
+    The directory is only ever written by ``fonts add``, which refuses a face
+    that crashes ThorVG (its load check runs in an isolated subprocess). A face
+    that cannot be loaded is skipped rather than fatal, exactly as a missing
+    default candidate is.
+    """
+    directory = user_font_dir()
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        names = []
+    added = [os.path.join(directory, n) for n in names
+             if n.lower().endswith((".ttf", ".otf"))]
+    return tuple(DEFAULT_FONT_CANDIDATES) + tuple(added)
 
 # A font considered "probably has CJK" if its family name mentions any of these.
 _CJK_HINTS = (
@@ -160,22 +198,27 @@ def family_name(path: str) -> tuple[str, str]:
 
 
 def face_names(path: str) -> tuple[str, ...]:
-    """The ``font-family`` values that select this face, as this loader matches them.
+    """The one ``font-family`` value that selects this face: its file-name stem.
 
-    One `font-family` value is compared against these **exactly** — no CSS list
-    semantics, no quoting, no per-glyph fallback — so this is the whole set of
-    names that can select the face. The family answers, and so does
-    ``family style`` for a face that is not the regular one: measured with
-    ``Arial.ttf`` and ``Arial Bold.ttf`` both loaded, ``Arial`` resolves to the
-    regular and ``Arial Bold`` to the bold (docs/composition.md, "Known ThorVG
-    behaviors"). An empty tuple means the name table could not be read, and the
-    face then answers to nothing.
+    Measured on thorvg-python 1.1.3, ``font_load`` registers a face under the
+    **stem of the path it was given** (extension dropped, case-sensitive) and
+    nothing else. The name table is not consulted: ``Arial.ttf`` copied to
+    ``MyRenamedFace.ttf`` stops answering to ``Arial`` and answers to
+    ``MyRenamedFace`` instead; ``DMSans-Medium.ttf`` (whose family is
+    "DM Sans Medium") answers to ``DMSans-Medium``; ``JetBrainsMono-Regular.ttf``
+    answers to ``JetBrainsMono-Regular``. A value that matches no loaded face
+    falls back to the *first* face loaded on the engine.
+
+    That is why every candidate a composition can rely on is named after the
+    value an author would write — the bundled face ships as
+    ``Sarasa Mono SC.ttf``, and ``fonts add`` stores an added face under its
+    own family name for the same reason. Reporting the family here (what this
+    function used to do) described a rule the engine does not implement, and
+    hid the difference behind the fallback: a face whose family was named still
+    drew, but with whichever face happened to be loaded first.
     """
-    family, style = family_name(path)
-    if not family:
-        return ()
-    styled = f"{family} {style}" if style and style.lower() != "regular" else ""
-    return (family, styled) if styled else (family,)
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return (stem,) if stem else ()
 
 
 def _looks_mono(family: str) -> bool:

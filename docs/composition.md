@@ -254,19 +254,33 @@ SVG meaning but only within that subset.
 - **Text needs a loaded font.** ThorVG only rasterizes `<text>` after a font is
   registered (`Text.font_load`, done automatically per engine). Renders are
   therefore limited to fonts present on the host unless you supply one.
-- **`font-family` is one name, matched exactly.** There is no CSS list
-  semantics, no per-glyph fallback chain and no quoting: the **whole value** is
-  compared against the names of the faces that were loaded, and a value that
-  matches none of them draws with the first loaded face — the bundled Sarasa
-  Mono SC. Measured on thorvg-python 1.1.3 with `Arial.ttf` and `Arial Bold.ttf`
-  both loaded, by ink count: `Arial` resolves to the regular face and
-  `Arial Bold` to the bold one, while `arial` (case matters), `'Arial'`,
-  `Sarasa` and `Arial, sans-serif` all draw Sarasa, and surrounding whitespace
-  is trimmed (`" Arial"` resolves). So a portable-looking stack is inert, and
-  silently: the markup says Arial and the picture gets Sarasa. `check` names it
-  as `render.unresolved_font_family`, quoting the words the run draws when the
-  element has no `id` to point at. A `font-family` on a `<g>` does not reach the
-  `<text>` inside it either — the same rule, and the same silence.
+- **`font-family` is one name, matched exactly — and the name is the file's
+  stem.** There is no CSS list semantics, no per-glyph fallback chain and no
+  quoting: the **whole value** is compared against the names of the faces that
+  were loaded, and a value that matches none of them draws with the first
+  loaded face — the bundled Sarasa Mono SC.
+
+  The name a face answers to comes from the **path it was loaded from**, not
+  from the family in its name table. Measured on thorvg-python 1.1.3, by ink
+  count: loading `Arial.ttf` and then a copy of it named `MyRenamedFace.ttf`,
+  `font-family="Arial"` no longer resolves while `"MyRenamedFace"` does;
+  `DMSans-Medium.ttf` (family "DM Sans Medium") answers to `DMSans-Medium`, and
+  `ArialMT` — its real PostScript name — answers to nothing. Case matters,
+  `'Arial'` and `Arial, sans-serif` and `Sarasa` all miss, and surrounding
+  whitespace is trimmed (`" Arial"` resolves).
+
+  So a portable-looking stack is inert, and silently: the markup says Arial and
+  the picture gets whichever face was loaded first. `check` names it as
+  `render.unresolved_font_family`, quoting the words the run draws when the
+  element has no `id` to point at, and listing the stems that *would* resolve.
+  A `font-family` on a `<g>` does not reach the `<text>` inside it either — the
+  same rule, and the same silence.
+
+  Everything the renderer loads is named after the value an author would write,
+  so this stays out of the way in practice: the bundled face ships as
+  `Sarasa Mono SC.ttf`, and `nanoframes fonts add` stores a face under its own
+  family name (`DM Sans Medium.ttf`). `nanoframes fonts list` prints the exact
+  string for every loaded face.
 - **A frame that draws nothing is a valid PNG.** If every element is outside
   its clip window at a time, or its geometry is off-canvas, the frame comes out
   fully transparent — no error, no exception. Rendering prints a warning to
@@ -376,6 +390,49 @@ SVG meaning but only within that subset.
   Multi-line text is not affected: `data-wrap` emits a separate `<text>` per
   line rather than spans.
 
+## Per-frame text (`data-frame-text`)
+
+A composition is static markup, so a readout that changes every frame — a frame
+counter, a clock, a progress label — cannot be written as one ordinary
+`<text>`. `data-frame-text` makes the element's words a function of the frame:
+
+```xml
+<text x="100" y="440" font-family="Sarasa Mono SC" font-size="74" fill="#3b5563"
+      data-frame-text="This frame index: {frame}, second: {second:.2f}"/>
+```
+
+The fields are the composition's own clock:
+
+| field | value |
+|---|---|
+| `{frame}` | the frame's index, from 0 |
+| `{second}` (alias `{time}`) | the frame's time in seconds |
+| `{fps}` | the composition's frame rate |
+| `{duration}` | the composition's duration in seconds |
+| `{frames}` | how many frames the clip has |
+
+Format specs are Python's — `{second:.2f}`, `{frame:04d}` — and an unknown field
+is an **error** from `nanoframes check` (`text.bad_frame_field`), not literal
+braces in the picture. Attribute access, indexing and conversions
+(`{frame.__class__}`) are refused: a template is a label about the frame, not an
+expression language. Words written inside an element that carries the attribute
+are never drawn, so `check` warns (`text.inert_content`).
+
+Substitution happens before the auto-layout pass, so a chip, a wrap or a curve
+measures the words actually drawn at that time — a chip around `{frame}` grows
+as the number does.
+
+The frame index is `round(t * fps)`, so one arbitrary frame (`render --t`,
+`preview`, a digest sample) reads exactly as it does inside the batch.
+
+> Before this existed the idiom was to emit one `<text>` per frame, each with
+> its own `data-start` window. It works, and costs about a hundred times the
+> markup of the rest of the composition — and it has a trap at the edges: a
+> window that starts exactly at a frame's time is a hair outside that frame for
+> some values of `i * (1/fps)`. `nanoframes.timeline.frame_times` is the one
+> definition of a frame's time both the batch and the digest use, and it is a
+> plain `i / fps`.
+
 ## Text auto-layout (`data-*` on `<text>`)
 
 Measured by the same ThorVG SVG loader that rasterizes the frame, so background
@@ -431,10 +488,16 @@ falls back to fonts. See `nanoframes/rastertext.py` and
 ## Fonts
 
 A bundled **monospace CJK** face ships with nanoframes
-(`fonts/SarasaMonoSC-Regular-noliga.ttf`, Sarasa Mono SC, ligature feature
-stripped). Use `font-family="Sarasa Mono SC"` for deterministic-width Chinese
-labels (each Han char = `font-size` px wide). Query it with
-`nanoframes fonts list`; add other faces with `nanoframes fonts add <path>`.
+(`fonts/Sarasa Mono SC.ttf`, Sarasa Mono SC, ligature feature stripped, named
+after the value that selects it). Use `font-family="Sarasa Mono SC"` for
+deterministic-width Chinese labels (each Han char = `font-size` px wide).
+
+`nanoframes fonts add <path>` installs another face: it checks the file loads
+and rasterizes without crashing this ThorVG build, copies it into
+`~/.local/share/nanoframes/fonts/`, and **the renderer loads it from then on**
+— that directory is part of the candidate list every render builds. The command
+prints the exact `font-family` value to write, and `nanoframes fonts list`
+lists every loaded face with its selector and marks the fallback.
 
 ## CLI examples
 
@@ -452,6 +515,9 @@ nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
 nanoframes render my-video.nf.svg --t 2.0 --dpi 2  # same frame, 2x pixel density
 nanoframes preview my-video.nf.svg --t 2.0         # render + open
 nanoframes render my-video.nf.svg -o frames        # full batch
+nanoframes render my-video.nf.svg -o frames -j 8   # ... on 8 worker processes
 nanoframes video my-video.nf.svg -o out.mp4        # MP4 via ffmpeg
+nanoframes strip my-video.nf.svg -n 12             # contact sheet of the motion
+nanoframes onion my-video.nf.svg -n 8 --to 10      # the movement's path, blended
 nanoframes video my-video.nf.svg -o out.mp4 --audio track.mp3   # + audio mux
 ```

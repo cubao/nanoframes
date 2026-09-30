@@ -216,9 +216,9 @@ def test_bundled_maple_mono_cn_font_present_and_monospace():
     """The bundled monospace CJK font exists, is monospace, and is known-safe."""
     import os
 
-    from nanoframes.render import DEFAULT_FONT_CANDIDATES
+    from nanoframes.fonts import font_candidates
 
-    bundled = [p for p in DEFAULT_FONT_CANDIDATES if "SarasaMonoSC" in p]
+    bundled = [p for p in font_candidates() if "Sarasa" in p]
     assert bundled, "bundled Sarasa Mono SC not in default candidates"
     path = bundled[0]
     assert os.path.exists(path), f"bundled font missing: {path}"

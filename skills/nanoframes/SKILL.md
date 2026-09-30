@@ -222,11 +222,14 @@ nanoframes preview <comp>.nf.svg --t 2  # render one frame + open
 nanoframes render <comp>.nf.svg --t 2 -o shot.png            # 1:1
 nanoframes render <comp>.nf.svg --t 2 --dpi 2 -o shot@2x.png  # 2x pixel density
 nanoframes render <comp>.nf.svg -o out/        # full batch of frames
+nanoframes render <comp>.nf.svg -o out/ -j 8   # ... across 8 worker processes
 nanoframes video  <comp>.nf.svg -o out.mp4     # ffmpeg MP4
+nanoframes strip  <comp>.nf.svg -n 12 -o strip.png   # contact sheet: the motion at a glance
+nanoframes onion  <comp>.nf.svg -n 8 --to 10 -o onion.png  # blended: the path + easing
 nanoframes video  <comp>.nf.svg -o out.mp4 --scale 0.5       # draft: half-size, ~4x faster
 nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
 nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
-nanoframes fonts list|add|verify|install          # CJK font toolbox
+nanoframes fonts list|add|verify|install          # CJK font toolbox (list prints selectors)
 nanoframes diagram <spec.json> -o out.nf.svg      # diagram spec -> composition
 nanoframes tree   <spec.json> -o out.nf.svg      # hierarchy spec (no coordinates in it)
 nanoframes chart  <spec.json> -o out.nf.svg      # data table (bar/line; axes computed)

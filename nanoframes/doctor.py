@@ -20,9 +20,9 @@ import os
 import shutil
 from dataclasses import dataclass
 
-from nanoframes import identity
+from nanoframes import fonts, identity
 from nanoframes.cache import DEFAULT_MAX_BYTES
-from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
+from nanoframes.fonts import user_font_dir
 from nanoframes.media import has_tool
 
 # The version whose behaviour this package is written against. ThorVG 1.0.4 via
@@ -132,11 +132,12 @@ def check_fonts() -> Check:
     no error, no exception. The bundled face is the one this can act on — a
     system face being absent is a fact about the machine, not a fault.
     """
-    present = [p for p in DEFAULT_FONT_CANDIDATES if os.path.exists(p)]
+    candidates = fonts.font_candidates()
+    present = [p for p in candidates if os.path.exists(p)]
     if not present:
         return Check("fonts", False,
-                     f"none of the {len(DEFAULT_FONT_CANDIDATES)} default font"
-                     f" candidates exist, so `<text>` cannot rasterize at all",
+                     f"none of the {len(candidates)} font candidates exist, so"
+                     f" `<text>` cannot rasterize at all",
                      "pip install --force-reinstall nanoframes")
     bundled = [p for p in present if os.path.dirname(p) == _bundled_font_dir()]
     if not bundled:
@@ -145,7 +146,10 @@ def check_fonts() -> Check:
                      f" is missing; Chinese text renders from a fallback face at"
                      f" best (run `nanoframes fonts list` to see what resolves)",
                      "pip install --force-reinstall nanoframes")
-    return Check("fonts", True, f"bundled CJK face present, {len(present)} face(s) loadable")
+    added = [p for p in present if os.path.dirname(p) == os.path.abspath(user_font_dir())]
+    note = f", {len(added)} added by `nanoframes fonts add`" if added else ""
+    return Check("fonts", True,
+                 f"bundled CJK face present, {len(present)} face(s) loadable{note}")
 
 
 def _bundled_font_dir() -> str:

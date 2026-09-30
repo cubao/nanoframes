@@ -201,7 +201,8 @@ Consequences worth knowing:
   frames were drawing anyway. Naming a host font instead would be worse than
   inert: `Arial` resolves on macOS and not on a bare Linux box, so one spec would
   draw two different pictures depending on the machine that renders it. Register
-  a brand face with `nanoframes fonts add` and name it exactly in a custom stack.
+  a brand face with `nanoframes fonts add`, which loads it on every later render;
+  the string to write is the face's installed file name, and the command prints it.
 - `font-weight` is not a reliable axis (the engine's faces are regular-only),
   so weights are not emitted: hierarchy comes from size, spacing and color.
 - CJK labels work (the bundled mono face), and the width budget rules the

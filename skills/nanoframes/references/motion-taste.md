@@ -133,10 +133,12 @@ action, and the rest resolving and holding.
   anchor via translate so the baseline doesn't move), lines draw left to
   right (reveal via a moving mask is unavailable — approximate by animating a
   per-segment `data-start` cascade or a covering chip that translates away).
-- Count-up numbers: pre-render the changing digits as a monospace face —
-  every digit occupies `font-size` px in `Sarasa Mono SC`, so staggering
-  `<text>` elements (each a `data-start` window) can simulate a counter
-  without jitter. Labels/units appear **after** the number resolves.
+- Count-up numbers: write the number with `data-frame-text` on the `<text>`
+  that holds it (`"{value:03d}"`, `"second: {second:.2f}"`) — this *is* the
+  counter, it is one element, and `check` fails on a field the frame does not
+  offer rather than drawing braces. Use a monospace face (`Sarasa Mono SC`,
+  every digit exactly `font-size` px) so the digits do not jitter as the value
+  changes width, and let labels/units appear **after** the number resolves.
 - **Serious data = calm ease-out, no bounce.** Reserve pops for brand/UI
   moments.
 

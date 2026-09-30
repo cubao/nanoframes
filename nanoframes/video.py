@@ -12,8 +12,8 @@ import subprocess
 import sys
 import tempfile
 
+from nanoframes import parallel, timeline
 from nanoframes.parse import Document
-from nanoframes.render import frame_is_blank, render_frame
 
 
 def mux_frames_to_mp4(
@@ -62,6 +62,8 @@ def render_video(
     audio: str | None = None,
     dpi: float = 1.0,
     media_resolver=None,
+    jobs: int = 1,
+    comp_path: str | None = None,
 ) -> str:
     """Render all frames of ``doc`` into ``out_path`` (an MP4).
 
@@ -70,6 +72,11 @@ def render_video(
     rasterizes at that pixel density instead, so the same drawing is delivered
     at a higher resolution. If ``keep_frames`` is set, the PNG sequence is left
     in that directory instead of a temp dir.
+
+    ``jobs`` above 1 renders frames on that many worker processes (see
+    ``nanoframes.parallel``); ``comp_path`` is the file ``doc`` was parsed from
+    and is what makes that possible, since each worker parses it again for
+    itself.
     """
     comp = doc.composition
     fps = fps or comp.fps
@@ -85,19 +92,15 @@ def render_video(
 
     try:
         prefix = comp.composition_id or "frame"
-        step = 1.0 / fps
-        blank: list[float] = []
-        for i in range(comp.frame_count):
-            t = i * step
-            img = render_frame(doc, t, threads=threads, cache=cache, scale=scale, dpi=dpi,
-                               warn_blank=False, media_resolver=media_resolver)
-            dst = os.path.join(frame_dir, f"{prefix}.{i:05d}.png")
-            if keep_frames:
-                img.save(dst)
-            else:
-                img.save(dst, compress_level=_TRANSIENT_PNG_LEVEL)
-            if frame_is_blank(img):
-                blank.append(t)
+        times = timeline.frame_times(comp)
+        # A media pass swaps in extracted frames per render (a resolver is not
+        # picklable), so it stays in this process and renders sequentially.
+        use_jobs = 1 if media_resolver is not None else jobs
+        blank = parallel.render_sequence(
+            doc, comp_path or "", times, frame_dir, prefix, jobs=use_jobs,
+            threads=threads, cache=cache, scale=scale, dpi=dpi,
+            compress_level=None if keep_frames else _TRANSIENT_PNG_LEVEL,
+        )
         if blank:
             print(f"nanoframes: {len(blank)} of {comp.frame_count} frames are fully"
                   f" transparent (first at t={blank[0]:g}s) — every element is hidden or"

@@ -19,9 +19,8 @@ import os
 import sys
 import tempfile
 
-from nanoframes import bake
+from nanoframes import bake, fonts
 from nanoframes.cache import FrameCache
-from nanoframes.fonts import DEFAULT_FONT_CANDIDATES
 from nanoframes.parse import Document
 from nanoframes.scale import draft_size, prescale_images
 
@@ -62,8 +61,9 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4,
                font_paths: tuple[str, ...] | list[str] | None = None) -> "object":
     """Return a Pillow Image for a standalone SVG string.
 
-    ``font_paths`` defaults to ``nanoframes.fonts.DEFAULT_FONT_CANDIDATES``;
-    measurement and font verification pass their own (superset) lists. Fonts
+    ``font_paths`` defaults to ``nanoframes.fonts.font_candidates()`` — the
+    built-in faces plus whatever ``nanoframes fonts add`` installed; measurement
+    and font verification pass their own (superset) lists. Fonts
     are registered on every engine: ThorVG tears down its global font cache
     when an engine is terminated, so a fresh engine needs them again (loading
     is cheap because ThorVG caches font data by path).
@@ -71,7 +71,7 @@ def render_svg(svg_str: str, width: int, height: int, threads: int = 4,
     import thorvg_python as tvg  # heavy import, keep it lazy
 
     if font_paths is None:
-        font_paths = DEFAULT_FONT_CANDIDATES
+        font_paths = fonts.font_candidates()
     path = _write_temp(svg_str)
     engine = tvg.Engine(threads=threads)
     canvas = tvg.SwCanvas(engine)
