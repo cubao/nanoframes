@@ -89,6 +89,14 @@ def test_a_pool_writes_exactly_what_the_sequential_loop_writes(tmp_path):
     assert blank_seq == blank_par
 
 
+def test_the_pool_divides_the_raster_budget_instead_of_multiplying_it():
+    """``--threads 8 -j 8`` is eight workers with one raster thread each."""
+    assert parallel.worker_threads(8, 8) == 1
+    assert parallel.worker_threads(8, 4) == 2
+    assert parallel.worker_threads(4, 8) == 1
+    assert parallel.worker_threads(4, 1) == 4
+
+
 def test_a_render_without_a_composition_path_stays_sequential(tmp_path):
     """A document built from a string has no file for a worker to re-parse."""
     from nanoframes.parse import parse_string

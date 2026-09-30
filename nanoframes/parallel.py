@@ -48,6 +48,18 @@ def resolve_jobs(requested: int, frame_count: int) -> int:
     return max(1, min(auto, frame_count))
 
 
+def worker_threads(threads: int, workers: int) -> int:
+    """The raster threads one worker gets, given the machine's budget.
+
+    Split rather than duplicated: ThorVG already rasters on its own threads, so
+    ``--threads 8 -j 8`` running eight workers with eight threads each asks for
+    64 threads on 8 cores. Measured on a text-heavy 900-frame clip, that pool
+    was *slower* than a single process; dividing the budget is what makes the
+    pool at least neutral.
+    """
+    return max(1, threads // workers)
+
+
 def _init_worker(comp_path: str, dest: str, prefix: str, threads: int, scale: float,
                  dpi: float, cache_config: tuple | None, compress_level: int | None) -> None:
     """Per-process setup: parse the composition and open a private cache handle.
@@ -99,6 +111,13 @@ def render_sequence(doc, comp_path: str, times: list, dest: str, prefix: str, *,
     ``comp_path`` must be the file the document was parsed from — the pool
     re-parses it in each worker, so a document built from a string (there is no
     such caller today) has to take the sequential path.
+
+    ``threads`` is the *machine's* raster budget, not each worker's: the pool
+    divides it, so ``--threads 8 -j 8`` runs eight workers with one raster
+    thread each rather than sixty-four threads on eight cores. Oversubscribing
+    is not a small effect — on a text-heavy 900-frame clip the undivided pool
+    was *slower* than one process, because ThorVG already rasters on its own
+    threads and the workers only fought over the cores.
     """
     from nanoframes.render import frame_is_blank, render_frame
 
@@ -115,6 +134,7 @@ def render_sequence(doc, comp_path: str, times: list, dest: str, prefix: str, *,
                 blank.append(t)
         return blank
 
+    per_worker = worker_threads(threads, workers)
     cache_config = None
     if cache is not None:
         cache_config = (cache.cache_dir, cache.max_bytes, cache.ttl, cache.sweep_every)
@@ -122,7 +142,7 @@ def render_sequence(doc, comp_path: str, times: list, dest: str, prefix: str, *,
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(comp_path, dest, prefix, threads, scale, dpi, cache_config,
+        initargs=(comp_path, dest, prefix, per_worker, scale, dpi, cache_config,
                   compress_level),
     ) as pool:
         for _index, t, is_blank in pool.map(_render_one, jobs_out, chunksize=1):
