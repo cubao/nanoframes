@@ -273,3 +273,68 @@ def test_render_dpi_rejects_nonpositive():
             contextlib.redirect_stderr(open(os.devnull, "w")):
         run(["render", TITLE, "--t", "0", "--dpi", "0"])
     assert exc.value.code == 2
+
+
+# --- svg: the baked frame as a document --------------------------------------
+
+def test_svg_writes_the_frame_the_renderer_is_handed(tmp_path):
+    """The intermediate already exists; this is the verb that lets you see it.
+
+    A baked frame is resolved — the clock is in it, the timeline is not — so it
+    is both what ThorVG is fed and a document any other SVG renderer can draw.
+    """
+    out = tmp_path / "frame.svg"
+    code, text = run(["svg", TITLE, "--t", "2.0", "-o", str(out)])
+    assert code == 0
+    svg = out.read_text()
+    assert "<script" not in svg, "the timeline must be gone: this is a static frame"
+    assert "data-composition-id" in svg
+    assert "wrote" in text
+
+
+def test_svg_all_writes_one_document_per_frame(tmp_path):
+    code, text = run(["svg", TITLE, "--all", "-o", str(tmp_path)])
+    assert code == 0
+    from nanoframes.parse import parse_file
+
+    comp = parse_file(TITLE).composition
+    written = sorted(p.name for p in tmp_path.iterdir())
+    assert len(written) == comp.frame_count
+    assert written[0].endswith(".00000.svg")
+    assert "frames" in text
+
+
+def test_svg_all_needs_a_directory():
+    code, out = run(["svg", TITLE, "--all"])
+    assert code == 2
+    assert "needs -o" in out
+
+
+def test_svg_is_what_render_rasterizes(tmp_path):
+    """The dumped document and the rendered frame are the same bytes.
+
+    If these ever diverge, the interchange form has stopped describing the
+    picture — which is the whole thing it is for.
+    """
+    from nanoframes import bake
+    from nanoframes.parse import parse_file
+    from nanoframes.render import render_frame
+
+    out = tmp_path / "frame.svg"
+    run(["svg", TITLE, "--t", "1.0", "-o", str(out)])
+    doc = parse_file(TITLE)
+    assert bake.bake_svg(doc, 1.0) == out.read_text()
+    assert render_frame(doc, 1.0) is not None
+
+
+def test_svg_refuses_a_composition_with_lint_errors(tmp_path):
+    src = tmp_path / "bad.nf.svg"
+    src.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" data-width="100" data-height="50">'
+        '<rect id="r" width="10" height="10" fill="#fff"/>'
+        '<script type="application/nanoframes+json"><![CDATA['
+        '{"animations":[{"target":"#nope","keyframes":[{"t":0,"opacity":0}]}]}]]></script>'
+        "</svg>", encoding="utf-8")
+    code, out = run(["svg", str(src), "-o", str(tmp_path / "x.svg")])
+    assert code == 1
+    assert "lint errors" in out

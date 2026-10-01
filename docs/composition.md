@@ -499,6 +499,31 @@ and rasterizes without crashing this ThorVG build, copies it into
 prints the exact `font-family` value to write, and `nanoframes fonts list`
 lists every loaded face with its selector and marks the fallback.
 
+## Baked frames as documents (`nanoframes svg`)
+
+Rendering is bake-then-rasterize: every frame becomes a *resolved* SVG document
+— the clock is materialized into it (`transform`, colours, clip windows), the
+timeline and its `<script>` are gone — and that document is what the rasterizer
+draws. `nanoframes svg` writes it out (`--t` for one frame, `--all -o DIR` for
+the clip), so it can be read, diffed, or handed to another SVG renderer.
+
+Two things worth knowing about the form:
+
+- **It costs almost nothing to produce.** Baking all 900 frames of a 30 s clip
+  takes ~0.4 s; essentially all of a render's time is the rasterization. So the
+  document layer is not a performance knob — it is what makes the picture
+  inspectable, and it is the seam a second renderer would attach to.
+- **It is resolved, but not renderer-neutral about fonts.** The `font-family`
+  values it carries are the ones *this* engine matches — a loaded face's
+  file-name stem (see "Known ThorVG behaviors"). A consumer that matches CSS
+  family names, or a font stack, needs those translated; `nanoframes fonts list`
+  prints each loaded face and the value that selects it, and the bundled face's
+  selector is its family name.
+
+Attributes only the checks read (`data-safe-margin`, `data-palette-budget`) and
+nanoframes' own metadata (`data-width`, `data-duration`, …) ride along in the
+document; other renderers ignore them.
+
 ## CLI examples
 
 ```bash
@@ -511,6 +536,8 @@ nanoframes debug my-video.nf.svg --t 2.0        # where each element lands, fram
 nanoframes debug my-video.nf.svg --pixels       # + hide each element to find buried ones
 nanoframes debug my-video.nf.svg --loop         # + compare the loop's seam frames
 nanoframes measure my-video.nf.svg  # report renderer-exact text widths
+nanoframes svg my-video.nf.svg --t 2.0             # the baked frame as static SVG
+nanoframes svg my-video.nf.svg --all -o frames-svg/  # one document per frame
 nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
 nanoframes render my-video.nf.svg --t 2.0 --dpi 2  # same frame, 2x pixel density
 nanoframes preview my-video.nf.svg --t 2.0         # render + open

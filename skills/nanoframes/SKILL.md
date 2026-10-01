@@ -228,6 +228,8 @@ nanoframes strip  <comp>.nf.svg -n 12 -o strip.png   # contact sheet: the motion
 nanoframes onion  <comp>.nf.svg -n 8 --to 10 -o onion.png  # blended: the path + easing
 nanoframes video  <comp>.nf.svg -o out.mp4 --scale 0.5       # draft: half-size, ~4x faster
 nanoframes video  <comp>.nf.svg -o out.mp4 --audio bgm.mp3   # + audio mux
+nanoframes svg <comp>.nf.svg --t 2      # the baked static frame (no timeline) as SVG
+nanoframes svg <comp>.nf.svg --all -o svgs/   # every frame as a document
 nanoframes measure <comp>.nf.svg        # renderer-exact glyph widths
 nanoframes fonts list|add|verify|install          # CJK font toolbox (list prints selectors)
 nanoframes diagram <spec.json> -o out.nf.svg      # diagram spec -> composition

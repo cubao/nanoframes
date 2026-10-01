@@ -209,6 +209,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
 
+    sp = sub.add_parser("svg", help="write the baked static SVG of a frame (the interchange form)")
+    sp.add_argument("composition", help="path to a .nf.svg composition")
+    sp.add_argument("--t", type=float, default=0.0, help="frame to bake (seconds)")
+    sp.add_argument("-o", "--out", default=None,
+                    help="file to write (default: stdout); with --all, a directory")
+    sp.add_argument("--all", action="store_true",
+                    help="bake every frame into the directory given by -o")
+    sp.add_argument("--with-measure", action="store_true",
+                    help="run the text auto-layout pass too (chips, wrap, curve, fit)")
+    sp.set_defaults(handler=cmd_svg)
+
     sp = sub.add_parser("measure", help="report renderer-exact glyph widths for text elements")
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.set_defaults(handler=cmd_measure)
@@ -367,6 +378,59 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("  nanoframes check {path}".format(path=path))
     print(f"  nanoframes render {path} --t 1.0")
     return 0
+
+
+def cmd_svg(args: argparse.Namespace) -> int:
+    """Bake a frame to static SVG: what the renderer is handed, as a document.
+
+    This is the intermediate the renderer already works from — every `render`
+    writes one of these to a temp file and hands it to ThorVG — so it is worth
+    being able to see and keep. It is also the interchange form: a baked frame
+    is *resolved* (no timeline, no `<script>`, transforms and colours
+    materialized), so any SVG renderer can draw it, and a host that wants to
+    rasterize with something else has one file per frame to feed it.
+
+    What it is not is renderer-neutral about **fonts**: the names it writes are
+    the ones *this* engine matches (a face's file-name stem), so a consumer with
+    CSS-family matching needs them translated. `nanoframes fonts list` prints
+    the mapping, and the bundled face's name is its family.
+    """
+    from nanoframes import bake
+
+    doc = _load(args.composition)
+    if has_errors(lint_path(args.composition)):
+        print("nanoframes: refusing to bake a composition with lint errors "
+              "(run `nanoframes check`)", file=sys.stderr)
+        return 1
+    comp = doc.composition
+    m = measurer() if args.with_measure else None
+
+    if not args.all:
+        svg = bake.bake_svg(doc, args.t, measurer=m)
+        if args.out:
+            _write_text(args.out, svg)
+            print(f"wrote {args.out} ({len(svg)} bytes, t={args.t:g}s)")
+        else:
+            sys.stdout.write(svg)
+        return 0
+
+    if not args.out:
+        print("nanoframes: --all needs -o <directory>", file=sys.stderr)
+        return 2
+    os.makedirs(args.out, exist_ok=True)
+    prefix = comp.composition_id or os.path.splitext(os.path.basename(args.composition))[0]
+    times = timeline.frame_times(comp)
+    for i, t in enumerate(times):
+        _write_text(os.path.join(args.out, f"{prefix}.{i:05d}.svg"),
+                    bake.bake_svg(doc, t, measurer=m))
+    print(f"wrote {len(times)} frames to {args.out}/ ({prefix}.*.svg)")
+    return 0
+
+
+def _write_text(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
 
 
 def cmd_measure(args: argparse.Namespace) -> int:
