@@ -22,9 +22,14 @@ build:
 
 # PyPI artifact: a fresh sdist only (mirrors ../redisk; pip builds the wheel
 # from it on install). Dry-run check:  twine check dist/*.tar.gz
+#
+# `$(PY) -m build` and not `pipx run build`: the `build` package's console
+# script is `pyproject-build`, so pipx resolves nothing for the spec `build`
+# and the target dies before it builds anything. The module needs only the
+# package, and it is what the `build` target above already calls.
 sdist:
 	rm -rf dist
-	python3 -m pipx run build --sdist
+	$(PY) -m build --sdist
 
 # Publish the sdist to PyPI (needs twine + ~/.pypirc credentials).
 # Test index first:  twine upload dist/nanoframes-*.tar.gz -r testpypi
