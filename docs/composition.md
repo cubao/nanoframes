@@ -74,7 +74,20 @@ colors interpolate RGB; anything non-interpolable holds the earlier keyframe.
 | `decelerate` | Material 3: entering |
 | `apple` | the Apple HIG default |
 | `gentle` | the premium "float"; ambient and background motion |
+| `spring(mass, stiffness, damping)` | a damped harmonic oscillator — overshoots, then rings down |
 | `cubic-bezier(x1, y1, x2, y2)` | any curve, written as the reference tables write it |
+
+A **spring** is the one curve that is not a fraction of the segment but a
+physical settle: ``spring()`` (defaults ``1, 180, 20``) or any prefix of the
+three parameters. It is the exact solution of a unit mass on a damped spring, in
+three regimes (under-, critically and over-damped — the over-damped one is a
+different formula, not the critical one), and it is *not clamped*: overshoot is
+what a spring is for. It has no natural length, so the two keyframe times still
+decide how long the settle takes. `damping` must be positive — a spring with
+none never arrives, so it cannot be the segment that lands on a keyframe, and
+`check` reports it as `animation.unknown_ease`. It is written in
+`nanoframes/ease.py` and its three closed forms are checked against a numerical
+integration of the same equation of motion (`tests/test_spring.py`).
 
 `x1` and `x2` must lie in `0..1` — that is what keeps the curve a function of
 time. `y` is free, which is how overshoot is expressed: the values above 1 (and

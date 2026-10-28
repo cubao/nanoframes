@@ -115,7 +115,8 @@ def _check_easing(comp: Composition, findings: list[Finding]) -> None:
                     "warning",
                     f"{anim.target}: unknown ease {kf.ease!r} at t={kf.t:g} — the renderer"
                     " has no such curve and interpolates linearly; use ease-in, ease-out,"
-                    " ease-in-out, a named curve, or a cubic-bezier(x1,y1,x2,y2) literal",
+                    " ease-in-out, a named curve, cubic-bezier(x1,y1,x2,y2), or"
+                    " spring(mass,stiffness,damping)",
                     code="animation.unknown_ease", element=anim.target, t=kf.t,
                 ))
         if kfs and kfs[0].ease and kfs[0].ease != "linear" and ease.known(kfs[0].ease):

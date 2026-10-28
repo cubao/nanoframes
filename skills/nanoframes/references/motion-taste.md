@@ -139,6 +139,10 @@ action, and the rest resolving and holding.
   offer rather than drawing braces. Use a monospace face (`Sarasa Mono SC`,
   every digit exactly `font-size` px) so the digits do not jitter as the value
   changes width, and let labels/units appear **after** the number resolves.
+- Springs are for things that have weight (`spring(1, 180, 20)` is a good
+  default; lower `damping` overshoots more, lower `stiffness` is slower). Use
+  one for a single decisive arrival, not for everything on the page: two springs
+  in one scene already read as a bounce.
 - **Serious data = calm ease-out, no bounce.** Reserve pops for brand/UI
   moments.
 

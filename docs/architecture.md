@@ -579,6 +579,27 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.5.2 (2026-10)** — spring easing, as a curve rather than a stepping
+  integrator. `spring(mass, stiffness, damping)` joins the ease vocabulary as
+  the exact solution of a unit mass on a damped spring, so a frame's value
+  depends on its own time and nothing else — the property every other curve here
+  has, and why a render can be resumed at any frame (fframes' spring is
+  equivalent in effect but sampled from a runtime; a closed form needs no
+  runtime).
+
+  The part worth the words is the **over-damped regime**. A two-branch
+  implementation (under-damped, else critically damped) still looks like a
+  spring and settles at the wrong speed, and nothing about the picture says so.
+  All three closed forms here are checked against an RK4 integration of
+  ``x'' + 2ζω₀x' + ω₀²x = ω₀²``: they agree to 1e-14. `damping` must be positive
+  — a spring with none never arrives, so it cannot be the segment that lands on
+  a keyframe, and `check` reports the specification as `animation.unknown_ease`
+  rather than quietly drawing a different motion.
+
+  The overshoot is not clamped (that is what a spring is for); properties with
+  their own range clamp where they interpolate, exactly as an overshooting
+  bezier already does for opacity.
+
 - **0.5.1 (2026-10)** — sound, as a track list rather than DSP. fframes writes
   its own mixer and its own BS.1770 loudness analyser (2,829 lines) because it
   links libav and never shells out; this package already shells out, and ffmpeg

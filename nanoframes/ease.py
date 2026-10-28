@@ -33,6 +33,7 @@ motion never received the curve they wrote.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Callable, Dict, Optional, Tuple
 
@@ -110,6 +111,97 @@ def cubic_bezier(x1: float, y1: float, x2: float, y2: float) -> Callable[[float]
 
 
 # ---------------------------------------------------------------------------
+# Spring
+# ---------------------------------------------------------------------------
+
+
+def spring(mass: float = 1.0, stiffness: float = 180.0, damping: float = 20.0
+           ) -> Callable[[float], float]:
+    """A damped harmonic oscillator, as a timing function.
+
+    The closed form of a unit mass pulled to 1 and released — what a "spring" is
+    in every motion system an author has met, with the same three knobs. Written
+    out rather than stepped, so a frame's value depends on its own time and
+    nothing else: the property every curve here has, and why a render can be
+    resumed at any frame.
+
+    Three regimes, all of them the exact solution of ``x'' + 2ζω₀x' + ω₀²x = ω₀²``
+    with ``x(0) = x'(0) = 0`` (``ζ = damping / 2√(km)``, ``ω₀ = √(k/m)``):
+
+    * **under-damped** ``ζ < 1`` — ``1 - e^(-ζω₀t)(cos ω_d t + (ζω₀/ω_d) sin ω_d t)``,
+      ``ω_d = ω₀√(1-ζ²)``. Overshoots, then rings down.
+    * **critically damped** ``ζ = 1`` — ``1 - (1 + ω₀t)e^(-ω₀t)``. The fastest
+      approach that does not pass the target.
+    * **over-damped** ``ζ > 1`` — ``1 - (r₊e^(r₋t) - r₋e^(r₊t))/(r₊ - r₋)`` with
+      ``r± = -ω₀(ζ ∓ √(ζ²-1))``. Two real exponentials, no overshoot.
+
+    The over-damped case is worth spelling out because it is the one that gets
+    lost: collapsing it onto the critically damped formula (which is what a
+    two-branch implementation does) still *looks* like a spring, but it is not
+    the motion those numbers describe — it settles at the wrong speed, and a
+    composition tuned against it moves when the parameters are fixed. The test
+    integrates the ODE numerically and compares.
+
+    ``damping`` must be positive: a spring with none never settles, so it
+    cannot be a segment that *arrives* at a keyframe — it would reach the next
+    keyframe somewhere else entirely.
+
+    The result is not clamped. A spring is supposed to overshoot; properties
+    with their own range clamp where they interpolate, as an overshooting bezier
+    already does for opacity.
+    """
+    if mass <= 0:
+        raise ValueError(f"spring mass must be > 0, got {mass}")
+    if stiffness <= 0:
+        raise ValueError(f"spring stiffness must be > 0, got {stiffness}")
+    if damping <= 0:
+        raise ValueError(f"spring damping must be > 0, got {damping}"
+                         " (a spring with no damping never settles, so it cannot"
+                         " arrive at the next keyframe)")
+
+    zeta = damping / (2.0 * math.sqrt(stiffness * mass))
+    w0 = math.sqrt(stiffness / mass)
+
+    if zeta < 1.0:
+        wd = w0 * math.sqrt(1.0 - zeta * zeta)
+
+        def under(u: float) -> float:
+            if u <= 0.0:
+                return 0.0
+            return 1.0 - math.exp(-u * zeta * w0) * (
+                math.cos(wd * u) + (zeta * w0 / wd) * math.sin(wd * u))
+
+        return under
+
+    if abs(zeta - 1.0) < 1e-9:
+
+        def critical(u: float) -> float:
+            if u <= 0.0:
+                return 0.0
+            return 1.0 - (1.0 + w0 * u) * math.exp(-w0 * u)
+
+        return critical
+
+    root = w0 * math.sqrt(zeta * zeta - 1.0)
+    r_plus = -zeta * w0 + root
+    r_minus = -zeta * w0 - root
+    span = r_plus - r_minus
+
+    def over(u: float) -> float:
+        if u <= 0.0:
+            return 0.0
+        return 1.0 - (r_plus * math.exp(r_minus * u)
+                      - r_minus * math.exp(r_plus * u)) / span
+
+    return over
+
+
+#: ``spring(...)`` written inline: ``spring(mass, stiffness, damping)``, with
+#: the same defaults every one of the three omitted gets.
+_SPRING_RE = re.compile(r"^spring\(([^()]*)\)$")
+
+
+# ---------------------------------------------------------------------------
 # The named table
 # ---------------------------------------------------------------------------
 
@@ -159,6 +251,25 @@ def _build(spec: str) -> Optional[Callable[[float], float]]:
     numbers = NAMED_BEZIERS.get(spec)
     if numbers is not None:
         return cubic_bezier(*numbers)
+    spring_match = _SPRING_RE.match(spec)
+    if spring_match is not None:
+        # Positional, and any prefix of the three: `spring()`, `spring(1, 100)`,
+        # `spring(1, 100, 8)`. Parsing by regex groups was how `spring(2, 240)`
+        # read 240 as the damping (the middle group is optional, so it matched
+        # the third slot) — the arguments are a list, not three optional slots.
+        raw = [part.strip() for part in spring_match.group(1).split(",")]
+        raw = [part for part in raw if part]
+        if len(raw) > 3:
+            return None
+        try:
+            values = [float(part) for part in raw]
+        except ValueError:
+            return None
+        defaults = (1.0, 180.0, 20.0)
+        try:
+            return spring(*(values + list(defaults[len(values):])))
+        except ValueError:
+            return None
     match = _BEZIER_RE.match(spec)
     if match is None:
         return None
