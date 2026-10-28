@@ -20,6 +20,7 @@ Commands
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -205,9 +206,26 @@ def build_parser() -> argparse.ArgumentParser:
     _add_jobs(sp)
     sp.add_argument("--keep-frames", default=None, help="keep the PNG sequence at this dir")
     sp.add_argument("--audio", default=None, help="mux this audio file into the MP4 (aac, shortest)")
+    sp.add_argument("--tracks", default=None, metavar="JSON",
+                    help="a track list (JSON file) to mix and mux; see `nanoframes audio mix`")
     sp.set_defaults(handler=cmd_video)
     sp.add_argument("--no-cache", action="store_true",
                     help="disable the fast re-render cache (.nanoframes-cache)")
+
+    sp = sub.add_parser("audio", help="mix a track list, or measure loudness with ffmpeg")
+    asub = sp.add_subparsers(dest="audio_command", required=True)
+    ap = asub.add_parser("mix", help="mix a track list (JSON) into a WAV")
+    ap.add_argument("tracks", help="path to the track list JSON")
+    ap.add_argument("-o", "--out", default="mix.wav", help="output WAV")
+    ap.add_argument("--no-limiter", action="store_true",
+                    help="skip the look-ahead limiter on the mix")
+    ap.set_defaults(ahandler=cmd_audio_mix)
+    ap = asub.add_parser("analyze", help="integrated loudness, true peak and range (EBU R128)")
+    ap.add_argument("file", help="audio file to measure")
+    ap.add_argument("--json", action="store_true", help="emit the measurement as JSON")
+    ap.add_argument("--target", type=float, default=None,
+                    help="loudness target to judge against (default -14 LUFS)")
+    ap.set_defaults(ahandler=cmd_audio_analyze)
 
     sp = sub.add_parser("svg", help="write the baked static SVG of a frame (the interchange form)")
     sp.add_argument("composition", help="path to a .nf.svg composition")
@@ -378,6 +396,63 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("  nanoframes check {path}".format(path=path))
     print(f"  nanoframes render {path} --t 1.0")
     return 0
+
+
+def cmd_audio_mix(args: argparse.Namespace) -> int:
+    """Render a declarative track list to a WAV."""
+    from nanoframes import audio
+
+    try:
+        with open(args.tracks, encoding="utf-8") as fh:
+            spec = json.load(fh)
+        tracks = spec["tracks"] if isinstance(spec, dict) else spec
+        out = audio.mix(tracks, args.out, limiter=not args.no_limiter)
+    except (OSError, KeyError, json.JSONDecodeError) as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        return 2
+    except audio.AudioError as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {out}")
+    # Report, do not judge: `audio analyze` is the gate, and a mix that exists
+    # should not look like a failure just because its level is low.
+    report = audio.analyze(out)
+    if report["integrated_lufs"] is None:
+        print(f"nanoframes: {out} is digital silence", file=sys.stderr)
+    else:
+        print(f"  {report['integrated_lufs']:.1f} LUFS, true peak"
+              f" {report['true_peak_dbtp']:.1f} dBTP"
+              f" (run `nanoframes audio analyze {out}` to judge the level)")
+    return 0
+
+
+def cmd_audio_analyze(args: argparse.Namespace) -> int:
+    """Measure a file and say whether it is deliverable.
+
+    Exit 1 when the measurement misses the target, so this closes a loop the
+    same way `check` does: a mix that is 8 dB quiet is a finding, not a taste.
+    """
+    from nanoframes import audio
+
+    target = audio.DEFAULT_TARGET_LUFS if args.target is None else args.target
+    try:
+        report = audio.analyze(args.file)
+    except audio.AudioError as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        return 2
+    problems = audio.verdict(report, target=target)
+    if args.json:
+        envelope.emit_json({"ok": not problems, "report": report, "problems": problems})
+        return EXIT_FAIL if problems else EXIT_OK
+    if report["integrated_lufs"] is None:
+        print(f"{args.file}: digital silence")
+    else:
+        print(f"{args.file}: {report['integrated_lufs']:.1f} LUFS,"
+              f" true peak {report['true_peak_dbtp']:.1f} dBTP,"
+              f" range {report['loudness_range']:.1f} LU")
+    for problem in problems:
+        print(f"nanoframes: {problem}", file=sys.stderr)
+    return EXIT_FAIL if problems else EXIT_OK
 
 
 def cmd_svg(args: argparse.Namespace) -> int:
@@ -824,8 +899,24 @@ def cmd_video(args: argparse.Namespace) -> int:
               "(run `nanoframes check`)", file=sys.stderr)
         return 1
     scale = _scale_of(args)
+    audio_path = args.audio
+    if args.tracks:
+        from nanoframes import audio as audio_mod
+
+        try:
+            with open(args.tracks, encoding="utf-8") as fh:
+                spec = json.load(fh)
+            tracks = spec["tracks"] if isinstance(spec, dict) else spec
+            audio_path = audio_mod.mix(tracks, os.path.join(
+                os.path.dirname(os.path.abspath(args.out)) or ".", ".nanoframes-mix.wav"))
+        except (OSError, KeyError, json.JSONDecodeError) as exc:
+            print(f"nanoframes: {exc}", file=sys.stderr)
+            return 2
+        except audio_mod.AudioError as exc:
+            print(f"nanoframes: {exc}", file=sys.stderr)
+            return 1
     render_video(doc, args.out, fps=args.fps, scale=scale, threads=args.threads,
-                 keep_frames=args.keep_frames, cache=_make_cache(args), audio=args.audio,
+                 keep_frames=args.keep_frames, cache=_make_cache(args), audio=audio_path,
                  dpi=_dpi_of(args), media_resolver=_media_resolver(doc, scale),
                  jobs=args.jobs, comp_path=args.composition)
     print(f"wrote {args.out}")
@@ -1240,6 +1331,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(args_list)
     if hasattr(args, "fhandler") and args.fhandler is not None:
         return args.fhandler(args)
+    if hasattr(args, "ahandler") and args.ahandler is not None:
+        return args.ahandler(args)
     try:
         return args.handler(args)
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:

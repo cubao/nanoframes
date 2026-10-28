@@ -579,6 +579,29 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.5.1 (2026-10)** — sound, as a track list rather than DSP. fframes writes
+  its own mixer and its own BS.1770 loudness analyser (2,829 lines) because it
+  links libav and never shells out; this package already shells out, and ffmpeg
+  ships *measured* implementations of exactly those standards — `sidechaincompress`
+  for ducking, `alimiter`, `amix`, and `loudnorm` with EBU R128 gating. So the
+  new `nanoframes/audio.py` is a **compiler from a declared track list to a
+  filter graph** (`{"file": "music.mp3", "gain_db": -18, "fade_in": 1,
+  "duck_under_voice": true}`), plus `nanoframes audio mix` and
+  `nanoframes audio analyze` (integrated LUFS, true peak, range; exit 1 on a
+  miss, so it closes a loop like `check` does).
+
+  Three things the graph had to get right, each of them measured rather than
+  assumed. **Every input stream is consumed once** — a voice track feeds both
+  the mix and the compressor's sidechain, so it is `asplit`, because referencing
+  `[1:a]` twice is an error a graph can look correct while containing; and the
+  split only exists when a sidechain will actually consume it (an `asplit` whose
+  second output goes nowhere is `output 0 (b1) unconnected`). **`amix` runs with
+  `normalize=0`**, since the default divides by the input count and silently
+  drops the level of a mix every time a track is added. **Per-track order is
+  format → gain → fades → delay**, because `afade` works on timestamps and a
+  fade computed after a delay falls in the silence. `sidechaincompress`
+  `threshold` is linear amplitude, not dB: 0.03 was measured to ignore a voice
+  at -30 dB and duck only a full-scale one, so the duck uses 0.01 (-40 dBFS).
 - **0.5.0 (2026-10)** — the frames reach the encoder as bytes, not pictures.
   `nanoframes video` used to write a PNG per frame and let ffmpeg read the
   sequence back; the round trip cost **40% of the whole render** (180 frames of

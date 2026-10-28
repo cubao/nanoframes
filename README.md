@@ -78,6 +78,11 @@ Diagnostics are machine-readable: every finding carries a stable `code`, and
 `nanoframes check --json` / `debug --json` emit the structured form an agent
 branches on instead of parsing prose.
 
+Sound is a declarative track list — gain, fades, start offsets, and
+`duck_under_voice` for the music that has to get out of a voice's way — compiled
+to one ffmpeg filter graph, with `nanoframes audio analyze` reporting EBU R128
+loudness, true peak and range (and exiting 1 when the mix misses the target).
+
 Two review images turn a clip into a picture an agent can read without watching
 it: `nanoframes strip` lays evenly spaced frames out as a labelled contact
 sheet, and `nanoframes onion` blends a range into one image with later frames
