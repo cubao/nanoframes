@@ -537,6 +537,27 @@ Attributes only the checks read (`data-safe-margin`, `data-palette-budget`) and
 nanoframes' own metadata (`data-width`, `data-duration`, …) ride along in the
 document; other renderers ignore them.
 
+## Time on the command line
+
+Every command that takes a time takes all of these, parsed in one place
+(`nanoframes/timespec.py`) so `--t 50%` cannot mean a different frame in `debug`
+than in `render`:
+
+| written | means |
+|---|---|
+| `3.2s`, `500ms` | a time |
+| `120`, `120f` | a frame index |
+| `2.5` | a time (a decimal is seconds — what `--t` has always meant here) |
+| `50%` | a fraction of the clip |
+| `1:05.5` | minutes:seconds |
+| `start`, `end` | the first and last *rendered* frames (`end` is not `data-duration`) |
+| `2s..4s`, `..1s`, `5s..` | a range, end exclusive; either side may be open |
+
+A time outside the clip is refused rather than clamped: rendering the last frame
+while the command line says something else is the quiet substitution the checks
+exist to catch. `render --crop x,y,w,h [--zoom N]` writes a crop (zoomed with
+nearest-neighbour, for judging detail at 1:1 instead of on a thumbnail).
+
 ## CLI examples
 
 ```bash
@@ -553,6 +574,9 @@ nanoframes measure my-video.nf.svg  # report renderer-exact text widths
 nanoframes svg my-video.nf.svg --t 2.0             # the baked frame as static SVG
 nanoframes svg my-video.nf.svg --all -o frames-svg/  # one document per frame
 nanoframes render my-video.nf.svg --t 2.0          # single frame PNG
+nanoframes render my-video.nf.svg --t 50% -o half.png       # a fraction of the clip
+nanoframes render my-video.nf.svg --range 2s..4s -o frames  # just those frames
+nanoframes render my-video.nf.svg --t 3s --crop 1100,520,240,120 --zoom 4 -o detail.png
 nanoframes render my-video.nf.svg --t 2.0 --dpi 2  # same frame, 2x pixel density
 nanoframes preview my-video.nf.svg --t 2.0         # render + open
 nanoframes render my-video.nf.svg -o frames        # full batch

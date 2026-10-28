@@ -100,6 +100,78 @@ def _dpi_of(args: argparse.Namespace) -> float:
     return dpi
 
 
+def _time_of(args: argparse.Namespace, doc) -> float:
+    """`--t` through the time-spec grammar, with the old float behaviour intact."""
+    from nanoframes.timespec import TimeSpecError, parse_time
+
+    raw = getattr(args, "t", None)
+    if raw is None:
+        return 0.0
+    try:
+        return parse_time(raw, doc.composition)
+    except TimeSpecError as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+
+
+def _frames_of(args: argparse.Namespace, doc, *, keep_frames: bool = False):
+    """The frame indices this command was asked for.
+
+    One place, so `--t 50%` on `debug`, `render` and `strip` cannot land on
+    different frames. `keep_frames` allows an empty selection to mean "all".
+    """
+    from nanoframes.timespec import TimeSpecError, frame_indices
+
+    spec = getattr(args, "range", None) or getattr(args, "t", None)
+    if spec is None and not keep_frames:
+        return None
+    try:
+        return frame_indices(spec, doc.composition)
+    except TimeSpecError as exc:
+        print(f"nanoframes: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+
+
+def _crop(args: argparse.Namespace, img):
+    """Apply `--crop x,y,w,h` and `--zoom N` to a rendered frame."""
+    crop = getattr(args, "crop", None)
+    zoom = getattr(args, "zoom", None) or 0
+    if not crop:
+        return img
+    try:
+        x, y, w, h = (int(part) for part in str(crop).split(","))
+    except ValueError:
+        print(f"nanoframes: --crop wants x,y,w,h (four integers), got {crop!r}",
+              file=sys.stderr)
+        raise SystemExit(2) from None
+    box = (x, y, x + w, y + h)
+    if box[2] <= box[0] or box[3] <= box[1]:
+        print(f"nanoframes: --crop box {crop!r} is empty", file=sys.stderr)
+        raise SystemExit(2)
+    out = img.crop(box)
+    if zoom and zoom > 1:
+        from PIL import Image
+
+        factor = min(zoom, max(1, 1600 // max(1, out.width)))
+        if factor > 1:
+            out = out.resize((out.width * factor, out.height * factor), Image.NEAREST)
+    return out
+
+
+def _add_times(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument("--t", default=None, metavar="TIME",
+                    help="a time: 3.2s, 120 (frames), 50%%, 1:05.5, start, end")
+    sp.add_argument("--crop", default=None, metavar="X,Y,W,H",
+                    help="write a crop of the frame (video pixels)")
+    sp.add_argument("--zoom", type=int, default=0, metavar="N",
+                    help="zoom a --crop up by N (nearest neighbour, for judging detail)")
+
+
+def _add_range(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument("--range", default=None, metavar="A..B",
+                    help="a range of frames: 2s..4s, ..1s, 5s.., or a single time")
+
+
 def _scale_of(args: argparse.Namespace) -> float:
     scale = getattr(args, "scale", 1.0)
     if scale <= 0:
@@ -160,7 +232,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("debug", help="show where each element's geometry lands")
     sp.add_argument("composition", help="path to a .nf.svg composition")
-    sp.add_argument("--t", type=float, default=0.0, help="frame to report (seconds)")
+    sp.add_argument("--t", default="0", metavar="TIME",
+                    help="frame to report (3.2s, 120, 50%%, start, end)")
     sp.add_argument("--samples", type=int, default=24, help="frames sampled by the clip scan")
     sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
     sp.add_argument("--all-elements", action="store_true",
@@ -185,7 +258,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("render", help="render a frame or the full clip to PNG")
     sp.add_argument("composition", help="path to a .nf.svg composition")
-    sp.add_argument("--t", type=float, default=None, help="render only this time (seconds)")
+    _add_times(sp)
+    _add_range(sp)
     sp.add_argument("-o", "--out", default="out", help="output directory or file path")
     sp.add_argument("--threads", type=int, default=4, help="ThorVG thread count")
     _add_jobs(sp)
@@ -236,7 +310,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("svg", help="write the baked static SVG of a frame (the interchange form)")
     sp.add_argument("composition", help="path to a .nf.svg composition")
-    sp.add_argument("--t", type=float, default=0.0, help="frame to bake (seconds)")
+    sp.add_argument("--t", default="0", metavar="TIME",
+                    help="frame to bake (3.2s, 120, 50%%, start, end)")
     sp.add_argument("-o", "--out", default=None,
                     help="file to write (default: stdout); with --all, a directory")
     sp.add_argument("--all", action="store_true",
@@ -301,6 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(handler=cmd_chart)
 
     sp = sub.add_parser("strip", help="a contact sheet of the motion, one PNG to review")
+    _add_range(sp)
     sp.add_argument("composition", help="path to a .nf.svg composition")
     sp.add_argument("-n", "--count", type=int, default=12, help="how many frames to sample")
     sp.add_argument("--columns", type=int, default=4, help="tiles per row")
@@ -488,10 +564,11 @@ def cmd_svg(args: argparse.Namespace) -> int:
     m = measurer() if args.with_measure else None
 
     if not args.all:
-        svg = bake.bake_svg(doc, args.t, measurer=m)
+        t = _time_of(args, doc)
+        svg = bake.bake_svg(doc, t, measurer=m)
         if args.out:
             _write_text(args.out, svg)
-            print(f"wrote {args.out} ({len(svg)} bytes, t={args.t:g}s)")
+            print(f"wrote {args.out} ({len(svg)} bytes, t={t:g}s)")
         else:
             sys.stdout.write(svg)
         return 0
@@ -774,8 +851,8 @@ def cmd_debug(args: argparse.Namespace) -> int:
 
     doc = _load(args.composition)
     m = measurer()
-    report = diagnose.frame_report(doc, args.t, measurer=m, pixels=args.pixels,
-                                   threads=args.threads)
+    report = diagnose.frame_report(doc, _time_of(args, doc), measurer=m,
+                                   pixels=args.pixels, threads=args.threads)
     scan = None if args.no_scan else diagnose.scan_clip(
         doc, measurer=m, samples=max(2, args.samples))
     seam = diagnose.loop_seam(doc) if args.loop else None
@@ -870,17 +947,25 @@ def cmd_render(args: argparse.Namespace) -> int:
     resolver = _media_resolver(doc, scale)
     if args.t is not None:
         # single frame -> write PNG to args.out (treat as file or dir/<name>_t.png)
-        dst = _frame_dest(doc, args.out, args.t)
-        render_frame(doc, args.t, out_path=dst, threads=args.threads, cache=cache,
-                     scale=scale, dpi=_dpi_of(args), media_resolver=resolver)
+        t = _time_of(args, doc)
+        dst = _frame_dest(doc, args.out, t)
+        img = render_frame(doc, t, threads=args.threads, cache=cache, scale=scale,
+                           dpi=_dpi_of(args), media_resolver=resolver)
+        img = _crop(args, img)
+        os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True)
+        img.save(dst)
         print(f"rendered {dst}")
         return 0
 
     # full batch: frame i at t = i/fps, i in 0..frame_count-1
     os.makedirs(out_dir, exist_ok=True)
     prefix = comp.composition_id or os.path.splitext(os.path.basename(args.composition))[0]
+    times = timeline.frame_times(comp)
+    selected = _frames_of(args, doc)
+    if selected is not None:
+        times = [times[i] for i in selected if i < len(times)]
     blank = parallel.render_sequence(
-        doc, args.composition, timeline.frame_times(comp), out_dir, prefix,
+        doc, args.composition, times, out_dir, prefix,
         jobs=args.jobs if resolver is None else 1, threads=args.threads, cache=cache,
         scale=scale, dpi=_dpi_of(args),
     )
@@ -1079,7 +1164,16 @@ def _sample_frames(doc, args):
     from nanoframes.contact import sample_frames
 
     comp = doc.composition
-    times = sample_frames(comp, args.count, args.first, args.last)
+    first, last = args.first, args.last
+    if getattr(args, "range", None):
+        from nanoframes.timespec import TimeSpecError, parse_range
+
+        try:
+            first, last = parse_range(args.range, comp)
+        except TimeSpecError as exc:
+            print(f"nanoframes: {exc}", file=sys.stderr)
+            raise SystemExit(2) from None
+    times = sample_frames(comp, args.count, first, last)
     cache = _make_cache(args)
     scale = _scale_of(args)
     resolver = _media_resolver(doc, scale)

@@ -580,6 +580,22 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.5.4 (2026-10)** — time on the command line, in one grammar
+  (`nanoframes/timespec.py`): `3.2s`, `120` / `120f`, `50%`, `1:05.5`, `start`,
+  `end`, and ranges `2s..4s` / `..1s` / `5s..`, with `--crop`/`--zoom` for
+  judging detail at 1:1. One parser because three commands take a time — `--t
+  50%` must not select a different frame in `debug` than in `render`.
+
+  Two decisions worth recording, both about not moving what already works. A
+  **decimal is seconds and an integer is a frame**: `--t 2.5` has always meant
+  two and a half seconds here, so reading every bare number as a frame would
+  have silently retimed every existing invocation (it did — two tests caught it,
+  which is why the rule exists). And a time outside the clip is **refused, not
+  clamped**: rendering the last frame while the command line says something else
+  is exactly the quiet substitution this package's checks exist to catch. `end`
+  is the last *rendered* frame, one frame short of `data-duration`, because a
+  name has to refer to a frame that exists.
+
 - **0.5.3 (2026-10)** — `debug --pops`, the failure nothing else sees. `check`
   reads declarations and `strip` samples the clip; an element that is *there*
   and then, one frame later, *there* passes both, because each frame is a good
