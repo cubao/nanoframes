@@ -579,6 +579,24 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.5.0 (2026-10)** — the frames reach the encoder as bytes, not pictures.
+  `nanoframes video` used to write a PNG per frame and let ffmpeg read the
+  sequence back; the round trip cost **40% of the whole render** (180 frames of
+  960x540: 2.50s as PNGs, 1.30s as raw RGB straight down a pipe) and bought
+  nothing, because a frame is 8-bit RGBA to begin with and PNG is lossless.
+  Raw bytes now go to ffmpeg's stdin in frame order, so no intermediate file
+  exists at all; `--keep-frames` still writes PNGs, because there the pictures
+  are the deliverable rather than a step. Both feed one `_encoder_args()` so the
+  codec settings cannot drift between them, and the output is **identical byte
+  for byte**: all 12 shipped examples were rendered both ways and hashed
+  (`tests/test_video_pipe.py` asserts the equality so it cannot rot).
+
+  Two things this path makes explicit that the PNG one hid: an early close of
+  the pipe is `-shortest` doing its job when the audio is shorter than the
+  video (it is still an error if ffmpeg exits non-zero, and that path re-raises
+  with ffmpeg's own stderr), and the frames on the wire are the *rendered* size,
+  so `--scale`/`--dpi` are passed to ffmpeg rather than inferred from the
+  composition.
 - **0.4.0 (2026-09)** — a head-to-head run against
   [fframes](https://github.com/dmtrKovalenko/fframes) (the same 30s/900-frame
   composition, rendered by both) turned up six things worth fixing, five of them

@@ -84,8 +84,9 @@ sheet, and `nanoframes onion` blends a range into one image with later frames
 weighted stronger, so a movement's path and its easing are visible at once.
 
 A full batch renders across worker processes (`-j`, automatic when there are
-frames to share): 900 frames of 1080p is ~6s rather than ~55s on an 8-core
-machine, and the frames are byte-identical either way. A media pre-pass or a
+frames to share), and the frames go to ffmpeg as raw RGB on a pipe rather than
+as a PNG sequence: together that is 2.5s instead of 5.6s for a 180-frame clip,
+with an MP4 identical byte for byte to the PNG path. A media pre-pass or a
 `text_handler` keeps the batch in one process.
 
 Determinism is checked by more than the PNG baselines. `nanoframes digest`

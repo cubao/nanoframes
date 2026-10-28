@@ -61,7 +61,8 @@ def worker_threads(threads: int, workers: int) -> int:
 
 
 def _init_worker(comp_path: str, dest: str, prefix: str, threads: int, scale: float,
-                 dpi: float, cache_config: tuple | None, compress_level: int | None) -> None:
+                 dpi: float, cache_config: tuple | None, compress_level: int | None,
+                 pixel_format: str = "png") -> None:
     """Per-process setup: parse the composition and open a private cache handle.
 
     Opening its own ``FrameCache`` per worker is what the cache is built for
@@ -79,6 +80,7 @@ def _init_worker(comp_path: str, dest: str, prefix: str, threads: int, scale: fl
         scale=scale,
         dpi=dpi,
         compress_level=compress_level,
+        pixel_format=pixel_format,
         cache=FrameCache(*cache_config) if cache_config else None,
     )
 
@@ -88,11 +90,18 @@ def _render_one(job: tuple) -> tuple:
     from nanoframes.render import frame_is_blank, render_frame
 
     index, t = job
-    dst = os.path.join(_STATE["dest"], f"{_STATE['prefix']}.{index:05d}.png")
-    img = render_frame(_STATE["doc"], t, out_path=dst, threads=_STATE["threads"],
-                       cache=_STATE["cache"], scale=_STATE["scale"], dpi=_STATE["dpi"],
-                       warn_blank=False)
-    if _STATE["compress_level"] is not None:
+    raw = _STATE.get("pixel_format") == "rgb"
+    suffix = "rgb" if raw else "png"
+    dst = os.path.join(_STATE["dest"], f"{_STATE['prefix']}.{index:05d}.{suffix}")
+    img = render_frame(_STATE["doc"], t, out_path=None if raw else dst,
+                       threads=_STATE["threads"], cache=_STATE["cache"],
+                       scale=_STATE["scale"], dpi=_STATE["dpi"], warn_blank=False)
+    if raw:
+        # Straight RGB bytes, no PNG encode and no decode on the other side:
+        # this is the whole point of the mode (see video.render_video).
+        with open(dst, "wb") as fh:
+            fh.write(img.convert("RGB").tobytes())
+    elif _STATE["compress_level"] is not None:
         # render_frame already wrote the frame; only the compression level of
         # that write differs, so rewrite it rather than re-render.
         img.save(dst, compress_level=_STATE["compress_level"])
@@ -101,7 +110,8 @@ def _render_one(job: tuple) -> tuple:
 
 def render_sequence(doc, comp_path: str, times: list, dest: str, prefix: str, *,
                     jobs: int = 0, threads: int = 4, cache=None, scale: float = 1.0,
-                    dpi: float = 1.0, compress_level: int | None = None) -> list:
+                    dpi: float = 1.0, compress_level: int | None = None,
+                    pixel_format: str = "png") -> list:
     """Write every frame to ``dest/<prefix>.NNNNN.png``; return the blank times.
 
     The sequential path and the pool write the same files: a worker renders,
@@ -121,14 +131,19 @@ def render_sequence(doc, comp_path: str, times: list, dest: str, prefix: str, *,
     """
     from nanoframes.render import frame_is_blank, render_frame
 
+    raw = pixel_format == "rgb"
+    suffix = "rgb" if raw else "png"
     blank: list = []
     workers = resolve_jobs(jobs, len(times))
     if workers <= 1 or not comp_path or not os.path.exists(comp_path):
         for index, t in enumerate(times):
-            dst = os.path.join(dest, f"{prefix}.{index:05d}.png")
-            img = render_frame(doc, t, out_path=dst, threads=threads, cache=cache,
-                               scale=scale, dpi=dpi, warn_blank=False)
-            if compress_level is not None:
+            dst = os.path.join(dest, f"{prefix}.{index:05d}.{suffix}")
+            img = render_frame(doc, t, out_path=None if raw else dst, threads=threads,
+                               cache=cache, scale=scale, dpi=dpi, warn_blank=False)
+            if raw:
+                with open(dst, "wb") as fh:
+                    fh.write(img.convert("RGB").tobytes())
+            elif compress_level is not None:
                 img.save(dst, compress_level=compress_level)
             if frame_is_blank(img):
                 blank.append(t)
@@ -143,7 +158,7 @@ def render_sequence(doc, comp_path: str, times: list, dest: str, prefix: str, *,
         max_workers=workers,
         initializer=_init_worker,
         initargs=(comp_path, dest, prefix, per_worker, scale, dpi, cache_config,
-                  compress_level),
+                  compress_level, pixel_format),
     ) as pool:
         for _index, t, is_blank in pool.map(_render_one, jobs_out, chunksize=1):
             if is_blank:
