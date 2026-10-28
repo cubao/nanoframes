@@ -165,6 +165,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-scan", action="store_true", help="skip the whole-clip scan")
     sp.add_argument("--all-elements", action="store_true",
                     help="print every element line, without collapsing identical runs")
+    sp.add_argument("--pops", action="store_true",
+                    help="render every frame small and report parts of the picture that"
+                         " change in one frame between still frames (elements that"
+                         " appear, vanish or jump instead of moving)")
+    sp.add_argument("--pop-threshold", type=float, default=0.02, metavar="F",
+                    help="fraction of the frame that must change to count as a pop"
+                         " (default 0.02 = 2%%)")
     sp.add_argument("--pixels", action="store_true",
                     help="probe whether hiding each element changes the frame"
                          " (one extra render per element; finds elements that are on"
@@ -772,10 +779,13 @@ def cmd_debug(args: argparse.Namespace) -> int:
     scan = None if args.no_scan else diagnose.scan_clip(
         doc, measurer=m, samples=max(2, args.samples))
     seam = diagnose.loop_seam(doc) if args.loop else None
+    pops = (diagnose.scan_pops(doc, threshold=args.pop_threshold)
+            if args.pops else None)
 
     if args.json:
         # The same assembler `verify` uses for its `debug` section.
-        envelope.emit_json(diagnose.assemble(report, scan=scan, seam=seam, doc=doc))
+        envelope.emit_json(diagnose.assemble(report, scan=scan, seam=seam, doc=doc,
+                                            pops=pops))
         return EXIT_OK
 
     print(f"frame {report.frame_index}  t={report.t:g}s  canvas {report.width}x{report.height}")
@@ -819,6 +829,20 @@ def cmd_debug(args: argparse.Namespace) -> int:
             print(f"  {entry.label:<16}{counts}{flag}")
         if not scan.never_visible and not any(e.first_off_at is not None for e in scan.elements):
             print("  every element lands on the canvas throughout")
+
+    if pops is not None:
+        if pops.quiet:
+            print(f"pops: none in {pops.frames} frames (nothing changes in one frame"
+                  f" between still frames)")
+        else:
+            print(f"pops: {len(pops.pops)} region(s) change in one frame between still"
+                  f" frames")
+            for pop in pops.pops:
+                x0, y0, x1, y1 = pop.box
+                print(f"  frame {pop.frame:>5} t={pop.t:6.2f}s  {pop.how:<9}"
+                      f" {pop.changed * 100:4.1f}% of the frame changed"
+                      f"  box {x0},{y0} {x1 - x0}x{y1 - y0}"
+                      f"  ->  nanoframes render <comp> --t {pop.t:g}")
 
     if seam is not None:
         verdict = "closed (identical)" if seam.closed else "OPEN"

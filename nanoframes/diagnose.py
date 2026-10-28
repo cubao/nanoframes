@@ -340,7 +340,8 @@ def _probe_contribution(root, width: int, height: int, probed, threads: int) -> 
 
 
 def assemble(report: "FrameReport", scan: "ClipScan | None" = None,
-             seam: "SeamReport | None" = None, doc: Document | None = None) -> dict:
+             seam: "SeamReport | None" = None, doc: Document | None = None,
+             pops: "PopScan | None" = None) -> dict:
     """The ``debug --json`` object, from reports that have already been computed.
 
     A pure assembler: the text path needs the objects themselves, so this takes
@@ -359,6 +360,8 @@ def assemble(report: "FrameReport", scan: "ClipScan | None" = None,
         payload["scan"] = scan.to_dict()
     if seam is not None:
         payload["loop_seam"] = seam.to_dict()
+    if pops is not None:
+        payload["pops"] = pops.to_dict()
     return payload
 
 
@@ -500,3 +503,176 @@ def loop_seam(doc: Document, scale: float = 1.0) -> SeamReport:
     )
     return SeamReport(first_t=first_t, last_t=last_t,
                       differing_fraction=differing, max_channel_delta=max_delta)
+
+
+# ---------------------------------------------------------------------------
+# Pops: a change between two *still* frames
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Pop:
+    """A region that changed in one frame between two frames that held."""
+
+    frame: int
+    t: float
+    box: tuple
+    changed: float            # fraction of the frame that moved
+    how: str                  # "appeared", "vanished" or "jumped"
+    declared: bool = False    # a clip boundary lands on this frame
+    declared_at: float | None = None
+
+
+@dataclass
+class PopScan:
+    frames: int
+    threshold: float
+    pops: list = field(default_factory=list)
+
+    @property
+    def undeclared(self) -> list:
+        """The ones nothing in the composition explains."""
+        return [p for p in self.pops if not p.declared]
+
+    @property
+    def quiet(self) -> bool:
+        return not self.pops
+
+    def to_dict(self) -> dict:
+        return {
+            "frames": self.frames,
+            "threshold": self.threshold,
+            "pops": [
+                {"frame": p.frame, "t": p.t, "box": list(p.box),
+                 "changed": p.changed, "how": p.how,
+                 "declared": p.declared, "declared_at": p.declared_at}
+                for p in self.pops
+            ],
+        }
+
+
+def _declared_boundaries(doc: Document) -> list:
+    """Every clip start and end the composition declares, in seconds."""
+    out = []
+    for el in doc.composition.elements:
+        out.append(el.clip_start)
+        out.append(el.clip_start + (el.clip_duration or doc.composition.duration))
+    return out
+
+
+def scan_pops(doc: Document, *, scale: float = 0.25, threshold: float = 0.02,
+              stillness: float = 0.004, max_pops: int = 24, render=None) -> PopScan:
+    """Find parts of the picture that change in one frame between still frames.
+
+    The failure this catches has no other symptom: an element is *there* and
+    then, one frame later, *there* — a keyframe pair with nothing interpolated
+    between them, a `data-start` on a moving element, a selector that flips.
+    Each frame on its own is a perfectly good picture, so `check` (which reads
+    declarations) and `strip` (which samples the clip) both miss it.
+
+    The criterion is **stillness, change, stillness** — a frame that differs a
+    lot from its neighbour while both neighbours differ from *their* neighbours
+    by almost nothing. That is what separates a pop from fast-but-continuous
+    motion: an ease-out entrance moves a great deal in its first frames, and
+    keeps moving, so it fails the "and then it stopped" half. A hard
+    `data-start` cut passes, which is correct: it *is* a change in one frame,
+    and the author may or may not have meant it.
+
+    So each hit says whether a **declared clip boundary lands on that frame**.
+    `declared: true` means the composition asked for it (`data-start` /
+    `data-duration`); `declared: false` means nothing in the markup does, and
+    that is the one worth chasing.
+
+    Frames are compared at ``scale`` (a quarter by default): the question is
+    "did this region change", not "by how much". A quarter-size grey frame of a
+    1080p clip is ~130 KB, so a 900-frame clip holds ~120 MB of them — the
+    reason the scale is a parameter and the default is not 1.0.
+    """
+    import numpy as np
+
+    from nanoframes.render import render_frame
+
+    comp = doc.composition
+    rate = comp.fps or 1
+    count = comp.frame_count
+    scan = PopScan(frames=count, threshold=threshold)
+    if count < 3:
+        return scan
+
+    boundaries = _declared_boundaries(doc)
+
+    def small(i: int):
+        img = (render or render_frame)(doc, i / rate, cache=None, scale=scale,
+                                       warn_blank=False)
+        return np.asarray(img.convert("L"), dtype=np.int16)
+
+    # Two passes, because the two halves of the criterion want different
+    # neighbours: "changed a lot" is a property of one delta, "was still before
+    # and after" is a property of the deltas on either side of the *event*.
+    frames = [small(0)]
+    deltas = [0.0]                      # deltas[i] = change from frame i-1 to i
+    for i in range(1, count):
+        frames.append(small(i))
+        deltas.append(float((np.abs(frames[-1] - frames[-2]) > 8).mean()))
+
+    # A one-frame move lights up one or two consecutive deltas (the moving
+    # element's old and new positions can both straddle a frame), so an *event*
+    # is a run of deltas above the threshold, not a single one.
+    events: list[tuple] = []
+    index = 1
+    while index < len(deltas):
+        if deltas[index] <= threshold:
+            index += 1
+            continue
+        start = index
+        peak = deltas[index]
+        while index + 1 < len(deltas) and deltas[index + 1] > threshold:
+            index += 1
+            peak = max(peak, deltas[index])
+        events.append((start, index, peak))
+        index += 1
+
+    for start, end, peak in events:
+        before = deltas[start - 1] if start >= 1 else 0.0
+        after = deltas[end + 1] if end + 1 < len(deltas) else 0.0
+        # Stillness on **both** sides. This is the whole discrimination: an
+        # ease-out entrance changes a lot and keeps changing, an element that
+        # pops is surrounded by identical frames. Relaxing it to "either side"
+        # was measured to report 13 regions on a clean badge (entrance ramps),
+        # which is how a check stops being read.
+        if before > stillness or after > stillness:
+            continue
+        # The event's *last* delta end is the first frame that shows the new
+        # picture (delta[i] compares i-1 with i), so that is the frame to
+        # report: it is the one a reader should look at, and the one whose
+        # before/after tells appeared from vanished.
+        previous, current = frames[end - 1], frames[end]
+        moved = np.abs(current - previous) > 8
+        ys, xs = np.nonzero(moved)
+        if not len(xs):
+            continue
+        y0, y1, x0, x1 = int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
+        box = (int(xs.min() / scale), int(ys.min() / scale),
+               int(xs.max() / scale), int(ys.max() / scale))
+        # "Blank" is *the background*, which is white in most compositions:
+        # testing for darkness called a black rect appearing on a white plate
+        # a vanish (measured). So compare against the frame's own corner pixel
+        # — the one place a change in the middle cannot move.
+        background = int(previous[0, 0])
+        tolerance = 8
+        was_blank = float((np.abs(previous[y0:y1, x0:x1] - background) <= tolerance).mean())
+        now_blank = float((np.abs(current[y0:y1, x0:x1] - background) <= tolerance).mean())
+        if was_blank > 0.6 and now_blank < 0.4:
+            how = "appeared"
+        elif now_blank > 0.6 and was_blank < 0.4:
+            how = "vanished"
+        else:
+            how = "jumped"
+        t = end / rate
+        landings = [b for b in boundaries if abs(b - t) <= 1.5 / rate + 1e-9]
+        scan.pops.append(Pop(frame=end, t=t, box=box, changed=peak, how=how,
+                             declared=bool(landings),
+                             declared_at=landings[0] if landings else None))
+        if len(scan.pops) >= max_pops:
+            break
+    return scan

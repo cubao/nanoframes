@@ -123,6 +123,7 @@ that render as *something valid and wrong*:
 | `render.inert_attribute` / `render.inert_tspan` | an attribute this loader accepts and ignores: `visibility`, `text-anchor`, `letter-spacing`, or timing and animation written on a `<tspan>` |
 | `render.degraded_paint` | a paint the loader draws *wrong* rather than ignores: an alpha colour (`rgba()`, `#rrggbbaa`, `transparent`, …) painted solid black, a `marker-*` reference drawn without its marker, a `<pattern>` paint (or a dangling `url(#…)`) that makes the element disappear |
 | `render.unresolved_font_family` | a `font-family` that cannot select any loaded face, so the run draws with the fallback (a face answers to the stem of the file it was loaded from) |
+| `pop.*` (via `debug --pops`) | a region that changes in one frame between two frames that held — a jump, not motion; reported with `declared: false` when no clip boundary explains it |
 | `text.bad_frame_field` | a `data-frame-text` naming a field the frame does not offer, or using one as an expression |
 | `text.inert_content` | words written inside an element whose content `data-frame-text` replaces, so nothing draws them |
 | `clip.*`, `canvas.*`, `animation.keyframe_out_of_range` | timing and canvas metadata that is out of range |
@@ -579,6 +580,29 @@ MP4 export, and an agent-facing skill.
   does not resolve (an empty frame), `prescale_images` would call `Image.open` on a
   video source and raise out of a draft render, and `data-fit`/`data-anchor` were
   already taken by `<text>`, so the media attributes are `data-aspect`/`data-in`.
+- **0.5.3 (2026-10)** — `debug --pops`, the failure nothing else sees. `check`
+  reads declarations and `strip` samples the clip; an element that is *there*
+  and then, one frame later, *there* passes both, because each frame is a good
+  picture. The detector is the **still–change–still** criterion: a run of frames
+  whose change is far above threshold, surrounded on *both* sides by frames that
+  barely differ from their neighbours. Both halves are load-bearing, and each
+  was measured against the corpus: dropping the "and then it stopped" half
+  reported 13 regions on a clean badge (ease-out entrance ramps), and requiring
+  a single frame instead of a run missed a one-frame move that lights up two
+  consecutive deltas.
+
+  What a hit says matters as much as that it fired: `declared: true` means a
+  `data-start`/`data-duration` boundary lands on that frame — the composition
+  asked for the cut — and `declared: false` is the one to chase. On the shipped
+  corpus that is exactly one hit in twelve examples, and it is declared.
+
+  Two mistakes worth recording: "blank" had to become *the background colour*
+  (read from the frame's corner) rather than "dark", because a black rect
+  appearing on a white plate was classified a vanish; and the reported frame is
+  the first one that shows the new state, not the frame whose delta first
+  crossed the threshold (they differ by one, and the second is the one a reader
+  can actually look at).
+
 - **0.5.2 (2026-10)** — spring easing, as a curve rather than a stepping
   integrator. `spring(mass, stiffness, damping)` joins the ease vocabulary as
   the exact solution of a unit mass on a damped spring, so a frame's value

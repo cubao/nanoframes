@@ -548,6 +548,7 @@ nanoframes check my-video.nf.svg    # lint (exit 1 on errors)
 nanoframes debug my-video.nf.svg --t 2.0        # where each element lands, frame by frame
 nanoframes debug my-video.nf.svg --pixels       # + hide each element to find buried ones
 nanoframes debug my-video.nf.svg --loop         # + compare the loop's seam frames
+nanoframes debug my-video.nf.svg --pops         # + parts that change in one frame between still frames
 nanoframes measure my-video.nf.svg  # report renderer-exact text widths
 nanoframes svg my-video.nf.svg --t 2.0             # the baked frame as static SVG
 nanoframes svg my-video.nf.svg --all -o frames-svg/  # one document per frame
